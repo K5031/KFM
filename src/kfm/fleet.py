@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-FORMAT = 2  # of fleet.json; a file of another format is refused
+FORMAT = 3  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
 # starting: its process is coming up.  working: on its task, between check-ins included.
@@ -36,7 +36,7 @@ class Unit:
     budget_usd: float = 0.0  # the most this unit may spend
     token: str = field(default_factory=lambda: secrets.token_urlsafe(16))  # for the fleet tools
     state: str = "starting"
-    conversation_id: str | None = None  # in its own Kayden
+    session: str | None = None  # what its harness opens it on again (api.Session.begin)
     report: str | None = None
     question: str | None = None
     failure: str | None = None

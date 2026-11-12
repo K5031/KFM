@@ -15,9 +15,9 @@ CONFIG_FILE = "fleet.toml"
 @dataclass(frozen=True, slots=True)
 class FleetConfig:
     """`models` maps a rank ("K5") or "default" to a model id, `teams` a team's name to one;
-    a team's model wins over its rank's. A unit with no model here uses the one in
-    `kayden_config`, the Kayden configuration every unit starts from (its provider, key
-    and options)."""
+    a team's model wins over its rank's; a unit with no model here uses its harness's own.
+    `harness` is the agent program every unit runs (kfm.harnesses.load) and
+    `harness_options` what it is made with."""
 
     top_rank: int = 5
     max_units: int = 12
@@ -26,7 +26,8 @@ class FleetConfig:
     permissions: str = "allow_workspace"  # Kayden's level for every unit
     models: Mapping[str, str] = field(default_factory=dict)
     teams: Mapping[str, str] = field(default_factory=dict)
-    kayden_config: Path = Path.home() / ".kayden" / "config.toml"
+    harness: str = "kayden"
+    harness_options: Mapping[str, Any] = field(default_factory=dict)
     # A unit's duty intervals: it carries on soon after a turn, and checks in this often
     # when nothing wakes it.
     check_in_s: tuple[float, float] = (5.0, 300.0)
@@ -45,8 +46,7 @@ def load(path: Path, **overrides: Any) -> FleetConfig:
 
 def record(config: FleetConfig) -> dict[str, Any]:
     """The settings as fleet.json keeps them, for `from_record`."""
-    return {**asdict(config), "kayden_config": str(config.kayden_config),
-            "check_in_s": list(config.check_in_s)}
+    return {**asdict(config), "check_in_s": list(config.check_in_s)}
 
 
 def from_record(data: Mapping[str, Any], **overrides: Any) -> FleetConfig:
@@ -59,8 +59,6 @@ def _config(data: dict[str, Any], source: str, overrides: Mapping[str, Any]) -> 
     known = {f.name for f in fields(FleetConfig)}
     if unknown := sorted(set(data) - known):
         raise ValueError(f"{source}: unknown setting {', '.join(unknown)}")
-    if "kayden_config" in data:
-        data["kayden_config"] = Path(data["kayden_config"]).expanduser()
     if "check_in_s" in data:
         data["check_in_s"] = tuple(data["check_in_s"])
     config = FleetConfig(**data)

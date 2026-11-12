@@ -11,11 +11,11 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING, Annotated
 
 import uvicorn
-from kayden.api import RuntimeStateError
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
+from kfm.api import UnitError
 from kfm.fleet import FleetError, Unit
 
 if TYPE_CHECKING:
@@ -56,7 +56,7 @@ def _refusals() -> Iterator[None]:
     """What the fleet refuses reaches the agent in the fleet's own words."""
     try:
         yield
-    except (FleetError, RuntimeStateError) as e:
+    except (FleetError, UnitError) as e:
         raise ToolError(str(e)) from None
 
 

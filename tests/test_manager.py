@@ -50,12 +50,13 @@ async def fleet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             "runtime": {"model": "fake-1"}}))
         work = tmp_path / "work"
         work.mkdir(exist_ok=True)
-        config = replace(FleetConfig(), kayden_config=base,
+        options = {"config": str(base), **settings.pop("harness_options", {})}
+        config = replace(FleetConfig(), harness_options=options,
                          **{"check_in_s": (0.05, 60.0), **settings})
         events: list[FleetEvent] = []
         if resume:
             manager = Manager.resumed(tmp_path / "fleet", on_event=events.append,
-                                      kayden_config=base, **settings)
+                                      harness_options=options, **settings)
         else:
             manager = Manager(config, tmp_path / "fleet", work, on_event=events.append)
         managers.append(manager)
@@ -191,14 +192,14 @@ async def test_stopping_an_agent_stops_those_under_it(fleet):
     assert (mid.ongoing, low.rank, low.supervisor) == (True, 1, "u2")
     await manager.stop(mid)
     assert (lead.state, mid.state, low.state) == ("working", "stopped", "stopped")
-    assert set(manager._channels) == {"u1"}
+    assert set(manager._sessions) == {"u1"}
 
 
 async def test_the_fleets_spending_limit_stops_everyone_until_it_is_given_more(fleet):
     manager, events = await fleet({}, budget_usd=0.0003, check_in_s=(0.05, 0.05))
     lead = await manager.lead("Keep going", ongoing=True)
     await asyncio.wait_for(manager.finished.wait(), 30)
-    await until(lambda: not manager._channels)  # every process has ended
+    await until(lambda: not manager._sessions)  # every process has ended
     assert any(isinstance(e, Notice) and "spending limit" in e.text for e in events)
     assert manager.fleet.spent_usd >= 0.0003
     assert lead.state == "working"  # interrupted: it carries on when the fleet does
@@ -212,8 +213,7 @@ async def test_the_fleets_spending_limit_stops_everyone_until_it_is_given_more(f
 
 
 async def test_a_unit_that_cannot_start_has_failed(fleet, tmp_path: Path):
-    manager, _ = await fleet({})
-    manager._command = ("false",)
+    manager, _ = await fleet({}, harness_options={"command": ["false"]})
     lead = await manager.lead("Do it")
     assert lead.state == "failed" and lead.failure
 
@@ -230,7 +230,7 @@ async def test_a_stopped_fleet_carries_on_where_it_was(fleet, tmp_path: Path):
     lead = await manager.lead("Keep watch over the folder", ongoing=True)
     await until(lambda: "On watch." in said(events, "Lead"))
     await until(lambda: Fleet.load(tmp_path / "fleet").spent_usd > 0)  # while it runs
-    conversation = lead.conversation_id
+    session = lead.session
     await manager.aclose()
     stopped = Fleet.load(tmp_path / "fleet")
     assert stopped.units["u1"].state == "working"  # interrupted, not failed or stopped
@@ -244,7 +244,7 @@ async def test_a_stopped_fleet_carries_on_where_it_was(fleet, tmp_path: Path):
     await until(lambda: "Back on watch." in said(events, "Lead"))
     await manager.say("anything new?")
     await until(lambda: "All quiet." in said(events, "Lead"))
-    assert manager.fleet.units["u1"].conversation_id == conversation
+    assert manager.fleet.units["u1"].session == session
     assert manager.fleet.spent_usd >= stopped.spent_usd
 
 
@@ -258,12 +258,12 @@ async def test_a_resumed_fleet_finishes_what_was_under_way(fleet, tmp_path: Path
     assert Fleet.load(tmp_path / "fleet").units["u2"].state == "waiting"
 
     manager, events = await fleet({
-        "Lead": [{"when": "carry on", **call("mcp__fleet__message", agent="u2",
+        "Lead": [{"when": "go ahead", **call("mcp__fleet__message", agent="u2",
                                              text="Use docs/")},
                  finish("Docs are tidy.", when="[Report from Scout")],
         "Scout": [finish("Tidied docs/", when="your supervisor] Use docs/")]}, resume=True)
     assert manager.fleet.units["u2"].state == "working"  # its question went with its process
-    await manager.say("carry on")
+    await manager.say("go ahead")
     await asyncio.wait_for(manager.finished.wait(), 30)
     assert delivered(events) == [("Scout", "Lead", "report", "Tidied docs/"),
                                  ("Lead", None, "report", "Docs are tidy.")]

@@ -8,38 +8,20 @@ import asyncio
 import contextlib
 import logging
 import os
-import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from kayden.api import (
-    AgentState,
-    ConversationUpdated,
-    EventEnvelope,
-    Failure,
-    HelpNeeded,
-    MessageCommitted,
-    PermissionRequested,
-    Role,
-    RuntimeStateError,
-    StateChanged,
-    Text,
-    ToolCall,
-    UsageUpdated,
-)
-from kayden.frontends.remote import Channel
-
+from kfm import api, harnesses, units
 from kfm import config as settings
-from kfm import units
+from kfm.api import Harness, Instruction, Session, UnitError, UnitEvent, UnitSpec
 from kfm.config import FleetConfig
 from kfm.fleet import Fleet, FleetError, Unit
 from kfm.tools import ToolServer
 
 logger = logging.getLogger(__name__)
 
-STOP_GRACE_S = 10.0  # after a unit's stdin closes, before it is killed
-_ACTIVE = (AgentState.THINKING, AgentState.RUNNING_TOOLS, AgentState.AWAITING_PERMISSION)
+STOP_GRACE_S = 10.0  # for a unit to end by itself when it is closed
 _OVER = ("done", "idle", "failed", "stopped")
 
 
@@ -90,19 +72,24 @@ type FleetEvent = Changed | Said | Delivered | Approval | Notice
 
 class Manager:
     def __init__(self, config: FleetConfig, folder: Path, work: Path, *,
-                 command: Sequence[str] = (sys.executable, "-m", "kayden"),
+                 harness: Harness | None = None,
                  on_event: Callable[[FleetEvent], None] = lambda event: None,
                  fleet: Fleet | None = None) -> None:
+        """`harness`: the agent program the units run; None loads the one the settings
+        name (ValueError when it cannot be)."""
         self.config, self.folder, self.work = config, folder, work
         self._resuming = fleet is not None
         self.fleet = fleet or Fleet(config.top_rank, config.max_units)
         self.fleet.work, self.fleet.settings = str(work), settings.record(config)
         self.finished = asyncio.Event()  # the lead reported, or the budget ran out
-        self._command, self._on_event = tuple(command), on_event
+        self._harness = harness or harnesses.load(config.harness, config.harness_options)
+        self._words = self._harness.vocabulary
+        self._on_event = on_event
         self._tools = ToolServer(self)
-        self._channels: dict[str, Channel] = {}
-        self._agent: dict[str, AgentState] = {}
-        self._has_duty: dict[str, bool] = {}
+        self._sessions: dict[str, Session] = {}
+        self._opening: dict[str, asyncio.Lock] = {}  # one start of a unit's process at a time
+        # Whether a unit's instruction stood when its last turn ended.
+        self._carries_on: dict[str, bool] = {}
         # Units told more after their goal ended, and what each wrote last since: with no
         # goal left to finish, that is its report.
         self._answering: set[str] = set()
@@ -112,8 +99,7 @@ class Manager:
         self._saving = asyncio.Lock()
 
     @classmethod
-    def resumed(cls, folder: Path, *,
-                command: Sequence[str] = (sys.executable, "-m", "kayden"),
+    def resumed(cls, folder: Path, *, harness: Harness | None = None,
                 on_event: Callable[[FleetEvent], None] = lambda event: None,
                 **overrides: object) -> Manager:
         """A manager for the stopped fleet in `folder`, with the settings it ran with and
@@ -127,7 +113,7 @@ class Manager:
         if fleet.spent_usd >= config.budget_usd:
             raise FleetError(f"The fleet has spent ${fleet.spent_usd:.2f} of its "
                              f"${config.budget_usd:.2f}: give it more with --budget.")
-        return cls(config, folder, Path(fleet.work), command=command, on_event=on_event,
+        return cls(config, folder, Path(fleet.work), harness=harness, on_event=on_event,
                    fleet=fleet)
 
     async def start(self) -> None:
@@ -136,9 +122,12 @@ class Manager:
         self.fleet.manager_pid = os.getpid()
         await self._save()
         if self._resuming:
-            for unit in list(self.fleet.units.values()):
-                if unit.active:
-                    await self._carry_on(unit)
+            # Every unit is open before any is told: a supervisor that acts at once finds
+            # its agents there.
+            back = [unit for unit in list(self.fleet.units.values())
+                    if unit.active and await self._reopen(unit)]
+            for unit in back:
+                await self._carry_on(unit)
 
     async def aclose(self) -> None:
         """Stop the fleet's processes. The record keeps every unit's state, so that
@@ -168,9 +157,8 @@ class Manager:
         await self.tell(lead, text)
 
     async def approve(self, unit: Unit, request_id: str, allow: bool) -> None:
-        if (channel := self._channels.get(unit.id)) is not None:
-            await channel.request("resolve_permission", request_id=request_id,
-                                  decision="allow_once" if allow else "deny")
+        if (session := self._sessions.get(unit.id)) is not None:
+            await session.approve(request_id, allow)
 
     # ── What units do, through the fleet tools ───────────────────────────
 
@@ -187,22 +175,24 @@ class Manager:
 
     async def tell(self, unit: Unit, text: str) -> None:
         """Put a message into the unit's conversation, starting it again if it is not
-        running: it then works on what the message says."""
-        if unit.conversation_id is None:
+        running: it then works on what the message says. FleetError or UnitError when it
+        cannot be."""
+        if unit.session is None:
             raise FleetError(f"{unit.label} never started.")
         if self._over_budget:
             raise FleetError("The fleet has reached its spending limit.")
-        channel = self._channels.get(unit.id)
-        if channel is None:
-            channel = await self._launch(unit, resume=True)
+        session = await self._session(unit)
+        unit.question = None  # this is its answer
         if unit.state in _OVER:
+            ended = unit.state in ("done", "idle")  # its goal is reached or gone
             unit.report = unit.failure = None
             self._set(unit, "working")
-            if not self._has_duty.get(unit.id, False):
+            if ended and not self._carries_on.get(unit.id, False):
                 self._answering.add(unit.id)
                 self._last_said.pop(unit.id, None)
-                text = f"{text}\n\n{units.answer_note(self.fleet.supervisor_of(unit))}"
-        await channel.request("send", text=text)
+                note = units.answer_note(self.fleet.supervisor_of(unit), self._words)
+                text = f"{text}\n\n{note}"
+        await session.send(text)
 
     async def update(self, unit: Unit, text: str) -> None:
         """A unit's update for its supervisor, without ending its work."""
@@ -220,132 +210,110 @@ class Manager:
     async def _start(self, unit: Unit) -> None:
         self._emit(Changed(unit, unit.state))
         try:
-            channel = await self._launch(unit, resume=False)
-            info = await channel.request("start")
-            unit.conversation_id = info["id"]
-            low, high = self.config.check_in_s
-            await channel.request("set_duty", duty={
-                "instruction": units.brief(unit, self.fleet.supervisor_of(unit)),
-                "kind": "duty" if unit.ongoing else "goal",
-                "min_interval_s": low, "max_interval_s": high})
-        except (OSError, RuntimeError, RuntimeStateError, ValueError) as e:
-            unit.failure = self._why(unit, e)
-            self._set(unit, "failed")
-            await self._close(unit)
+            session = await self._open(unit, resume=False)
+            brief = units.brief(unit, self.fleet.supervisor_of(unit), self._words)
+            unit.session = await session.begin(
+                Instruction(brief, unit.ongoing, self.config.check_in_s))
+        except UnitError as e:
+            await self._could_not_start(unit, e)
             return
+        self._carries_on[unit.id] = True
         if unit.state == "starting":
             self._set(unit, "working")
 
-    async def _carry_on(self, unit: Unit) -> None:
-        """Start a unit that was at work when the fleet stopped, on its conversation: its
-        Kayden still has its duty and schedules the next check-in."""
-        if unit.conversation_id is None:  # stopped before it had its task
+    async def _reopen(self, unit: Unit) -> bool:
+        """Open a unit that was at work when the fleet stopped, on its session, where its
+        instruction still stands. False: it starts from the beginning or not at all."""
+        if unit.session is None:  # stopped before it had its task
             await self._start(unit)
-            return
-        self._has_duty[unit.id] = True
-        unit.question = None  # its Kayden held it in memory only
+            return False
+        self._carries_on[unit.id] = True
+        unit.question = None  # an open question does not outlive the unit's process
         self._emit(Changed(unit, unit.state))
         try:
-            channel = await self._launch(unit, resume=True)
-            self._set(unit, "working")
-            # A Kayden that opens a conversation with a duty waits for a message.
-            await channel.request("send", text=units.RESUMED)
-        except (OSError, RuntimeError, RuntimeStateError, ValueError) as e:
-            unit.failure = self._why(unit, e)
-            self._set(unit, "failed")
-            await self._close(unit)
+            await self._session(unit)
+        except UnitError as e:
+            await self._could_not_start(unit, e)
+            return False
+        self._set(unit, "working")
+        return True
 
-    def _unit_folder(self, unit: Unit) -> Path:
-        return self.folder / "units" / unit.id
+    async def _carry_on(self, unit: Unit) -> None:
+        """A unit opened on a session waits for a message: say what happened."""
+        try:
+            await (await self._session(unit)).send(units.RESUMED)
+        except UnitError as e:
+            await self._could_not_start(unit, e)
 
-    async def _launch(self, unit: Unit, *, resume: bool) -> Channel:
-        # Written at every start: the fleet tools' address changes with the manager.
-        await asyncio.to_thread(units.prepare, unit, self._unit_folder(unit), self.config,
-                                self.work, self._tools.url)
-        channel = await units.launch(self._command, self._unit_folder(unit), self.work,
-                                     unit.conversation_id if resume else None)
-        channel.listeners.append(lambda envelope: self._event(unit, channel, envelope))
-        self._channels[unit.id] = channel
-        self._agent[unit.id] = AgentState.IDLE
-        return channel
+    async def _session(self, unit: Unit) -> Session:
+        """The unit's open session; opened on its saved one when its process is not
+        running."""
+        async with self._opening.setdefault(unit.id, asyncio.Lock()):
+            return self._sessions.get(unit.id) or await self._open(unit, resume=True)
+
+    async def _could_not_start(self, unit: Unit, error: UnitError) -> None:
+        unit.failure = str(error) or "Its process ended."
+        self._set(unit, "failed")
+        await self._close(unit)
+
+    async def _open(self, unit: Unit, *, resume: bool) -> Session:
+        spec = UnitSpec(
+            unit.id, unit.name, unit.rank, self.folder / "units" / unit.id, self.work,
+            self.config.model_for(unit.rank, unit.team), self.config.permissions,
+            unit.budget_usd, f"{self._tools.url}?unit={unit.token}")
+        session = await self._harness.open(spec, lambda event: self._event(unit, event),
+                                           unit.session if resume else None)
+        self._sessions[unit.id] = session
+        return session
 
     async def _close(self, unit: Unit) -> None:
-        if (channel := self._channels.pop(unit.id, None)) is not None:
-            await channel.close(STOP_GRACE_S)
+        if (session := self._sessions.pop(unit.id, None)) is not None:
+            await session.close(STOP_GRACE_S)
 
-    def _why(self, unit: Unit, error: Exception | None) -> str:
-        channel = self._channels.get(unit.id)
-        said = " ".join(channel.stderr) if channel is not None else ""
-        return " ".join(part for part in (str(error) if error else "", said[-400:]) if part) \
-            or "Its process ended."
+    # ── What a unit says ─────────────────────────────────────────────────
 
-    # ── What a unit's Kayden says ────────────────────────────────────────
-
-    def _event(self, unit: Unit, channel: Channel, envelope: EventEnvelope | None) -> None:
-        if envelope is None:  # its process ended
-            if self._channels.get(unit.id) is channel:
-                del self._channels[unit.id]
-                if unit.active:  # by itself
-                    unit.failure = self._why(unit, None)
-                    self._set(unit, "failed")
+    def _event(self, unit: Unit, event: UnitEvent) -> None:
+        match event:
+            case api.Working():
+                if unit.state != "stopped":
+                    self._set(unit, "working")
+            case api.Rested(carries_on=carries_on):
+                self._carries_on[unit.id] = carries_on
+                if unit.id in self._answering:
+                    self._answering.discard(unit.id)
+                    if unit.report is None and not carries_on:
+                        unit.report = self._last_said.get(unit.id)
+                if unit.state == "stopped":
+                    return
+                if carries_on:  # between check-ins, or until its question is answered
+                    self._set(unit, "waiting" if unit.question is not None else "working")
+                else:
+                    self._set(unit, "done" if unit.report is not None else "idle")
+                if unit.state != "working":
                     self._turn_ended(unit)
-            return
-        match envelope.event:
-            case MessageCommitted(message=message) if message.role == Role.ASSISTANT:
-                for block in message.blocks:
-                    if isinstance(block, ToolCall) and block.name == "finish_goal":
-                        if self._has_duty.get(unit.id, False):  # else Kayden refuses it
-                            unit.report = block.arguments.get("report") or "Done."
-                    elif isinstance(block, Text) and block.text.strip():
-                        self._last_said[unit.id] = block.text.strip()
-                        self._emit(Said(unit, block.text.strip()))
-            case HelpNeeded(question=question):
+            case api.Said(text=text):
+                self._last_said[unit.id] = text
+                self._emit(Said(unit, text))
+            case api.Reported(text=text):
+                unit.report = text
+            case api.Asked(question=question):
                 unit.question = question
-            case ConversationUpdated(info=info) if info.id == unit.conversation_id:
-                self._has_duty[unit.id] = info.duty is not None
-            case UsageUpdated(snapshot=snapshot):
-                unit.spent_usd = snapshot.usage.cost_usd or 0.0
+            case api.Spent(usd=usd):
+                unit.spent_usd = usd
                 self._spawn(self._save())
                 self._check_budget()
-            case Failure(message=message):
+            case api.ApprovalNeeded(request_id=request_id, tool=tool, arguments=arguments):
+                self._emit(Approval(unit, request_id, tool, arguments))
+            case api.Failed(message=message):
                 unit.failure = message
-            case PermissionRequested(request=request):
-                if request.call.name.startswith(units.PREFIX):  # the fleet's own tools
-                    self._spawn(channel.request("resolve_permission", request_id=request.id,
-                                                decision="allow_conversation"))
-                else:
-                    self._emit(Approval(unit, request.id, request.call.name,
-                                        str(request.call.arguments)))
-            case StateChanged(state=state):
-                was_active = self._agent.get(unit.id) in _ACTIVE
-                self._agent[unit.id] = state
-                if was_active and state not in _ACTIVE and unit.id in self._answering:
-                    self._answering.discard(unit.id)
-                    if unit.report is None and not self._has_duty.get(unit.id, False):
-                        unit.report = self._last_said.get(unit.id)
-                self._set(unit, self._state_after(unit, state))
-                if was_active and state not in _ACTIVE and unit.state != "working":
+                if unit.state != "stopped":
+                    self._set(unit, "failed")
                     self._turn_ended(unit)
-
-    def _state_after(self, unit: Unit, state: AgentState) -> str:
-        if unit.state == "stopped":
-            return "stopped"
-        if state in _ACTIVE:
-            return "working"
-        if state == AgentState.FAILED:
-            return "failed"
-        if unit.state == "starting":
-            return "starting"  # idle until it has its task
-        if state in (AgentState.IDLE, AgentState.STOPPED):
-            has_duty = self._has_duty.get(unit.id, False)
-            if unit.question is not None and has_duty:
-                return "waiting"
-            if has_duty:
-                return "working"  # between check-ins
-            if unit.id in self._answering:
-                return "working"  # started again; its turn has yet to begin
-            return "done" if unit.report is not None else "idle"
-        return unit.state
+            case api.Exited(why=why):
+                if self._sessions.pop(unit.id, None) is not None and unit.active:
+                    unit.failure = why
+                    self._set(unit, "failed")
+                    self._turn_ended(unit)
 
     def _turn_ended(self, unit: Unit) -> None:
         """The unit stopped working: tell its supervisor, or the person, why."""
@@ -360,20 +328,20 @@ class Manager:
                 self._deliver(
                     unit, "question",
                     f"[Question from {unit.label}] {unit.question}\nAnswer with "
-                    f"{units.PREFIX}message(agent=\"{unit.id}\", text=...).",
+                    f"{self._words.tool('message')}(agent=\"{unit.id}\", text=...).",
                     unit.question or "")
             case "failed":
                 why = unit.failure or "It stopped with an error."
                 self._deliver(
                     unit, "failure",
                     f"[{unit.label} failed] {why}\nTell it to carry on with "
-                    f"{units.PREFIX}message, hand the task to another agent, or ask your "
+                    f"{self._words.tool('message')}, hand the task to another agent, or ask your "
                     "own supervisor.", why)
             case "idle":
                 self._deliver(
                     unit, "stopped",
                     f"[{unit.label} stopped without a report] Ask it what it did with "
-                    f"{units.PREFIX}message, or hand the task to another agent.",
+                    f"{self._words.tool('message')}, or hand the task to another agent.",
                     "It stopped without a report.")
 
     def _deliver(self, unit: Unit, kind: str, message: str, text: str) -> None:
@@ -385,7 +353,7 @@ class Manager:
     async def _tell_quietly(self, unit: Unit, text: str) -> None:
         try:
             await self.tell(unit, text)
-        except (FleetError, RuntimeError, RuntimeStateError, OSError) as e:
+        except (FleetError, UnitError) as e:
             self._emit(Notice(f"A message for {unit.label} could not be delivered: {e}"))
 
     def _check_budget(self) -> None:

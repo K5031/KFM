@@ -30,7 +30,7 @@ def test_run_follows_the_fleet_to_its_report_and_status_shows_it(tmp_path: Path)
                                   "arguments": {"report": "Found it."}}]}]}}},
         "runtime": {"model": "fake-1"}}))
     config = tmp_path / "fleet.toml"
-    config.write_text(tomli_w.dumps({"kayden_config": str(base), "check_in_s": [0.05, 60.0]}))
+    config.write_text(tomli_w.dumps({"harness_options": {"config": str(base)}, "check_in_s": [0.05, 60.0]}))
     work = tmp_path / "work"
     work.mkdir()
     fleet = tmp_path / "fleet"

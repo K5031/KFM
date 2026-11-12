@@ -16,6 +16,9 @@ dependencies = [
 [project.scripts]
 kfm = "kfm.__main__:main"
 
+[project.entry-points."kfm.harnesses"]
+kayden = "kfm.harnesses.kayden:factory"
+
 [tool.uv.sources]
 kayden = { path = "../Kayden", editable = true }
 

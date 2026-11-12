@@ -4,9 +4,11 @@ Kayden Fleet Manager: runs teams of Kayden agents toward a goal or a duty, witho
 supervision. Read before coding:
 - `PHILOSOPHY.md`: what the fleet is for (ranks K1 to K5, teams, goals and duties).
 - `.agents/notes/`: the design decisions, as Agent Notes.
-- Kayden (`../Kayden`): the unit. KFM uses only its headless channel
-  (`docs/headless.md`), its client for it (`kayden.frontends.remote`), its configuration
-  files and its MCP support.
+- `src/kfm/api.py`: the unit contract, normative: what a fleet needs from the agent
+  program its units run.
+- Kayden (`../Kayden`): the built-in unit. `src/kfm/harnesses/kayden.py` uses its
+  headless channel (`docs/headless.md`), its client for it (`kayden.frontends.remote`),
+  its configuration files and its MCP support.
 
 ## Stack
 Python 3.14 (`requires-python >= 3.12`), asyncio, uv, pytest + pytest-asyncio, ruff. The
@@ -14,9 +16,13 @@ Python 3.14 (`requires-python >= 3.12`), asyncio, uv, pytest + pytest-asyncio, r
 
 ## Rules
 - Define expected behavior as a test before implementing it.
-- A unit is an unchanged Kayden process. Fleet concepts (ranks, teams, supervisors) live
-  here, never in Kayden. If KFM needs something from Kayden, it is a general Kayden
-  feature or it does not exist.
+- The manager knows a unit only through `kfm/api.py`. Whatever belongs to one agent
+  program lives in its harness (`src/kfm/harnesses/`); a change the manager needs from
+  units is a change to the contract, with the second harness in `tests/fakeharness.py`
+  kept passing.
+- A Kayden unit is an unchanged Kayden process. Fleet concepts (ranks, teams,
+  supervisors) live here, never in Kayden. If KFM needs something from Kayden, it is a
+  general Kayden feature or it does not exist.
 - The manager bridges all communication: units never talk to each other directly.
 - No speculative abstractions, no features the owner has not asked for, no unrequested
   refactoring.

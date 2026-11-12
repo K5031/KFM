@@ -11,8 +11,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-from kayden.api import RuntimeStateError
-
+from kfm.api import UnitError
 from kfm.config import CONFIG_FILE, HOME, load
 from kfm.fleet import Fleet, FleetError, Unit
 from kfm.manager import Approval, Changed, Delivered, FleetEvent, Manager, Notice, Said
@@ -158,7 +157,7 @@ class Console:
                                            text.lower().startswith("y"))
             else:
                 await self.manager.say(text)
-        except (FleetError, RuntimeError, RuntimeStateError) as e:
+        except (FleetError, UnitError) as e:
             print(f"! {e}")
 
 

@@ -55,6 +55,14 @@ async def launch(command: Sequence[str], folder: Path, work: Path,
     return Channel(process)
 
 
+def answer_note(supervisor: Unit | None) -> str:
+    """What a unit is told with a message that reaches it after its goal ended."""
+    reader = supervisor.name if supervisor is not None else "the person"
+    return ("(Your task had ended, so there is no goal to finish now. Deal with this, then "
+            f"end your turn: what you write last goes to {reader} as your report, so make it "
+            f"complete, and do not also send it with {PREFIX}report.)")
+
+
 def brief(unit: Unit, supervisor: Unit | None) -> str:
     """The unit's standing instruction: who it is in the fleet, its task, and how the fleet
     works from where it stands."""

@@ -106,6 +106,37 @@ async def test_a_question_goes_to_the_supervisor_and_its_answer_back(fleet):
     assert "waiting" in states
 
 
+async def test_a_finished_agent_that_is_told_more_answers_with_one_report(fleet):
+    manager, events = await fleet({
+        "Lead": [call("mcp__fleet__delegate", name="Scout", task="Count the files"),
+                 {"when": "] 3 files", **call("mcp__fleet__message", agent="u2",
+                                              text="Count again")},
+                 finish("Confirmed: 3.", when="] Still 3")],
+        "Scout": [finish("3 files"), {"when": "Count again", "text": "Still 3 files."}]})
+    await manager.lead("Find out how many files there are")
+    await asyncio.wait_for(manager.finished.wait(), 30)
+    assert delivered(events) == [("Scout", "Lead", "report", "3 files"),
+                                 ("Scout", "Lead", "report", "Still 3 files."),
+                                 ("Lead", None, "report", "Confirmed: 3.")]
+    assert manager.fleet.units["u2"].state == "done"
+
+
+async def test_finishing_a_goal_that_has_ended_is_not_a_report(fleet):
+    manager, events = await fleet({
+        "Lead": [call("mcp__fleet__delegate", name="Scout", task="Count the files"),
+                 {"when": "] 3 files", **call("mcp__fleet__message", agent="u2",
+                                              text="Count again")},
+                 finish("Confirmed.", when="] Counted twice")],
+        "Scout": [finish("3 files"),
+                  {"when": "Count again", **call("finish_goal", report="Again 3")},
+                  {"text": "Counted twice: 3."}]})
+    await manager.lead("Find out how many files there are")
+    await asyncio.wait_for(manager.finished.wait(), 30)
+    assert [d for d in delivered(events) if d[0] == "Scout"] == [
+        ("Scout", "Lead", "report", "3 files"),
+        ("Scout", "Lead", "report", "Counted twice: 3.")]
+
+
 async def test_the_lowest_rank_is_told_it_cannot_delegate(fleet):
     manager, events = await fleet({
         "Lead": [call("mcp__fleet__delegate", name="Helper", task="Help"),

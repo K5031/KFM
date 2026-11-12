@@ -98,6 +98,10 @@ class Manager:
         self._channels: dict[str, Channel] = {}
         self._agent: dict[str, AgentState] = {}
         self._has_duty: dict[str, bool] = {}
+        # Units told more after their goal ended, and what each wrote last since: with no
+        # goal left to finish, that is its report.
+        self._answering: set[str] = set()
+        self._last_said: dict[str, str] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         self._over_budget = False
         self._saving = asyncio.Lock()
@@ -164,6 +168,10 @@ class Manager:
         if unit.state in _OVER:
             unit.report = unit.failure = None
             self._set(unit, "working")
+            if not self._has_duty.get(unit.id, False):
+                self._answering.add(unit.id)
+                self._last_said.pop(unit.id, None)
+                text = f"{text}\n\n{units.answer_note(self.fleet.supervisor_of(unit))}"
         await channel.request("send", text=text)
 
     async def update(self, unit: Unit, text: str) -> None:
@@ -236,8 +244,10 @@ class Manager:
             case MessageCommitted(message=message) if message.role == Role.ASSISTANT:
                 for block in message.blocks:
                     if isinstance(block, ToolCall) and block.name == "finish_goal":
-                        unit.report = block.arguments.get("report") or "Done."
+                        if self._has_duty.get(unit.id, False):  # else Kayden refuses it
+                            unit.report = block.arguments.get("report") or "Done."
                     elif isinstance(block, Text) and block.text.strip():
+                        self._last_said[unit.id] = block.text.strip()
                         self._emit(Said(unit, block.text.strip()))
             case HelpNeeded(question=question):
                 unit.question = question
@@ -258,6 +268,10 @@ class Manager:
             case StateChanged(state=state):
                 was_active = self._agent.get(unit.id) in _ACTIVE
                 self._agent[unit.id] = state
+                if was_active and state not in _ACTIVE and unit.id in self._answering:
+                    self._answering.discard(unit.id)
+                    if unit.report is None and not self._has_duty.get(unit.id, False):
+                        unit.report = self._last_said.get(unit.id)
                 self._set(unit, self._state_after(unit, state))
                 if was_active and state not in _ACTIVE and unit.state != "working":
                     self._turn_ended(unit)
@@ -277,6 +291,8 @@ class Manager:
                 return "waiting"
             if has_duty:
                 return "working"  # between check-ins
+            if unit.id in self._answering:
+                return "working"  # started again; its turn has yet to begin
             return "done" if unit.report is not None else "idle"
         return unit.state
 

@@ -77,10 +77,10 @@ concepts, so none of this can be added to it.
   reported the fault instead of changing a file that was not theirs; the lead had one fix
   the function and redo its page, checked again, had one more sentence corrected, and
   reported with the one question left for the person. $0.98: $0.46 the lead, $0.18 and
-  $0.34 the agents. Seen in it: an agent that is messaged again after it finished answers
-  with an update and a report of the same text, and when it then ends its turn the lead
-  is told it "stopped without a report"; an agent spends one more request after
-  finish_goal on closing its plan.
+  $0.34 the agents.
+- A third run sent a finished agent back once: its answer reached the lead as one report
+  and the agent ended as done. Before that, such an agent's answer arrived as an update
+  and again as a report, and the lead was then told it had stopped without a report.
 - Everything passes through one process, so the fleet can be shown, limited and stopped
   from one place. If the manager dies, every unit quits (its stdin closes).
 - A supervisor learns of its agents only through messages, so it costs a model request to

@@ -79,8 +79,7 @@ concepts, so none of this can be added to it.
   reported with the one question left for the person. $0.98: $0.46 the lead, $0.18 and
   $0.34 the agents.
 - A third run sent a finished agent back once: its answer reached the lead as one report
-  and the agent ended as done. Before that, such an agent's answer arrived as an update
-  and again as a report, and the lead was then told it had stopped without a report.
+  and the agent ended as done.
 - Everything passes through one process, so the fleet can be shown, limited and stopped
   from one place. If the manager dies, every unit quits (its stdin closes).
 - A supervisor learns of its agents only through messages, so it costs a model request to

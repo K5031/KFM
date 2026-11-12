@@ -39,8 +39,31 @@ All on 2026-11-12, lead on Claude Opus 5.5, agents below it on Claude Sonnet 5.5
   conversation, and the hands-on work can run on a cheaper model). Small jobs favour one
   agent; the saving grows with the size of the job. Not yet measured side by side.
 
-A duty run (one lead as "the maintenance team" of a small project for 15 minutes) is
-recorded below once it has ended.
+### A duty, for 15 minutes
+
+A K2 lead on Opus 5.5 was told to be the maintenance team of a small Python project,
+with nobody saying what to do next. The project had a function with a fault and no
+tests, a readme that named half the code, and an inbox folder for requests. A request
+was put into the inbox after 4 minutes and a working function was broken, unannounced,
+after 9. The fleet spent $0.50.
+
+- **It found the work.** In the first minute it fixed the fault, added tests and
+  completed the readme ($0.27).
+- **It built its own watch.** The folder has no version control, so it saved checksums of
+  the files and started a shell loop that ends when a file changes or a request arrives.
+  The loop runs in the background and its end wakes the agent: it answered the request
+  in 38 seconds, the function built and tested ($0.09), and reported the broken function
+  to its supervisor 11 seconds after the edit, then restored it ($0.04) and said it would
+  undo that if the edit was meant.
+- **It made no work for its own sake.** Each check-in on the timer was one look at the
+  watch and one line, about 1.5 cents.
+- **It changed behaviour nobody asked about**: accented letters in a slug now keep their
+  base letter. Tested and documented, and arguably better, but a standing team that
+  changes what users rely on without asking is a risk of its own.
+- **It never delegated.** The work fitted one agent, so the run shows an agent holding a
+  duty, not a team.
+- Seen in KFM: `kfm status` shows $0.00 for a fleet that is still running, and an agent
+  stopped with Ctrl+C is recorded as failed.
 
 ## Proposal
 

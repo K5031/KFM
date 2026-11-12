@@ -74,9 +74,9 @@ What a standing team needs, against what KFM has:
 | To survive the manager stopping | `kfm resume` ([note](../implemented/2026-11-12-resume.md)) |
 | To remember together | Each agent has its own memory |
 | To stay affordable while idle | Check-ins on a timer; each costs a request |
-| A record of who told whom what | Only on the terminal; `fleet.json` keeps each agent's last report |
+| A record of who told whom what | `log.jsonl` in the fleet's folder ([note](../implemented/2026-11-12-fleet-window.md)) |
 | Approval for actions with real-world effect | Only "outside the work folder" asks |
-| A way to reach the person that is not a terminal | Missing |
+| A way to reach the person that is not a terminal | `kfm-desktop`, while its window is open |
 | Teams with a supervisor and a model of their own | A team has a model; nothing else |
 
 Order of work:
@@ -84,7 +84,7 @@ Order of work:
 1. **Resume**, which is built: a fleet that vanishes when its terminal closes cannot hold
    a role for a week, and everything long-running sits on this.
 2. **Shared team memory** ([note](2026-11-12-shared-team-memory.md)).
-3. **A fleet log**: every delivery between agents, with its time, in the fleet's folder.
+3. **A fleet log** and a window, which are built.
 4. Then, by what duty runs show: waking on events instead of a timer, approvals for
    real-world actions, a model for hands-on work whatever the agent's rank.
 

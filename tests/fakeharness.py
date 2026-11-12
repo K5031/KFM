@@ -5,7 +5,8 @@ contract.
 A unit's script is a list of steps, one per turn: {"when": text, "do": [actions]}. A turn
 is the unit's instruction or a message sent to it; it takes the next step if `when` (default
 "") is in that text, else it says "ok". Actions: ("say", text), ("tool", name, arguments)
-for a fleet tool, ("report", text), ("ask", question)."""
+for a fleet tool, ("report", text), ("ask", question), ("approval", id, tool, arguments), which
+waits for the answer."""
 
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from typing import Any
 from mcp import Client
 
 from kfm.api import (
+    ApprovalNeeded,
     Asked,
     Harness,
     Instruction,
@@ -39,6 +41,7 @@ class FakeHarness(Harness):
         self.heard: dict[str, list[str]] = {}  # every turn's text, by unit name
         self.standing: dict[str, bool] = {}  # by session: whether its instruction stands
         self.opened: list[tuple[str, str | None]] = []  # (unit name, session)
+        self.approved: list[tuple[str, bool]] = []  # (request id, allow)
 
     @property
     def vocabulary(self) -> Vocabulary:
@@ -55,6 +58,7 @@ class FakeSession(Session):
                  on_event: Callable[[UnitEvent], None], session: str | None) -> None:
         self.harness, self.spec, self.emit, self.session = harness, spec, on_event, session
         self.turns: set[asyncio.Task[None]] = set()
+        self.answers: dict[str, asyncio.Event] = {}
 
     async def begin(self, instruction: Instruction) -> str:
         self.session = f"session-{self.spec.id}"
@@ -66,7 +70,8 @@ class FakeSession(Session):
         self._turn(text)
 
     async def approve(self, request_id: str, allow: bool) -> None:
-        raise NotImplementedError
+        self.harness.approved.append((request_id, allow))
+        self.answers[request_id].set()
 
     async def close(self, grace_s: float) -> None:
         for turn in self.turns:
@@ -98,5 +103,9 @@ class FakeSession(Session):
                     self.harness.standing[self.session] = False
                 case ("ask", question):
                     self.emit(Asked(question))
+                case ("approval", request_id, tool, arguments):
+                    self.answers[request_id] = asyncio.Event()
+                    self.emit(ApprovalNeeded(request_id, tool, arguments))
+                    await self.answers[request_id].wait()
         self.emit(Spent(0.01 * len(self.harness.heard[self.spec.name])))
         self.emit(Rested(self.harness.standing.get(self.session, False)))

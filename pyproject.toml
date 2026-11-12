@@ -16,6 +16,12 @@ dependencies = [
 [project.scripts]
 kfm = "kfm.__main__:main"
 
+[project.gui-scripts]
+kfm-desktop = "kfm.desktop:main"
+
+[project.optional-dependencies]
+desktop = ["kayden[desktop]"]  # the window is built on Kayden's desktop code
+
 [project.entry-points."kfm.harnesses"]
 kayden = "kfm.harnesses.kayden:factory"
 
@@ -24,6 +30,7 @@ kayden = { path = "../Kayden", editable = true }
 
 [dependency-groups]
 dev = [
+    "kayden[desktop]",
     "pytest",
     "pytest-asyncio",
     "ruff",

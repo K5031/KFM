@@ -72,6 +72,31 @@ what changed meanwhile. Agents that had finished stay finished.
 - **What is lost:** commands that were running when the fleet stopped, and a question an
   agent had asked without getting an answer; it asks again.
 
+## The window
+
+```bash
+kfm-desktop
+```
+
+![The fleet window](images/window-light.png)
+
+opens a window that does what `kfm run`, `kfm status` and `kfm resume` do, without a
+terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"`.
+
+- **Start a fleet** from the form: the task, whether it is standing work, the folder the
+  agents work in, and what the fleet may spend.
+- **Agents** are on the left, each under its supervisor, with its state and what it has
+  spent. Click one to see only what concerns it; **Show all** brings everything back.
+- **The timeline** shows what the lead says and every report, question and update in
+  full, with who sent it to whom. An approval is a card with **Allow** and **Deny**.
+- **Message the lead** in the box at the bottom.
+- **Stop** ends the fleet's processes; **Resume** carries it on. Closing the window stops
+  the fleet too: it does not run in the background.
+- **Open a fleet…** shows an earlier fleet with everything that happened in it.
+
+What happens in a fleet is also kept as `log.jsonl` in the fleet's folder, one line per
+event, whichever way the fleet was run.
+
 ## How a fleet works
 
 - **Ranks.** The lead has the top rank (K5 by default). An agent can hand work only to
@@ -126,5 +151,5 @@ in `src/kfm/api.py`, and `tests/fakeharness.py` is a small complete example.
 
 ## Not there yet
 
-- One fleet per `kfm run`, followed from the terminal only.
+- One fleet per `kfm run` or per window, and only while that runs.
 - Agents share one folder, and nothing stops two from editing the same file.

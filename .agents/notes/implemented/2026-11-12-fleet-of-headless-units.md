@@ -72,6 +72,15 @@ concepts, so none of this can be added to it.
   delegated to one K1 agent on Claude Sonnet 5.5, waited for its report, checked the file
   and reported to the person, in 30 seconds and without a prompt. The fleet spent $0.36:
   $0.27 the lead, $0.09 the agent that did the work.
+- A second run the same day gave a K2 lead a function that broke its specification,
+  unannounced, and asked for tests and a usage page from two agents at once. Both agents
+  reported the fault instead of changing a file that was not theirs; the lead had one fix
+  the function and redo its page, checked again, had one more sentence corrected, and
+  reported with the one question left for the person. $0.98: $0.46 the lead, $0.18 and
+  $0.34 the agents. Seen in it: an agent that is messaged again after it finished answers
+  with an update and a report of the same text, and when it then ends its turn the lead
+  is told it "stopped without a report"; an agent spends one more request after
+  finish_goal on closing its plan.
 - Everything passes through one process, so the fleet can be shown, limited and stopped
   from one place. If the manager dies, every unit quits (its stdin closes).
 - A supervisor learns of its agents only through messages, so it costs a model request to

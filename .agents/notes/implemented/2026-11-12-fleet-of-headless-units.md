@@ -67,6 +67,11 @@ concepts, so none of this can be added to it.
 
 - Kayden needed no change, and a unit can be any Kayden version that speaks the headless
   channel.
+- Checked with real models (2026-11-12): a K2 lead on Claude Opus 5.5 was asked for a
+  three-line haiku in a file, written by an agent below it and checked by itself. It
+  delegated to one K1 agent on Claude Sonnet 5.5, waited for its report, checked the file
+  and reported to the person, in 30 seconds and without a prompt. The fleet spent $0.36:
+  $0.27 the lead, $0.09 the agent that did the work.
 - Everything passes through one process, so the fleet can be shown, limited and stopped
   from one place. If the manager dies, every unit quits (its stdin closes).
 - A supervisor learns of its agents only through messages, so it costs a model request to

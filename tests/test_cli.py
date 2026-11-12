@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 def kfm(*args: str, home: Path) -> subprocess.CompletedProcess[str]:
     env = {**os.environ, "PYTHONPATH": str(REPO), "HOME": str(home)}
-    return subprocess.run([sys.executable, "-m", "kfm", *args], env=env, text=True,
+    return subprocess.run([sys.executable, "-m", "kfm", *args], env=env, text=True, check=False,
                           capture_output=True, timeout=60, stdin=subprocess.DEVNULL)
 
 
@@ -40,6 +40,7 @@ def test_run_follows_the_fleet_to_its_report_and_status_shows_it(tmp_path: Path)
     assert "[Scout K4 u2 → Lead] report: Found it." in ran.stdout
     assert "[Lead K5 u1 → you] report: All found." in ran.stdout
     assert "The fleet spent $" in ran.stdout
+    assert "Error" not in ran.stderr  # nothing to type into (stdin is /dev/null) is no fault
     shown = kfm("status", "--fleet", str(fleet), home=tmp_path)
     assert shown.returncode == 0, shown.stderr
     assert "Lead (K5, u1): done" in shown.stdout

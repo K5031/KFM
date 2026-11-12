@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
+import stat
 import sys
 import time
 from collections import deque
@@ -99,13 +101,16 @@ class Console:
         sys.stdout.flush()
 
     async def read(self) -> None:
+        try:
+            mode = os.fstat(sys.stdin.fileno()).st_mode
+        except (OSError, ValueError):
+            return
+        # A file or /dev/null cannot be waited on: the fleet then runs on its own.
+        if not (sys.stdin.isatty() or stat.S_ISFIFO(mode) or stat.S_ISSOCK(mode)):
+            return
         loop = asyncio.get_running_loop()
         reader = asyncio.StreamReader()
-        try:
-            await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader),
-                                         sys.stdin)
-        except (OSError, ValueError):
-            return  # no terminal to read from: the fleet runs on its own
+        await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
         while line := await reader.readline():
             if text := line.decode(errors="replace").strip():
                 await self._typed(text)

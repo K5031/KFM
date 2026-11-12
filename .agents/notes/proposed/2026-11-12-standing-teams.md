@@ -62,8 +62,6 @@ after 9. The fleet spent $0.50.
   changes what users rely on without asking is a risk of its own.
 - **It never delegated.** The work fitted one agent, so the run shows an agent holding a
   duty, not a team.
-- Seen in KFM: `kfm status` shows $0.00 for a fleet that is still running, and an agent
-  stopped with Ctrl+C is recorded as failed.
 
 ## Proposal
 
@@ -73,7 +71,7 @@ What a standing team needs, against what KFM has:
 |---|---|
 | To keep going on a duty | `--duty` exists; first run with a real model on 2026-11-12 |
 | To find its own work | Seen once, in that run |
-| To survive the manager stopping | Missing: a fleet ends with `kfm run` |
+| To survive the manager stopping | `kfm resume` ([note](../implemented/2026-11-12-resume.md)) |
 | To remember together | Each agent has its own memory |
 | To stay affordable while idle | Check-ins on a timer; each costs a request |
 | A record of who told whom what | Only on the terminal; `fleet.json` keeps each agent's last report |
@@ -83,8 +81,8 @@ What a standing team needs, against what KFM has:
 
 Order of work:
 
-1. **Resume.** A fleet that vanishes when its terminal closes cannot hold a role for a
-   week; everything long-running sits on this.
+1. **Resume**, which is built: a fleet that vanishes when its terminal closes cannot hold
+   a role for a week, and everything long-running sits on this.
 2. **Shared team memory** ([note](2026-11-12-shared-team-memory.md)).
 3. **A fleet log**: every delivery between agents, with its time, in the fleet's folder.
 4. Then, by what duty runs show: waking on events instead of a timer, approvals for
@@ -105,8 +103,6 @@ request and loses detail.
 
 ## Acceptance criteria
 
-- A fleet on a duty is stopped and started again, and every agent carries on with its
-  conversation, plan and role.
 - A fleet holds a role in a test project for a day inside a budget set beforehand, and
   its record shows what it did and why without anyone having watched.
 

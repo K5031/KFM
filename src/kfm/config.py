@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -40,10 +40,25 @@ def load(path: Path, **overrides: Any) -> FleetConfig:
     """The fleet.toml at `path` (defaults when there is none), then `overrides` that are not
     None. ValueError names a setting that does not exist or does not fit."""
     data: dict[str, Any] = tomllib.loads(path.read_text()) if path.exists() else {}
+    return _config(data, str(path), overrides)
+
+
+def record(config: FleetConfig) -> dict[str, Any]:
+    """The settings as fleet.json keeps them, for `from_record`."""
+    return {**asdict(config), "kayden_config": str(config.kayden_config),
+            "check_in_s": list(config.check_in_s)}
+
+
+def from_record(data: Mapping[str, Any], **overrides: Any) -> FleetConfig:
+    """The settings a fleet ran with, then `overrides` that are not None."""
+    return _config(dict(data), "the fleet's record", overrides)
+
+
+def _config(data: dict[str, Any], source: str, overrides: Mapping[str, Any]) -> FleetConfig:
     data.update({k: v for k, v in overrides.items() if v is not None})
     known = {f.name for f in fields(FleetConfig)}
     if unknown := sorted(set(data) - known):
-        raise ValueError(f"{path}: unknown setting {', '.join(unknown)}")
+        raise ValueError(f"{source}: unknown setting {', '.join(unknown)}")
     if "kayden_config" in data:
         data["kayden_config"] = Path(data["kayden_config"]).expanduser()
     if "check_in_s" in data:

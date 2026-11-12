@@ -45,6 +45,9 @@ def test_run_follows_the_fleet_to_its_report_and_status_shows_it(tmp_path: Path)
     assert shown.returncode == 0, shown.stderr
     assert "Lead (K5, u1): done" in shown.stdout
     assert "  Scout (K4, u2): done" in shown.stdout
+    assert "stopped" in shown.stdout.splitlines()[0]
+    again = kfm("resume", "--fleet", str(fleet), home=tmp_path)
+    assert again.returncode == 1 and "nothing was at work" in again.stdout.lower()
 
 
 def test_a_wrong_setting_ends_with_one_line(tmp_path: Path):

@@ -51,8 +51,16 @@ async def launch(command: Sequence[str], folder: Path, work: Path,
         args += ["--conversation", conversation_id]
     process = await asyncio.create_subprocess_exec(
         *args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE, cwd=work, limit=_LINE_LIMIT)
+        stderr=asyncio.subprocess.PIPE, cwd=work, limit=_LINE_LIMIT,
+        start_new_session=True)  # Ctrl+C in the terminal is for the manager, which closes it
     return Channel(process)
+
+
+RESUMED = (
+    "[The fleet was stopped and has now been started again. Anything you had running in "
+    "the background (a watcher, a long command) ended with it: start it again if you still "
+    "need it. Look at what changed while the fleet was down, then carry on with your work. "
+    "If you were waiting for an answer that has not arrived, ask again.]")
 
 
 def answer_note(supervisor: Unit | None) -> str:

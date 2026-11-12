@@ -16,4 +16,6 @@ Small choices the design notes leave open.
 | Fleet tool permission | Granted by the manager for the conversation (`allow_conversation`), once per tool |
 | Tool caller | A token per unit in the server's URL (`?unit=`), compared in constant time |
 | Fleet folder | `~/.kfm/fleets/<date-time>/`; settings in `~/.kfm/fleet.toml` |
+| Fleet record | `fleet.json`, format 2: the units, `work`, `settings` and `manager_pid`; written on every change of a unit's state or spending, and when the manager starts and stops |
+| Resume | Units in starting, working or waiting are started again, in the order they were added; a unit that never got its task is started from the beginning; each of the others is sent `units.RESUMED` |
 | Base Kayden configuration | `~/.kayden/config.toml`, without its `[frontend]`; the unit's model, permissions and budget are set under `[runtime]` |

@@ -51,7 +51,26 @@ While it runs, the terminal shows what happens:
 kfm status
 ```
 
-shows the newest fleet's agents, what each did and what it spent.
+shows the newest fleet: whether it is running, its agents, what each did and what it
+spent.
+
+## Stop a fleet and start it again
+
+A fleet that was stopped (Ctrl+C, a closed terminal, a reboot, or its spending limit)
+carries on where it was:
+
+```bash
+kfm resume
+```
+
+starts the newest fleet again; `--fleet PATH` names another. Every agent that was at work
+gets its conversation, plan and role back, is told that the fleet was down, and looks at
+what changed meanwhile. Agents that had finished stay finished.
+
+- **More money:** a fleet that stopped at its limit needs a higher one:
+  `kfm resume --budget 20`. `--unit-budget` applies to agents started from then on.
+- **What is lost:** commands that were running when the fleet stopped, and a question an
+  agent had asked without getting an answer; it asks again.
 
 ## How a fleet works
 
@@ -90,6 +109,5 @@ Without `[models]`, every agent uses the model in your Kayden configuration.
 
 ## Not there yet
 
-- A fleet cannot be resumed after `kfm run` ends.
 - One fleet per `kfm run`, followed from the terminal only.
 - Agents share one folder, and nothing stops two from editing the same file.

@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -29,6 +30,7 @@ from kayden.api import (
 )
 from kayden.frontends.remote import Channel
 
+from kfm import config as settings
 from kfm import units
 from kfm.config import FleetConfig
 from kfm.fleet import Fleet, FleetError, Unit
@@ -89,9 +91,12 @@ type FleetEvent = Changed | Said | Delivered | Approval | Notice
 class Manager:
     def __init__(self, config: FleetConfig, folder: Path, work: Path, *,
                  command: Sequence[str] = (sys.executable, "-m", "kayden"),
-                 on_event: Callable[[FleetEvent], None] = lambda event: None) -> None:
+                 on_event: Callable[[FleetEvent], None] = lambda event: None,
+                 fleet: Fleet | None = None) -> None:
         self.config, self.folder, self.work = config, folder, work
-        self.fleet = Fleet(config.top_rank, config.max_units)
+        self._resuming = fleet is not None
+        self.fleet = fleet or Fleet(config.top_rank, config.max_units)
+        self.fleet.work, self.fleet.settings = str(work), settings.record(config)
         self.finished = asyncio.Event()  # the lead reported, or the budget ran out
         self._command, self._on_event = tuple(command), on_event
         self._tools = ToolServer(self)
@@ -106,20 +111,45 @@ class Manager:
         self._over_budget = False
         self._saving = asyncio.Lock()
 
+    @classmethod
+    def resumed(cls, folder: Path, *,
+                command: Sequence[str] = (sys.executable, "-m", "kayden"),
+                on_event: Callable[[FleetEvent], None] = lambda event: None,
+                **overrides: object) -> Manager:
+        """A manager for the stopped fleet in `folder`, with the settings it ran with and
+        `overrides` that are not None. `start` then starts every unit that was at work.
+        FleetError when the fleet is running or has spent its limit. Blocking."""
+        fleet = Fleet.load(folder)
+        if fleet.running:
+            raise FleetError(f"The fleet in {folder} is running (process "
+                             f"{fleet.manager_pid}).")
+        config = settings.from_record(fleet.settings, **overrides)
+        if fleet.spent_usd >= config.budget_usd:
+            raise FleetError(f"The fleet has spent ${fleet.spent_usd:.2f} of its "
+                             f"${config.budget_usd:.2f}: give it more with --budget.")
+        return cls(config, folder, Path(fleet.work), command=command, on_event=on_event,
+                   fleet=fleet)
+
     async def start(self) -> None:
         await asyncio.to_thread(self.folder.mkdir, parents=True, exist_ok=True)
         await self._tools.start()
+        self.fleet.manager_pid = os.getpid()
+        await self._save()
+        if self._resuming:
+            for unit in list(self.fleet.units.values()):
+                if unit.active:
+                    await self._carry_on(unit)
 
     async def aclose(self) -> None:
-        for unit in self.fleet.units.values():
-            if unit.active:
-                unit.state = "stopped"
+        """Stop the fleet's processes. The record keeps every unit's state, so that
+        `resumed` knows which were at work."""
         closing = [self._close(unit) for unit in self.fleet.units.values()]
         await asyncio.gather(*closing, return_exceptions=True)
         for task in list(self._tasks):
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         await self._tools.aclose()
+        self.fleet.manager_pid = None
         await self._save()
 
     # ── What the person does ─────────────────────────────────────────────
@@ -190,8 +220,6 @@ class Manager:
     async def _start(self, unit: Unit) -> None:
         self._emit(Changed(unit, unit.state))
         try:
-            await asyncio.to_thread(units.prepare, unit, self._unit_folder(unit), self.config,
-                                    self.work, self._tools.url)
             channel = await self._launch(unit, resume=False)
             info = await channel.request("start")
             unit.conversation_id = info["id"]
@@ -208,10 +236,32 @@ class Manager:
         if unit.state == "starting":
             self._set(unit, "working")
 
+    async def _carry_on(self, unit: Unit) -> None:
+        """Start a unit that was at work when the fleet stopped, on its conversation: its
+        Kayden still has its duty and schedules the next check-in."""
+        if unit.conversation_id is None:  # stopped before it had its task
+            await self._start(unit)
+            return
+        self._has_duty[unit.id] = True
+        unit.question = None  # its Kayden held it in memory only
+        self._emit(Changed(unit, unit.state))
+        try:
+            channel = await self._launch(unit, resume=True)
+            self._set(unit, "working")
+            # A Kayden that opens a conversation with a duty waits for a message.
+            await channel.request("send", text=units.RESUMED)
+        except (OSError, RuntimeError, RuntimeStateError, ValueError) as e:
+            unit.failure = self._why(unit, e)
+            self._set(unit, "failed")
+            await self._close(unit)
+
     def _unit_folder(self, unit: Unit) -> Path:
         return self.folder / "units" / unit.id
 
     async def _launch(self, unit: Unit, *, resume: bool) -> Channel:
+        # Written at every start: the fleet tools' address changes with the manager.
+        await asyncio.to_thread(units.prepare, unit, self._unit_folder(unit), self.config,
+                                self.work, self._tools.url)
         channel = await units.launch(self._command, self._unit_folder(unit), self.work,
                                      unit.conversation_id if resume else None)
         channel.listeners.append(lambda envelope: self._event(unit, channel, envelope))
@@ -255,6 +305,7 @@ class Manager:
                 self._has_duty[unit.id] = info.duty is not None
             case UsageUpdated(snapshot=snapshot):
                 unit.spent_usd = snapshot.usage.cost_usd or 0.0
+                self._spawn(self._save())
                 self._check_budget()
             case Failure(message=message):
                 unit.failure = message
@@ -346,8 +397,10 @@ class Manager:
         self._spawn(self._stop_all())
 
     async def _stop_all(self) -> None:
-        if (lead := self.fleet.lead) is not None:
-            await self.stop(lead)
+        """Out of money: every process ends; the units stay as they were in the record, to
+        carry on when the fleet is resumed with more."""
+        closing = [self._close(unit) for unit in self.fleet.units.values()]
+        await asyncio.gather(*closing, return_exceptions=True)
         self.finished.set()
 
     # ── Bookkeeping ──────────────────────────────────────────────────────

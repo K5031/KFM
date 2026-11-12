@@ -86,6 +86,6 @@ concepts, so none of this can be added to it.
   read each report. That is the price of agents that see nothing of each other's context.
 - Agents share one folder and can step on each other's files; the brief tells them to
   name file ownership in each task, and nothing enforces it.
-- Not built: resuming a fleet after the manager stops, more than one fleet at a time, a
+- Not built: more than one fleet at a time, a
   supervising agent per team beyond the rank tree, prescribed fleet structures, approvals
   decided by a supervisor instead of the person, an interface beyond the terminal.

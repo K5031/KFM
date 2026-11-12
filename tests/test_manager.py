@@ -13,8 +13,8 @@ import pytest
 import tomli_w
 
 from kfm.config import FleetConfig
-from kfm.fleet import Fleet
-from kfm.manager import Approval, Changed, Delivered, FleetEvent, Manager, Notice
+from kfm.fleet import Fleet, FleetError
+from kfm.manager import Approval, Changed, Delivered, FleetEvent, Manager, Notice, Said
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -42,8 +42,8 @@ async def fleet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("PYTHONPATH", str(REPO))
     managers: list[Manager] = []
 
-    async def make(scripts: dict[str, list[dict[str, Any]]], **settings: Any
-                   ) -> tuple[Manager, list[FleetEvent]]:
+    async def make(scripts: dict[str, list[dict[str, Any]]], *, resume: bool = False,
+                   **settings: Any) -> tuple[Manager, list[FleetEvent]]:
         base = tmp_path / "kayden.toml"
         base.write_text(tomli_w.dumps({
             "core": {"factory": "tests.fakecore:factory", "options": {"scripts": scripts}},
@@ -53,7 +53,11 @@ async def fleet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         config = replace(FleetConfig(), kayden_config=base,
                          **{"check_in_s": (0.05, 60.0), **settings})
         events: list[FleetEvent] = []
-        manager = Manager(config, tmp_path / "fleet", work, on_event=events.append)
+        if resume:
+            manager = Manager.resumed(tmp_path / "fleet", on_event=events.append,
+                                      kayden_config=base, **settings)
+        else:
+            manager = Manager(config, tmp_path / "fleet", work, on_event=events.append)
         managers.append(manager)
         await manager.start()
         return manager, events
@@ -190,13 +194,21 @@ async def test_stopping_an_agent_stops_those_under_it(fleet):
     assert set(manager._channels) == {"u1"}
 
 
-async def test_the_fleets_spending_limit_stops_everyone(fleet):
+async def test_the_fleets_spending_limit_stops_everyone_until_it_is_given_more(fleet):
     manager, events = await fleet({}, budget_usd=0.0003, check_in_s=(0.05, 0.05))
     lead = await manager.lead("Keep going", ongoing=True)
     await asyncio.wait_for(manager.finished.wait(), 30)
-    await until(lambda: lead.state == "stopped")
+    await until(lambda: not manager._channels)  # every process has ended
     assert any(isinstance(e, Notice) and "spending limit" in e.text for e in events)
     assert manager.fleet.spent_usd >= 0.0003
+    assert lead.state == "working"  # interrupted: it carries on when the fleet does
+    await manager.aclose()
+    with pytest.raises(FleetError, match="--budget"):
+        await fleet({}, resume=True)
+    manager, events = await fleet({"Lead": [{"when": "go on", "text": "Going on."}]},
+                                  resume=True, budget_usd=1.0, check_in_s=(60.0, 60.0))
+    await manager.say("go on")
+    await until(lambda: "Going on." in said(events, "Lead"))
 
 
 async def test_a_unit_that_cannot_start_has_failed(fleet, tmp_path: Path):
@@ -204,3 +216,61 @@ async def test_a_unit_that_cannot_start_has_failed(fleet, tmp_path: Path):
     manager._command = ("false",)
     lead = await manager.lead("Do it")
     assert lead.state == "failed" and lead.failure
+
+
+# ── Resuming ─────────────────────────────────────────────────────────────
+
+
+def said(events: list[FleetEvent], name: str) -> list[str]:
+    return [e.text for e in events if isinstance(e, Said) and e.unit.name == name]
+
+
+async def test_a_stopped_fleet_carries_on_where_it_was(fleet, tmp_path: Path):
+    manager, events = await fleet({"Lead": [{"text": "On watch."}]})
+    lead = await manager.lead("Keep watch over the folder", ongoing=True)
+    await until(lambda: "On watch." in said(events, "Lead"))
+    await until(lambda: Fleet.load(tmp_path / "fleet").spent_usd > 0)  # while it runs
+    conversation = lead.conversation_id
+    await manager.aclose()
+    stopped = Fleet.load(tmp_path / "fleet")
+    assert stopped.units["u1"].state == "working"  # interrupted, not failed or stopped
+    assert not stopped.running
+
+    # Its Kayden waits for a message after it was closed: the manager says what happened.
+    manager, events = await fleet({"Lead": [{"when": "started again", "text": "Back on watch."},
+                                            {"when": "anything new", "text": "All quiet."}]},
+                                  resume=True)
+    assert Fleet.load(tmp_path / "fleet").running
+    await until(lambda: "Back on watch." in said(events, "Lead"))
+    await manager.say("anything new?")
+    await until(lambda: "All quiet." in said(events, "Lead"))
+    assert manager.fleet.units["u1"].conversation_id == conversation
+    assert manager.fleet.spent_usd >= stopped.spent_usd
+
+
+async def test_a_resumed_fleet_finishes_what_was_under_way(fleet, tmp_path: Path):
+    manager, events = await fleet({
+        "Lead": [call("mcp__fleet__delegate", name="Scout", task="Tidy the docs")],
+        "Scout": [call("ask_for_help", question="Which folder?")]})
+    await manager.lead("Tidy up")
+    await until(lambda: ("Scout", "Lead", "question", "Which folder?") in delivered(events))
+    await manager.aclose()
+    assert Fleet.load(tmp_path / "fleet").units["u2"].state == "waiting"
+
+    manager, events = await fleet({
+        "Lead": [{"when": "carry on", **call("mcp__fleet__message", agent="u2",
+                                             text="Use docs/")},
+                 finish("Docs are tidy.", when="[Report from Scout")],
+        "Scout": [finish("Tidied docs/", when="your supervisor] Use docs/")]}, resume=True)
+    assert manager.fleet.units["u2"].state == "working"  # its question went with its process
+    await manager.say("carry on")
+    await asyncio.wait_for(manager.finished.wait(), 30)
+    assert delivered(events) == [("Scout", "Lead", "report", "Tidied docs/"),
+                                 ("Lead", None, "report", "Docs are tidy.")]
+
+
+async def test_a_running_fleet_is_not_resumed_again(fleet, tmp_path: Path):
+    manager, _ = await fleet({"Lead": [{"text": "On watch."}]})
+    await manager.lead("Keep watch", ongoing=True)
+    with pytest.raises(FleetError, match="is running"):
+        await fleet({}, resume=True)

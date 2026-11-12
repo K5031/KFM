@@ -40,12 +40,20 @@ def main(argv: list[str] | None = None) -> int:
                      help="the most one agent may spend")
     run.add_argument("--top-rank", type=int, choices=range(1, 6),
                      help="the lead's rank: 5 allows four levels below it, 1 none")
+    resume = commands.add_parser("resume", help="start a stopped fleet again and follow it")
+    resume.add_argument("--fleet", type=Path, help="the fleet's folder (default: the newest)")
+    resume.add_argument("--budget", type=float, dest="budget_usd",
+                        help="a new limit for the whole fleet, in US dollars")
+    resume.add_argument("--unit-budget", type=float, dest="unit_budget_usd",
+                        help="a new limit for agents started from now on")
     status = commands.add_parser("status", help="show a fleet's agents")
     status.add_argument("--fleet", type=Path, help="the fleet's folder (default: the newest)")
     args = parser.parse_args(argv)
     try:
         if args.command == "status":
             return _status(args.fleet)
+        if args.command == "resume":
+            return asyncio.run(_resume(args))
         return asyncio.run(_run(args))
     except (ValueError, OSError) as e:
         print(f"kfm: {e}", file=sys.stderr)
@@ -60,14 +68,40 @@ async def _run(args: argparse.Namespace) -> int:
     folder = args.fleet or HOME / "fleets" / time.strftime("%Y%m%d-%H%M%S")
     console = Console()
     manager = Manager(config, folder.resolve(), args.work.resolve(), on_event=console.show)
+    return await _follow(manager, console, folder, task=args.task, ongoing=args.duty)
+
+
+async def _resume(args: argparse.Namespace) -> int:
+    folder = args.fleet or _newest()
+    if folder is None:
+        print("There is no fleet yet. Start one with: kfm run \"<task>\"")
+        return 1
+    fleet = await asyncio.to_thread(Fleet.load, folder)
+    if not any(unit.active for unit in fleet.units.values()):
+        print(f"Nothing was at work in the fleet in {folder}: every agent had finished or "
+              "was stopped.")
+        return 1
+    console = Console()
+    manager = await asyncio.to_thread(
+        lambda: Manager.resumed(folder.resolve(), on_event=console.show,
+                                budget_usd=args.budget_usd,
+                                unit_budget_usd=args.unit_budget_usd))
+    return await _follow(manager, console, folder)
+
+
+async def _follow(manager: Manager, console: Console, folder: Path, *,
+                  task: str | None = None, ongoing: bool = False) -> int:
+    """Run the fleet until it ends or is interrupted; with `task`, start it on that."""
     console.manager = manager
+    print(f"Fleet files: {folder}. Type a message for the lead; Ctrl+C stops the fleet, "
+          "and kfm resume starts it again.")
     await manager.start()
-    print(f"Fleet files: {folder}. Type a message for the lead; Ctrl+C stops the fleet.")
     reader = asyncio.create_task(console.read())
     try:
-        lead = await manager.lead(args.task, ongoing=args.duty)
-        if lead.state == "failed":
-            return 1
+        if task is not None:
+            lead = await manager.lead(task, ongoing=ongoing)
+            if lead.state == "failed":
+                return 1
         await manager.finished.wait()
         return 0
     finally:
@@ -128,15 +162,19 @@ class Console:
             print(f"! {e}")
 
 
+def _newest() -> Path | None:
+    fleets = sorted((HOME / "fleets").glob("*/fleet.json"))
+    return fleets[-1].parent if fleets else None
+
+
 def _status(folder: Path | None) -> int:
+    folder = folder or _newest()
     if folder is None:
-        fleets = sorted((HOME / "fleets").glob("*/fleet.json"))
-        if not fleets:
-            print("There is no fleet yet. Start one with: kfm run \"<task>\"")
-            return 1
-        folder = fleets[-1].parent
+        print("There is no fleet yet. Start one with: kfm run \"<task>\"")
+        return 1
     fleet = Fleet.load(folder)
-    print(f"{folder}: {len(fleet.units)} agents, ${fleet.spent_usd:.2f} spent")
+    state = "running" if fleet.running else "stopped"
+    print(f"{folder}: {state}, {len(fleet.units)} agents, ${fleet.spent_usd:.2f} spent")
     if (lead := fleet.lead) is not None:
         for unit in fleet.subtree(lead):
             depth = fleet.top_rank - unit.rank

@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
-FORMAT = 1  # of fleet.json; a file of another format is refused
+FORMAT = 2  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
 # starting: its process is coming up.  working: on its task, between check-ins included.
@@ -58,6 +60,23 @@ class Fleet:
         self.top_rank, self.max_units = top_rank, max_units
         self.units: dict[str, Unit] = {}
         self._next = 1
+        # What starting the fleet again needs (the manager fills these in).
+        self.work = ""  # the folder the fleet works in
+        self.settings: dict[str, Any] = {}  # config.record of what it runs with
+        self.manager_pid: int | None = None  # the process that runs it now
+
+    @property
+    def running(self) -> bool:
+        """Whether the process that ran the fleet last is still there."""
+        if self.manager_pid is None:
+            return False
+        try:
+            os.kill(self.manager_pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
 
     @property
     def lead(self) -> Unit | None:
@@ -120,10 +139,12 @@ class Fleet:
     def supervisor_of(self, unit: Unit) -> Unit | None:
         return self.units.get(unit.supervisor) if unit.supervisor is not None else None
 
-    # ── fleet.json: a record for people and for `kfm status` ─────────────
+    # ── fleet.json: for people, `kfm status` and `kfm resume` ────────────
 
     def save(self, folder: Path) -> None:
         data = {"format": FORMAT, "top_rank": self.top_rank, "max_units": self.max_units,
+                "work": self.work, "settings": self.settings,
+                "manager_pid": self.manager_pid,
                 "units": [asdict(u) for u in self.units.values()]}
         target = folder / RECORD
         partial = target.with_suffix(".tmp")
@@ -136,6 +157,8 @@ class Fleet:
         if data.get("format") != FORMAT:
             raise ValueError(f"{folder / RECORD} is of format {data.get('format')}, not {FORMAT}")
         fleet = cls(data["top_rank"], data["max_units"])
+        fleet.work, fleet.settings = data["work"], data["settings"]
+        fleet.manager_pid = data["manager_pid"]
         for record in data["units"]:
             unit = Unit(**record)
             fleet.units[unit.id] = unit

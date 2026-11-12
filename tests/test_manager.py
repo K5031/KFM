@@ -13,8 +13,9 @@ import pytest
 import tomli_w
 
 from kfm.config import FleetConfig
+from kfm.events import Approval, Changed, Delivered, FleetEvent, Notice, Said
 from kfm.fleet import Fleet, FleetError
-from kfm.manager import Approval, Changed, Delivered, FleetEvent, Manager, Notice, Said
+from kfm.manager import Manager
 
 REPO = Path(__file__).resolve().parents[1]
 

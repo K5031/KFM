@@ -13,8 +13,9 @@ from pathlib import Path
 
 from kfm.api import UnitError
 from kfm.config import CONFIG_FILE, HOME, load
+from kfm.events import Approval, Changed, Delivered, FleetEvent, Notice, Said
 from kfm.fleet import Fleet, FleetError, Unit
-from kfm.manager import Approval, Changed, Delivered, FleetEvent, Manager, Notice, Said
+from kfm.manager import Manager
 
 LINE_CHARS = 300  # of what an agent below the lead says, in the log
 

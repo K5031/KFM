@@ -4,15 +4,17 @@ of a unit is in kfm.api and nowhere else."""
 from __future__ import annotations
 
 import asyncio
+import itertools
 from pathlib import Path
 
 import pytest
 
-from kfm import harnesses
+from kfm import harnesses, log
 from kfm.config import FleetConfig
+from kfm.events import Delivered, FleetEvent, Told
 from kfm.fleet import Fleet
 from kfm.harnesses.kayden import KaydenHarness
-from kfm.manager import Delivered, FleetEvent, Manager
+from kfm.manager import Manager
 from tests.fakeharness import FakeHarness
 
 
@@ -97,6 +99,31 @@ async def test_a_supervisor_that_acts_at_once_after_a_resume_finds_its_agents_op
     assert sorted(harness.opened) == [("Lead", "session-u1"), ("Scout", "session-u2")]
     assert delivered(events)[-1] == ("Lead", None, "report", "Docs are tidy.")
     await manager.aclose()
+
+
+async def test_what_happens_in_a_fleet_is_kept_in_its_record(tmp_path: Path):
+    harness = FakeHarness({
+        "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Tidy the docs"})]},
+                 {"when": "[Report from Scout", "do": [("say", "Good."),
+                                                       ("report", "Docs are tidy.")]}],
+        "Scout": [{"do": [("report", "Tidied docs/")]}]})
+    manager, events = await run(tmp_path, harness)
+    await manager.lead("Tidy up")
+    await asyncio.wait_for(manager.finished.wait(), 10)
+    await manager.say("Thanks")
+    await manager.aclose()
+    fleet = Fleet.load(tmp_path / "fleet")
+    kept = log.read(tmp_path / "fleet", fleet)
+    assert [type(event).__name__ for _, event in kept] == [
+        type(event).__name__ for event in events]
+    assert all(earlier <= later for (earlier, _), (later, _) in itertools.pairwise(kept))
+    reports = [(e.unit.name, e.to.name if e.to else None, e.text)
+               for _, e in kept if isinstance(e, Delivered)]
+    assert reports[:2] == [("Scout", "Lead", "Tidied docs/"), ("Lead", None, "Docs are tidy.")]
+    assert [e.text for _, e in kept if isinstance(e, Told)] == ["Thanks"]
+    assert kept[0][1].unit is fleet.units["u1"]  # the units of the fleet it was read with
+    (tmp_path / "fleet" / log.FILE).write_text("{cut off")
+    assert log.read(tmp_path / "fleet", fleet) == []
 
 
 def test_a_harness_is_found_by_its_name_or_its_import_path(tmp_path: Path):

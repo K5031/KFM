@@ -9,13 +9,22 @@ import contextlib
 import logging
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 
-from kfm import api, harnesses, units
+from kfm import api, harnesses, log, units
 from kfm import config as settings
 from kfm.api import Harness, Instruction, Session, UnitError, UnitEvent, UnitSpec
 from kfm.config import FleetConfig
+from kfm.events import (
+    Answered,
+    Approval,
+    Changed,
+    Delivered,
+    FleetEvent,
+    Notice,
+    Said,
+    Told,
+)
 from kfm.fleet import Fleet, FleetError, Unit
 from kfm.tools import ToolServer
 
@@ -23,51 +32,6 @@ logger = logging.getLogger(__name__)
 
 STOP_GRACE_S = 10.0  # for a unit to end by itself when it is closed
 _OVER = ("done", "idle", "failed", "stopped")
-
-
-# ── What the manager tells whoever shows the fleet to the person ─────────
-
-
-@dataclass(frozen=True, slots=True)
-class Changed:
-    unit: Unit
-    state: str  # what it became
-
-
-@dataclass(frozen=True, slots=True)
-class Said:
-    unit: Unit
-    text: str  # what the agent wrote in its own conversation
-
-
-@dataclass(frozen=True, slots=True)
-class Delivered:
-    """A report, question, failure or update on its way up: to the unit's supervisor, or
-    with `to` None to the person."""
-
-    unit: Unit
-    to: Unit | None
-    kind: str  # report, question, failure, update, stopped
-    text: str
-
-
-@dataclass(frozen=True, slots=True)
-class Approval:
-    """A unit wants to do something its permissions do not cover. Answer with
-    Manager.approve."""
-
-    unit: Unit
-    request_id: str
-    tool: str
-    arguments: str
-
-
-@dataclass(frozen=True, slots=True)
-class Notice:
-    text: str
-
-
-type FleetEvent = Changed | Said | Delivered | Approval | Notice
 
 
 class Manager:
@@ -85,6 +49,7 @@ class Manager:
         self._harness = harness or harnesses.load(config.harness, config.harness_options)
         self._words = self._harness.vocabulary
         self._on_event = on_event
+        self._log = log.Log(folder)  # every event, for whoever opens the fleet later
         self._tools = ToolServer(self)
         self._sessions: dict[str, Session] = {}
         self._opening: dict[str, asyncio.Lock] = {}  # one start of a unit's process at a time
@@ -138,6 +103,7 @@ class Manager:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         await self._tools.aclose()
+        await self._log.aclose()
         self.fleet.manager_pid = None
         await self._save()
 
@@ -155,10 +121,12 @@ class Manager:
         if (lead := self.fleet.lead) is None:
             raise FleetError("The fleet has not started.")
         await self.tell(lead, text)
+        self._emit(Told(text))
 
     async def approve(self, unit: Unit, request_id: str, allow: bool) -> None:
         if (session := self._sessions.get(unit.id)) is not None:
             await session.approve(request_id, allow)
+            self._emit(Answered(unit, request_id, allow))
 
     # ── What units do, through the fleet tools ───────────────────────────
 
@@ -385,6 +353,7 @@ class Manager:
                 await asyncio.to_thread(self.fleet.save, self.folder)
 
     def _emit(self, event: FleetEvent) -> None:
+        self._log.add(event)
         try:
             self._on_event(event)
         except Exception:

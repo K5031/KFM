@@ -1,6 +1,6 @@
 # Agent Note: Shared team memory
 
-Status: proposed — every agent of a fleet reads and writes one set of notes, and reports point at results instead of repeating them
+Status: proposed — a supervisor publishes notes its agents can read but not change, as a Kayden Memory module; not to be built before a run shows a team needs it
 
 Part of [Standing teams](2026-11-12-standing-teams.md).
 
@@ -21,26 +21,38 @@ what makes it a team.
 
 ## Proposal
 
-**Point, do not paste.**
+**Point, do not paste**, with notes that flow one way.
 
-- **One memory for the fleet.** Kayden's `kayden.memory.files` keeps long-term memory as
-  a folder of notes with an index, per project, and changes a note only if the agent has
-  read it as it is now. Each unit has such a folder in its own data folder. KFM points
-  every unit at one folder in the fleet's folder (the module's `projects` option), so
-  what one agent notes, every agent's next conversation sees.
-- **Briefs and reports refer to it.** The brief tells an agent to note what the next
-  agent would otherwise have to find out again, and to report where the results are and
-  what was found, not their content.
+- **Private by default.** An agent's own memory stays its own, as now: a supervisor's
+  notes hold things its agents should not read (what it thinks of their work, what the
+  person told it in confidence, the budget) and most of them are noise to an agent with
+  one task.
+- **Team notes are published, not shared.** A supervisor chooses what its agents should
+  know and writes that as a team note; its agents read team notes and cannot change
+  them. What an agent learns goes up in its report, as now, and the supervisor decides
+  whether it becomes a team note.
+- **It is a Kayden Memory module, not part of the unit contract.** Memory is one of
+  Kayden's swappable modules: a module built on `kayden.memory.sqlite.SqliteArchive`, as
+  `kayden.memory.files` is, keeps the agent's private notes and shows the team's beside
+  them. KFM's Kayden harness names it in each unit's configuration; another harness
+  solves team memory its own way.
+- **Briefs and reports refer to it** instead of repeating content.
 
 ## Alternatives considered
 
 - **Everything through the supervisor's messages**, as now. Nothing is shared that the
   supervisor did not think to pass on, and each pass is written once and read once.
+- **One memory folder for the whole fleet**, every agent reading and writing it: a
+  setting in KFM's Kayden harness that points `kayden.memory.files` at one folder
+  (`projects`). Almost nothing to build, but agents see their supervisor's notes, and
+  an agent that was misled (by a web page it read, by its own mistake) writes into what
+  every agent above it reads: a wrong or planted note travels up the ranks.
 
 ## Acceptance criteria
 
-- A note one agent saves is in the index a later agent of the same fleet starts with.
-- Two agents changing the same note do not overwrite each other unseen.
+- A team note a supervisor writes is in what its agents start with; its private notes
+  are not.
+- An agent cannot change a team note.
 - The same job costs less with the shared memory than without, measured.
 
 ## Risks
@@ -50,4 +62,5 @@ what makes it a team.
 - **An open conversation does not see new notes.** Kayden reads the index when a
   conversation is first assembled; an agent that runs for hours sees a teammate's note
   only if it looks.
-- A wrong note misleads every agent, not one.
+- A wrong team note misleads every agent below, not one.
+- Not shown to be needed: no run has had a team pay to learn the same thing twice.

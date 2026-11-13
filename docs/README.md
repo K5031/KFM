@@ -87,7 +87,9 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
   ("marketing", "dev"). Make one with **New project**: give it a name and choose the
   folder its fleets work in. None is suggested, and your home folder itself is refused,
   since agents work freely inside the folder they are given. Projects are listed on the
-  left; click one to switch to it.
+  left; click one to switch to it. Right-click one to **delete** it: its fleets are
+  stopped and their records and logs removed, after you confirm. The folder the agents
+  worked in, and everything in it, is kept.
 - **Describe the project** in the box under its name to have its fleets drafted: one
   agent reads what you want and proposes the teams, each with a name and what it is
   there to do. You can rename them, rewrite what they do, leave some out or add your

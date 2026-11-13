@@ -6,6 +6,7 @@ view."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 import time
 from collections.abc import Coroutine
@@ -28,7 +29,7 @@ from kayden.frontends.desktop.window import (
     RowDelegate,
     WindowEdges,
 )
-from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QColor, QDoubleValidator, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -43,6 +44,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -68,6 +70,7 @@ LOGO = 64  # px, on the start screen
 AGENT_ROWS = 10  # agents shown before their list scrolls
 AGENT_ROW_PX = 30
 FOLDER_ROLE = Qt.ItemDataRole.UserRole  # a project row's folder
+FLEETS_ROLE = Qt.ItemDataRole.UserRole + 10  # how many fleets it has
 QUIET_STATES = ("starting", "working", "waiting", "done")  # shown by the agents list alone
 BAR = 48  # px, the bar on top
 COLUMN = 720  # px, the widest the timeline's entries get
@@ -680,6 +683,32 @@ class AgentDialog(QDialog):
         self.warning.setVisible(bool(text))
 
 
+class DeleteDialog(QDialog):
+    """Whether to delete a project: what goes, and what stays."""
+
+    def __init__(self, parent: QWidget, name: str, fleets: int) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Delete project")
+        self.setMinimumWidth(380)
+        rows = QVBoxLayout(self)
+        rows.setSpacing(14)
+        has = "its 1 fleet" if fleets == 1 else f"its {fleets} fleets"
+        self.question = label(f"Delete {name} and {has}? This cannot be undone. The folder "
+                              "the agents worked in is kept.")
+        self.delete = QPushButton("Delete")
+        self.delete.setProperty("primary", True)
+        self.delete.clicked.connect(self.accept)
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        cancel.setDefault(True)
+        foot = QHBoxLayout()
+        foot.addStretch(1)
+        foot.addWidget(cancel)
+        foot.addWidget(self.delete)
+        rows.addWidget(self.question)
+        rows.addLayout(foot)
+
+
 class ModelDialog(QDialog):
     """The model an agent runs on; empty: its rank's."""
 
@@ -1063,6 +1092,8 @@ class FleetWindow(QMainWindow):
         self.projects.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.projects.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.projects.itemClicked.connect(self._project_chosen)
+        self.projects.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.projects.customContextMenuRequested.connect(self._project_menu)
         self.projects_label = label("Projects", role="small", tone="muted")
         side_layout.addWidget(self.projects_label)
         side_layout.addWidget(self.projects, 1)
@@ -1361,9 +1392,44 @@ class FleetWindow(QMainWindow):
                          else preview)
             item.setData(DATE_ROLE, _when(listed.folder.name))
             item.setData(FOLDER_ROLE, str(listed.folder))
+            item.setData(FLEETS_ROLE, fleets)
             item.setToolTip(str(listed.work))
             self.projects.addItem(item)
         self._refresh()
+
+    def _project_menu(self, at: QPoint) -> None:
+        if (item := self.projects.itemAt(at)) is None:
+            return
+        menu = QMenu(self)
+        menu.addAction("Delete…").triggered.connect(lambda: self.ask_delete(item))
+        menu.popup(self.projects.viewport().mapToGlobal(at))
+
+    def ask_delete(self, item: QListWidgetItem) -> None:
+        """Ask whether the listed project should go, and delete it on a yes."""
+        folder = Path(item.data(FOLDER_ROLE))
+        dialog = self.dialog = DeleteDialog(self, item.text(), item.data(FLEETS_ROLE))
+        dialog.accepted.connect(lambda: self._run(self.delete_project(folder)))
+        dialog.open()
+
+    async def delete_project(self, folder: Path) -> None:
+        """Stop the project's fleets and remove its folder; the work folder stays."""
+        for path, view in list(self.views.items()):
+            if path.parent.parent == folder:
+                await view.stop()
+                if self.view is view:
+                    self.view = None
+                self._drop(view)
+        if (page := self.drafts.pop(folder, None)) is not None:
+            page.cancel()
+            self.draft_pages.removeWidget(page)
+            page.deleteLater()
+        with contextlib.suppress(ValueError, OSError):
+            await asyncio.to_thread(project.delete, folder)
+        if self.project is not None and self.project.folder == folder:
+            self.project, self.adding = None, False
+            if left := await asyncio.to_thread(project.every, self.home):
+                return await self.open_project(left[0])
+        await self.list_projects()
 
     def _project_chosen(self, item: QListWidgetItem) -> None:
         folder = Path(item.data(FOLDER_ROLE))

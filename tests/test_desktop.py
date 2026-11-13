@@ -18,7 +18,14 @@ from kayden.frontends.desktop.window import PREVIEW_ROLE
 from PySide6.QtWidgets import QApplication
 
 from kfm.config import FleetConfig
-from kfm.desktop import ApprovalCard, DeliveryCard, FleetView, FleetWindow, YouEntry
+from kfm.desktop import (
+    FLEETS_ROLE,
+    ApprovalCard,
+    DeliveryCard,
+    FleetView,
+    FleetWindow,
+    YouEntry,
+)
 from tests.fakeharness import FakeHarness
 
 TEAM = {
@@ -398,6 +405,26 @@ async def test_a_fleet_is_built_by_hand_and_then_started(window, tmp_path: Path)
     shown.dialog.add.click()
     await until(lambda: (key, "u4") in shown.chart.nodes)
     assert shown.chart.nodes[(key, "u4")].name.text() == "Agent 4"
+
+
+async def test_a_project_is_deleted_with_its_fleets_and_not_its_work(window, tmp_path: Path):
+    shown, _ = window({"Lead": [{"do": [("say", "On watch.")]}]})
+    view = await start(shown, tmp_path, "Keep watch", duty=True)
+    await until(lambda: shown.projects.count() == 1
+                and shown.projects.item(0).data(FLEETS_ROLE) == 1)
+    folder = shown.project.folder
+    (tmp_path / "work" / "kept.txt").write_text("the agents' work")
+    shown.ask_delete(shown.projects.item(0))  # what a right-click on it offers
+    assert "Acme" in shown.dialog.question.text() and "1 fleet" in shown.dialog.question.text()
+    shown.dialog.reject()
+    await asyncio.sleep(0.05)
+    assert folder.exists() and view.running
+    shown.ask_delete(shown.projects.item(0))
+    shown.dialog.delete.click()
+    await until(lambda: not folder.exists())
+    await until(lambda: shown.projects.count() == 0 and shown.project_form.isVisibleTo(shown))
+    assert not shown.views and shown.project is None and not view.running
+    assert (tmp_path / "work" / "kept.txt").exists()
 
 
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):

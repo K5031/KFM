@@ -4,6 +4,7 @@ fleets are grouped for a person; a fleet's manager knows nothing of it."""
 from __future__ import annotations
 
 import json
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,14 @@ def load(folder: Path) -> Project:
     if data.get("format") != FORMAT:
         raise ValueError(f"{folder / PROJECT} is of format {data.get('format')}, not {FORMAT}")
     return Project(folder, data["name"], Path(data["work"]))
+
+
+def delete(folder: Path) -> None:
+    """Remove a project's folder: its record and its fleets' records and logs. The folder
+    its fleets worked in is not part of it. Blocking."""
+    if not (folder / PROJECT).is_file():
+        raise ValueError(f"{folder} is not a project")
+    shutil.rmtree(folder)
 
 
 def every(home: Path) -> list[Project]:

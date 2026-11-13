@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import shutil
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -19,6 +20,14 @@ RECORD = "fleet.json"
 # waiting: it asked its supervisor and waits for the answer.  done: it reported.
 # idle: it ended a turn with nothing left to do and no report.  failed, stopped.
 ACTIVE = ("starting", "working", "waiting")
+
+
+def delete(folder: Path) -> None:
+    """Remove a fleet's folder: its record, its log and what its units kept. The folder it
+    worked in is not part of it. Blocking."""
+    if not (folder / RECORD).is_file():
+        raise ValueError(f"{folder} is not a fleet")
+    shutil.rmtree(folder)
 
 
 class FleetError(ValueError):

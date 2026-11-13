@@ -56,6 +56,7 @@ from PySide6.QtWidgets import (
 )
 
 from kfm import app_menu, draft, harnesses, log, project
+from kfm import fleet as fleet_record
 from kfm.api import Harness, UnitError
 from kfm.chart import Chart, ChartFleet
 from kfm.config import CONFIG_FILE, HOME, FleetConfig, load
@@ -684,17 +685,16 @@ class AgentDialog(QDialog):
 
 
 class DeleteDialog(QDialog):
-    """Whether to delete a project: what goes, and what stays."""
+    """Whether to delete a project or a fleet (`what`): what goes, and what stays."""
 
-    def __init__(self, parent: QWidget, name: str, fleets: int) -> None:
+    def __init__(self, parent: QWidget, title: str, what: str) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Delete project")
+        self.setWindowTitle(title)
         self.setMinimumWidth(380)
         rows = QVBoxLayout(self)
         rows.setSpacing(14)
-        has = "its 1 fleet" if fleets == 1 else f"its {fleets} fleets"
-        self.question = label(f"Delete {name} and {has}? This cannot be undone. The folder "
-                              "the agents worked in is kept.")
+        self.question = label(f"Delete {what}? This cannot be undone. The folder the agents "
+                              "worked in is kept.")
         self.delete = QPushButton("Delete")
         self.delete.setProperty("primary", True)
         self.delete.clicked.connect(self.accept)
@@ -1156,6 +1156,7 @@ class FleetWindow(QMainWindow):
         self.chart.add_asked.connect(self._add_agent)
         self.chart.model_asked.connect(self._choose_model)
         self.chart.start_asked.connect(self._start_asked)
+        self.chart.delete_asked.connect(self._ask_delete_fleet)
         self.chart_scroll = QScrollArea()
         self.chart_scroll.setWidgetResizable(True)
         self.chart_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -1407,9 +1408,29 @@ class FleetWindow(QMainWindow):
     def ask_delete(self, item: QListWidgetItem) -> None:
         """Ask whether the listed project should go, and delete it on a yes."""
         folder = Path(item.data(FOLDER_ROLE))
-        dialog = self.dialog = DeleteDialog(self, item.text(), item.data(FLEETS_ROLE))
+        fleets = item.data(FLEETS_ROLE)
+        has = "its 1 fleet" if fleets == 1 else f"its {fleets} fleets"
+        dialog = self.dialog = DeleteDialog(self, "Delete project", f"{item.text()} and {has}")
         dialog.accepted.connect(lambda: self._run(self.delete_project(folder)))
         dialog.open()
+
+    def _ask_delete_fleet(self, key: str) -> None:
+        if (view := self.views.get(Path(key))) is None:
+            return
+        dialog = self.dialog = DeleteDialog(self, "Delete fleet", view.name)
+        dialog.accepted.connect(lambda: self._run(self.delete_fleet(view)))
+        dialog.open()
+
+    async def delete_fleet(self, view: FleetView) -> None:
+        """Stop the fleet and remove its folder; the work folder stays."""
+        await view.stop()
+        if self.view is view:
+            self.view = None
+        if view.folder in self.views:
+            self._drop(view)
+        with contextlib.suppress(ValueError, OSError):
+            await asyncio.to_thread(fleet_record.delete, view.folder)
+        await self.list_projects()
 
     async def delete_project(self, folder: Path) -> None:
         """Stop the project's fleets and remove its folder; the work folder stays."""

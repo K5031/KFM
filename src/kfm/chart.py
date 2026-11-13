@@ -139,11 +139,17 @@ class Node(_Box):
 
 
 class Head(_Box):
-    """A fleet's name over its tree, how it stands, and Start while it can be started."""
+    """A fleet's name over its tree, how it stands, and Start while it can be started. A
+    right-click offers to delete it."""
+
+    delete_asked = Signal()
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent, "fleetHead")
         self.name, self.status = _text("title"), _text("small")
+        self.menu = QMenu(self)
+        self.delete_action = self.menu.addAction("Delete…")
+        self.delete_action.triggered.connect(lambda: self.delete_asked.emit())
         self.start = QPushButton("Start")
         self.start.setProperty("primary", True)
         self.start.setCursor(Qt.CursorShape.ArrowCursor)
@@ -157,16 +163,20 @@ class Head(_Box):
         across.addLayout(rows, 1)
         across.addWidget(self.start, 0, Qt.AlignmentFlag.AlignVCenter)
 
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        self.menu.popup(event.globalPos())
+
 
 class Chart(QWidget):
     """`opened`: a fleet's key and the unit clicked, or "" for the fleet as a whole.
     `add_asked`, `model_asked`: a fleet's key and the unit to add under ("": as its lead)
-    or to change. `start_asked`: a fleet's key."""
+    or to change. `start_asked`, `delete_asked`: a fleet's key."""
 
     opened = Signal(str, str)
     add_asked = Signal(str, str)
     model_asked = Signal(str, str)
     start_asked = Signal(str)
+    delete_asked = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -280,6 +290,7 @@ class Chart(QWidget):
         head = Head(self)
         head.clicked.connect(lambda: self.opened.emit(key, ""))
         head.start.clicked.connect(lambda: self.start_asked.emit(key))
+        head.delete_asked.connect(lambda: self.delete_asked.emit(key))
         return head
 
     def _first(self, key: str) -> QPushButton:

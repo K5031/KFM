@@ -427,6 +427,27 @@ async def test_a_project_is_deleted_with_its_fleets_and_not_its_work(window, tmp
     assert (tmp_path / "work" / "kept.txt").exists()
 
 
+async def test_a_fleet_is_deleted_from_the_chart(window, tmp_path: Path):
+    shown, _ = window({"Lead": [{"do": [("say", "On watch.")]}]})
+    first = await start(shown, tmp_path, "Keep watch", name="dev", duty=True)
+    shown.back_button.click()
+    second = await start(shown, tmp_path, "Keep watch", name="art", duty=True)
+    shown.back_button.click()
+    await until(lambda: chart(shown) == {"dev": ["Lead K5"], "art": ["Lead K5"]})
+    shown.chart.heads[str(first.folder)].delete_action.trigger()
+    assert "dev" in shown.dialog.question.text()
+    shown.dialog.reject()
+    await asyncio.sleep(0.05)
+    assert first.folder.exists() and first.running
+    shown.chart.heads[str(first.folder)].delete_action.trigger()
+    shown.dialog.delete.click()
+    await until(lambda: not first.folder.exists())
+    await until(lambda: chart(shown) == {"art": ["Lead K5"]})
+    assert list(shown.views.values()) == [second] and second.running and not first.running
+    await until(lambda: shown.projects.item(0).data(FLEETS_ROLE) == 1)
+    await second.stop()
+
+
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "me")
     (tmp_path / "me").mkdir()

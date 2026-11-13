@@ -60,7 +60,17 @@ from kfm import fleet as fleet_record
 from kfm.api import Harness, UnitError
 from kfm.chart import Chart, ChartFleet
 from kfm.config import CONFIG_FILE, HOME, FleetConfig, load
-from kfm.events import Answered, Approval, Changed, Delivered, FleetEvent, Notice, Said, Told
+from kfm.events import (
+    Answered,
+    Approval,
+    Changed,
+    Delivered,
+    FleetEvent,
+    Instructed,
+    Notice,
+    Said,
+    Told,
+)
 from kfm.fleet import Fleet, FleetError, Unit
 from kfm.manager import Manager, lay_out, place
 from kfm.project import Project
@@ -133,15 +143,18 @@ class SaidEntry(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 4, 15, 4)  # in line with a card's text
         layout.setSpacing(3)
-        self.header = QHBoxLayout()
-        self.header.setSpacing(6)
-        self.header.addWidget(label(unit.name or f"K{unit.rank}", role="strong", wrap=False))
-        self.header.addWidget(label(f"K{unit.rank}" if unit.name else unit.id, role="small",
-                                    tone="muted", wrap=False))
-        self.header.addStretch(1)
+        self.unit = unit.id
+        self.header = QWidget()  # hidden where the page is this agent's conversation
+        who = QHBoxLayout(self.header)
+        who.setContentsMargins(0, 0, 0, 0)
+        who.setSpacing(6)
+        who.addWidget(label(unit.name or f"K{unit.rank}", role="strong", wrap=False))
+        who.addWidget(label(f"K{unit.rank}" if unit.name else unit.id, role="small",
+                            tone="muted", wrap=False))
+        who.addStretch(1)
         self.body = MarkdownView()
         self.body.setMarkdown(text)
-        layout.addLayout(self.header)
+        layout.addWidget(self.header)
         layout.addWidget(self.body)
 
 
@@ -158,6 +171,25 @@ class DeliveryCard(QFrame):
         layout.setSpacing(6)
         target = event.to.called if event.to is not None else "you"
         self.header = label(f"{event.unit.called} → {target} · {event.kind}", role="strong")
+        self.body = MarkdownView()
+        self.body.setMarkdown(event.text)
+        layout.addWidget(self.header)
+        layout.addWidget(self.body)
+
+
+class InstructionCard(QFrame):
+    """What an agent was given by its supervisor: its task, or a message."""
+
+    def __init__(self, event: Instructed) -> None:
+        super().__init__()
+        assert event.by is not None
+        self.setObjectName("delivery")
+        self.concerns = {event.unit.id, event.by.id}
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(6)
+        self.header = label(f"{event.by.called} → {event.unit.called} · {event.kind}",
+                            role="strong")
         self.body = MarkdownView()
         self.body.setMarkdown(event.text)
         layout.addWidget(self.header)
@@ -935,15 +967,24 @@ class FleetView(QWidget):
         """Show only what concerns the agent; None: everything."""
         self.shown = unit_id
         for entry in self.entries:
-            entry.setVisible(self._concerns(entry))
-        to = self._chosen()
+            self._fit(entry)
+        to = self.chosen
         self.input.setPlaceholderText(
             f"Message {to.called}" if to is not None and to.supervisor is not None
             else "Message the lead")
+        self.changed.emit()
 
-    def _chosen(self) -> Unit | None:
-        """The agent whose entries are shown, which is the one a message goes to."""
+    @property
+    def chosen(self) -> Unit | None:
+        """The agent whose conversation is shown, which is the one a message goes to."""
         return self.fleet.units.get(self.shown or "") if self.fleet is not None else None
+
+    def _fit(self, entry: QWidget) -> None:
+        """Show the entry if it concerns the agent chosen; in an agent's own conversation
+        what it wrote needs no name over it."""
+        entry.setVisible(self._concerns(entry))
+        if isinstance(entry, SaidEntry):
+            entry.header.setVisible(entry.unit != self.shown)
 
     def say(self, text: str, tone: str) -> None:
         self._add(Line(text, set(), tone))
@@ -969,7 +1010,7 @@ class FleetView(QWidget):
             self.input.setPlainText(text)
             return
         try:
-            await self.manager.say(text, self._chosen())
+            await self.manager.say(text, self.chosen)
         except (FleetError, UnitError) as e:
             self.say(str(e), tone="error")
 
@@ -998,6 +1039,9 @@ class FleetView(QWidget):
                 self._add(SaidEntry(unit, text))
             case Delivered():
                 self._add(DeliveryCard(event))
+            case Instructed(unit=unit, by=by, text=text):
+                if text:  # the person's own is what they said; a supervisor's is a card
+                    self._add(YouEntry(text, unit.id) if by is None else InstructionCard(event))
             case Approval():
                 card = ApprovalCard(event)
                 card.allow.clicked.connect(lambda: self._run(self._answer(event, True)))
@@ -1017,7 +1061,7 @@ class FleetView(QWidget):
         entry.setMaximumWidth(COLUMN)
         self.entries.append(entry)
         self._timeline.insertWidget(self._timeline.count() - 1, entry)
-        entry.setVisible(self._concerns(entry))
+        self._fit(entry)
 
     def _concerns(self, entry: QWidget) -> bool:
         concerns: set[str] = entry.concerns  # type: ignore[attr-defined]
@@ -1087,7 +1131,8 @@ class FleetWindow(QMainWindow):
         colors = theme.current()
         side.setStyleSheet(
             f"QFrame#fleetSide {{ background: {colors.side}; }}"
-            f"QTreeWidget {{ background: transparent; border: none; }}"
+            f"QTreeWidget {{ background: transparent; border: none; "
+            f"selection-background-color: transparent; show-decoration-selected: 0; }}"
             f"QTreeWidget::item {{ padding: 5px 2px; }}"
             f"QTreeWidget::item:selected {{ background: {colors.select}; "
             f"color: {colors.text}; }}"
@@ -1669,8 +1714,10 @@ class FleetWindow(QMainWindow):
                                                    else "Start")
                                         for shown in fleets])
             return
-        self.title.setText(view.name)
-        self.status.setText(view.status)
+        chosen = view.chosen
+        self.title.setText(f"{view.name} › {chosen.called}" if chosen else view.name)
+        self.status.setText(f"{chosen.state} · ${chosen.spent_usd:.2f}" if chosen
+                            else view.status)
         self._show_agents(view)
 
     def _show_agents(self, view: FleetView) -> None:

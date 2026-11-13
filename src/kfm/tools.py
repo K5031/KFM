@@ -108,8 +108,7 @@ def fleet_tools(manager: Manager) -> MCPServer:
         with _refusals():
             me = caller(ctx)
             unit = manager.fleet.subordinate(me, agent)
-            await manager.tell(unit, f"[Message from {me.label}, your supervisor] {text}",
-                               task=text)
+            await manager.message(me, unit, text)
         return f"Sent to {unit.label}."
 
     @server.tool(description="Your agents: what each is doing, what it reported or asked, "

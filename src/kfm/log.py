@@ -17,6 +17,7 @@ from kfm.fleet import Fleet, Unit
 
 FILE = "log.jsonl"
 _KINDS = {kind.__name__: kind for kind in (events.Changed, events.Said, events.Delivered,
+                                           events.Instructed,
                                            events.Approval, events.Answered, events.Told,
                                            events.Notice)}
 
@@ -40,7 +41,7 @@ def read(folder: Path, fleet: Fleet) -> list[tuple[float, events.FleetEvent]]:
                 data = json.loads(text)
                 kind = _KINDS[data.pop("type")]
                 at = data.pop("t")
-                for name in ("unit", "to"):
+                for name in ("unit", "to", "by"):
                     if data.get(name) is not None:
                         data[name] = fleet.units[data[name]]
                 found.append((at, kind(**data)))

@@ -32,6 +32,17 @@ class Delivered:
 
 
 @dataclass(frozen=True, slots=True)
+class Instructed:
+    """What a unit is given from above: its task, or a message from its supervisor. `by`
+    None: the person gave it."""
+
+    unit: Unit
+    by: Unit | None
+    kind: str  # task, message
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class Approval:
     """A unit wants to do something its permissions do not cover. Answer with
     Manager.approve."""
@@ -64,4 +75,5 @@ class Notice:
     text: str
 
 
-type FleetEvent = Changed | Said | Delivered | Approval | Answered | Told | Notice
+type FleetEvent = (Changed | Said | Delivered | Instructed | Approval | Answered | Told
+                   | Notice)

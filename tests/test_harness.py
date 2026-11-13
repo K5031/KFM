@@ -11,7 +11,7 @@ import pytest
 
 from kfm import harnesses, log
 from kfm.config import FleetConfig
-from kfm.events import Delivered, FleetEvent, Told
+from kfm.events import Delivered, FleetEvent, Instructed, Told
 from kfm.fleet import Fleet, FleetError, Unit
 from kfm.harnesses.kayden import KaydenHarness
 from kfm.manager import Manager, lay_out, place
@@ -290,6 +290,31 @@ async def test_the_person_messages_one_agent_and_its_supervisor_is_told(tmp_path
     await manager.aclose()
     kept = log.read(tmp_path / "fleet", Fleet.load(tmp_path / "fleet"))
     assert [e.to.id for _, e in kept if isinstance(e, Told)] == ["u2", "u1"]
+
+
+async def test_what_goes_down_the_chain_is_shown_too(tmp_path: Path):
+    harness = FakeHarness({
+        "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]},
+                 {"when": "[Question from Scout",
+                  "do": [("tool", "message", {"agent": "u2", "text": "Use docs/"})]}],
+        "Scout": [{"do": [("ask", "Which folder?")]},
+                  {"when": "Use docs/", "do": [("say", "On it.")]}]})
+    manager, events = await run(tmp_path, harness)
+    lead = await manager.lead("Tidy up", ongoing=True, name="Lead")
+    await until(lambda: len(harness.heard.get("Scout", [])) == 2)
+    scout = manager.fleet.units["u2"]
+    down = [(e.by, e.unit, e.kind, e.text) for e in events if isinstance(e, Instructed)]
+    assert down == [(None, lead, "task", "Tidy up"),  # None: the person
+                    (lead, scout, "task", "Map the docs"),
+                    (lead, scout, "message", "Use docs/")]
+    await manager.hire(scout, "", "Check the links")  # the person's, though under Scout
+    await until(lambda: "u3" in manager.fleet.units)
+    assert [(e.by, e.unit.id) for e in events if isinstance(e, Instructed)][-1] == (None, "u3")
+    await manager.aclose()
+    kept = [e for _, e in log.read(tmp_path / "fleet", Fleet.load(tmp_path / "fleet"))
+            if isinstance(e, Instructed)]
+    assert [(e.by.id if e.by else None, e.unit.id) for e in kept] == [
+        (None, "u1"), ("u1", "u2"), ("u1", "u2"), (None, "u3")]
 
 
 async def until(predicate, timeout: float = 10.0) -> None:

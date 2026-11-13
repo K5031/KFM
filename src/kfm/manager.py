@@ -21,6 +21,7 @@ from kfm.events import (
     Changed,
     Delivered,
     FleetEvent,
+    Instructed,
     Notice,
     Said,
     Told,
@@ -123,6 +124,7 @@ class Manager:
             for unit in placed:  # a supervisor before its agents
                 supervisor = self.fleet.supervisor_of(unit)
                 if unit in ready:
+                    self._emit(Instructed(unit, None, "task", unit.task))
                     await self._begin(unit)
                 elif not unit.task:
                     self._set(unit, "idle")  # until it is told what to do
@@ -151,6 +153,7 @@ class Manager:
         """Start the fleet: its lead, on the person's task."""
         unit = self.fleet.add(name, task, None, ongoing=ongoing,
                               budget_usd=self.config.unit_budget_usd)
+        self._emit(Instructed(unit, None, "task", unit.task))
         await self._start(unit)
         return unit
 
@@ -176,7 +179,8 @@ class Manager:
         fleet's limits do not allow it."""
         if supervisor.id not in self.fleet.units:
             raise FleetError("The fleet has not started.")
-        unit = await self.delegate(supervisor, name, task, ongoing=ongoing, model=model)
+        unit = await self.delegate(supervisor, name, task, ongoing=ongoing, model=model,
+                                   by_person=True)
         self._emit(Notice(f"You added {unit.called} under {supervisor.called}."))
         if supervisor.session is not None:  # one that has not begun reads it in its brief
             self._spawn(self._tell_quietly(supervisor, units.hired_note(unit, self._words)))
@@ -214,7 +218,8 @@ class Manager:
 
     async def delegate(self, supervisor: Unit, name: str, task: str, *,
                        team: str | None = None, ongoing: bool = False,
-                       budget_usd: float | None = None, model: str | None = None) -> Unit:
+                       budget_usd: float | None = None, model: str | None = None,
+                       by_person: bool = False) -> Unit:
         if self._over_budget:
             raise FleetError("The fleet has reached its spending limit.")
         budget = min(budget_usd or self.config.unit_budget_usd, self.config.unit_budget_usd)
@@ -222,6 +227,7 @@ class Manager:
                               budget_usd=budget)
         unit.model = model or None
         if unit.task:
+            self._emit(Instructed(unit, None if by_person else supervisor, "task", unit.task))
             await self._start(unit)
         else:
             self._set(unit, "idle")  # until it is told what to do
@@ -252,6 +258,12 @@ class Manager:
                 note = units.answer_note(self.fleet.supervisor_of(unit), self._words)
                 text = f"{text}\n\n{note}"
         await session.send(text)
+
+    async def message(self, supervisor: Unit, unit: Unit, text: str) -> None:
+        """A supervisor's message to one of its agents."""
+        await self.tell(unit, f"[Message from {supervisor.label}, your supervisor] {text}",
+                        task=text)
+        self._emit(Instructed(unit, supervisor, "message", text))
 
     async def update(self, unit: Unit, text: str) -> None:
         """A unit's update for its supervisor, without ending its work."""

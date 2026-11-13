@@ -25,6 +25,7 @@ from kfm.desktop import (
     DeliveryCard,
     FleetView,
     FleetWindow,
+    SaidEntry,
     YouEntry,
 )
 from kfm.fleet import Fleet
@@ -181,7 +182,7 @@ async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: P
     await until(lambda: any("hello" in heard for heard in harness.heard["K5 u1"]))
     assert view.input.toPlainText() == ""
     await until(lambda: [e.text.text() for e in view.entries if isinstance(e, YouEntry)]
-                == ["hello"])
+                == ["Keep watch", "hello"])  # the task is the first thing you said
 
     shown.stop_button.click()
     await until(lambda: "stopped" in shown.status.text())
@@ -215,7 +216,8 @@ async def test_the_window_opens_on_the_chart_of_the_newest_project(window, tmp_p
     assert lead.y() < scout.y()  # the K5 on top
     scout.clicked.emit()  # an agent on the chart opens its fleet, on what concerns it
     opened = again.view
-    assert opened is not None and opened.isVisibleTo(again) and again.title.text() == "dev"
+    assert opened is not None and opened.isVisibleTo(again)
+    assert again.title.text() == "dev › Scout"
     assert [header for header, _ in cards(opened)] == ["Scout → K5 u1 · question",
                                                        "Scout → K5 u1 · report"]
     assert agents(again) == [(0, "K5", "done"), (1, "Scout  K4", "done")]
@@ -495,6 +497,13 @@ async def test_the_chosen_agent_is_the_one_messaged(window, tmp_path: Path):
     assert view.input.placeholderText() == "Message the lead"
     shown.agents.setCurrentItem(shown.agents.topLevelItem(0).child(0))
     assert view.input.placeholderText() == "Message Scout"
+    # Its page is a conversation with it: its task from its lead, then what it wrote,
+    # without its name on every line.
+    seen = [e for e in view.entries if e.isVisibleTo(shown)]
+    assert [type(e).__name__ for e in seen] == ["InstructionCard", "SaidEntry"]
+    assert seen[0].header.text() == "K5 u1 → Scout · task"
+    assert seen[0].body.toPlainText() == "Map the docs" and not seen[1].header.isVisibleTo(shown)
+    assert shown.title.text() == "dev › Scout" and "working" in shown.status.text()
     view.input.setPlainText("Skip the drafts")
     view.send_button.click()
     await until(lambda: any("Skip the drafts" in heard for heard in harness.heard["Scout"]))
@@ -502,10 +511,12 @@ async def test_the_chosen_agent_is_the_one_messaged(window, tmp_path: Path):
                          if isinstance(e, YouEntry) and e.isVisibleTo(shown)]
                 == ["Skip the drafts"])
     shown.show_all.click()
-    assert view.input.placeholderText() == "Message the lead"
+    assert view.input.placeholderText() == "Message the lead" and shown.title.text() == "dev"
+    assert all(e.header.isVisibleTo(shown) for e in view.entries if isinstance(e, SaidEntry))
     shown.agents.setCurrentItem(shown.agents.topLevelItem(0))  # the lead: nothing to add
     assert view.input.placeholderText() == "Message the lead"
-    assert not [e for e in view.entries if isinstance(e, YouEntry) and e.isVisibleTo(shown)]
+    assert [e.text.text() for e in view.entries
+            if isinstance(e, YouEntry) and e.isVisibleTo(shown)] == ["Tidy up"]
 
 
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):

@@ -146,6 +146,11 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
   full, with who sent it to whom. An approval is a card with **Allow** and **Deny**.
 - **Message the lead** in the box at the bottom; Enter sends, Shift+Enter starts a new
   line. A message to a stopped fleet starts it again.
+- **An agent's page is a conversation with it.** Choose an agent in the agents list (or
+  click it on the chart) to see its task, what its supervisor told it, what it wrote and
+  what its own agents sent it, in order. Unlike a chat, others speak in it too, it works
+  whether you write or not, and its reports go to its supervisor. With no agent chosen
+  the page is the whole fleet's feed.
 - **Message one agent** by choosing it in the agents list first: the box then says whom
   it goes to. The agent is told the message is yours and that it stands over what its
   supervisor said; its supervisor is told what you said. With no agent chosen, or the

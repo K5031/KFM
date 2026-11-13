@@ -26,7 +26,7 @@ from kfm.events import (
     Told,
 )
 from kfm.fleet import Fleet, FleetError, Unit
-from kfm.tools import ToolServer
+from kfm.tools import ToolServer, fleet_tools
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class Manager:
         self._words = self._harness.vocabulary
         self._on_event = on_event
         self._log = log.Log(folder)  # every event, for whoever opens the fleet later
-        self._tools = ToolServer(self)
+        self._tools = ToolServer(fleet_tools(self))
         self._sessions: dict[str, Session] = {}
         self._opening: dict[str, asyncio.Lock] = {}  # one start of a unit's process at a time
         # Whether a unit's instruction stood when its last turn ended.

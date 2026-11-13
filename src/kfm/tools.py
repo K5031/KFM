@@ -25,15 +25,16 @@ TASK_CHARS = 200  # of a task or a report in the status list
 
 
 class ToolServer:
-    def __init__(self, manager: Manager) -> None:
-        self._manager = manager
+    """An MCP server on a local port of its own, for as long as it is needed."""
+
+    def __init__(self, tools: MCPServer) -> None:
+        self._tools = tools
         self._server: uvicorn.Server | None = None
         self._task: asyncio.Task[None] | None = None
         self.url = ""
 
     async def start(self) -> None:
-        app = _tools(self._manager).streamable_http_app(stateless_http=True,
-                                                        json_response=True)
+        app = self._tools.streamable_http_app(stateless_http=True, json_response=True)
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         self.url = f"http://127.0.0.1:{sock.getsockname()[1]}/mcp"
@@ -60,7 +61,7 @@ def _refusals() -> Iterator[None]:
         raise ToolError(str(e)) from None
 
 
-def _tools(manager: Manager) -> MCPServer:
+def fleet_tools(manager: Manager) -> MCPServer:
     server = MCPServer("fleet")
 
     def caller(ctx: Context) -> Unit:

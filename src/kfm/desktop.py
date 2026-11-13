@@ -52,7 +52,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kfm import app_menu, log, project
+from kfm import app_menu, draft, harnesses, log, project
 from kfm.api import Harness, UnitError
 from kfm.chart import Chart, ChartFleet
 from kfm.config import CONFIG_FILE, HOME, FleetConfig, load
@@ -240,6 +240,40 @@ class Budget(QFrame):
             return self.LEAST
 
 
+class KindSwitch(QFrame):
+    """Task or Duty, as two segments."""
+
+    def __init__(self) -> None:
+        super().__init__(objectName="segments")
+        colors = theme.current()
+        self.setStyleSheet(
+            f"QPushButton#segment {{ border: none; background: transparent; "
+            f"color: {colors.muted}; padding: 6px 14px; border-radius: 8px; }}"
+            f"QPushButton#segment:hover {{ color: {colors.text}; }}"
+            f"QPushButton#segment:checked {{ background: {colors.accent_soft}; "
+            f"color: {colors.accent_text}; }}"
+            f"QFrame#segments {{ border: 1px solid {colors.line}; border-radius: 10px; }}")
+        kinds = QHBoxLayout(self)
+        kinds.setContentsMargins(3, 3, 3, 3)
+        kinds.setSpacing(2)
+        self.task_kind = QPushButton("Task", objectName="segment")
+        self.task_kind.setToolTip("Ends when the lead reports")
+        self.duty = QPushButton("Duty", objectName="segment")
+        self.duty.setToolTip("Runs until you stop it")
+        self.group = QButtonGroup(self)
+        for button in (self.task_kind, self.duty):
+            button.setCheckable(True)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.group.addButton(button)
+            kinds.addWidget(button)
+        self.duty.setChecked(True)  # a fleet in a project holds a role
+        self.setFixedHeight(36)
+
+
+BOX_STYLE = ("QFrame#budget {{ border: 1px solid {line}; border-radius: 10px; }}"
+             "QFrame#budget QLineEdit {{ background: transparent; border: none; padding: 0; }}")
+
+
 class StartForm(QWidget):
     """A new fleet: its name, one box for what it should do, and what else a fleet needs
     along the box's lower edge."""
@@ -251,16 +285,7 @@ class StartForm(QWidget):
         self.setMaximumWidth(FORM)
         self.setMinimumWidth(480)
         colors = theme.current()
-        self.setStyleSheet(
-            f"QPushButton#segment {{ border: none; background: transparent; "
-            f"color: {colors.muted}; padding: 6px 14px; border-radius: 8px; }}"
-            f"QPushButton#segment:hover {{ color: {colors.text}; }}"
-            f"QPushButton#segment:checked {{ background: {colors.accent_soft}; "
-            f"color: {colors.accent_text}; }}"
-            f"QFrame#segments {{ border: 1px solid {colors.line}; border-radius: 10px; }}"
-            f"QFrame#budget {{ border: 1px solid {colors.line}; border-radius: 10px; }}"
-            f"QFrame#budget QLineEdit {{ background: transparent; border: none; "
-            f"padding: 0; }}")
+        self.setStyleSheet(BOX_STYLE.format(line=colors.line))
         self.folder: Path | None = None  # the project's, unless another is chosen
         outer = QVBoxLayout(self)
         outer.setSpacing(0)
@@ -289,19 +314,9 @@ class StartForm(QWidget):
         inside.addWidget(self.task)
         row = QHBoxLayout()
         row.setSpacing(8)
-        segments = QFrame(objectName="segments")
-        kinds = QHBoxLayout(segments)
-        kinds.setContentsMargins(3, 3, 3, 3)
-        kinds.setSpacing(2)
-        self.task_kind = QPushButton("Task", objectName="segment")
-        self.duty = QPushButton("Duty", objectName="segment")
-        self._kinds = QButtonGroup(self)
-        for button in (self.task_kind, self.duty):
-            button.setCheckable(True)
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._kinds.addButton(button)
-            kinds.addWidget(button)
-        self.duty.setChecked(True)  # a fleet in a project holds a role
+        segments = KindSwitch()
+        self.task_kind, self.duty, self._kinds = (segments.task_kind, segments.duty,
+                                                  segments.group)
         self.folder_button = QToolButton(objectName="folderPicker")
         self.folder_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.folder_button.setIcon(theme.icon("folder", colors.muted, 16))
@@ -365,7 +380,8 @@ class StartForm(QWidget):
 
 
 class ProjectForm(QWidget):
-    """The window with no project: a name and the folder the project's fleets work in."""
+    """The window with no project: a name, the folder the project's fleets work in, and
+    what it should do when its fleets are to be drafted."""
 
     submitted = Signal()
 
@@ -393,8 +409,12 @@ class ProjectForm(QWidget):
         inside.setContentsMargins(16, 14, 12, 12)
         inside.setSpacing(12)
         self.name = _name_field("Name")
-        self.name.returnPressed.connect(self.submitted)
+        self.name.returnPressed.connect(lambda: self.does.setFocus())
         inside.addWidget(self.name)
+        self.does = TaskBox()
+        self.does.setPlaceholderText("What it should do, to have its fleets drafted")
+        self.does.submitted.connect(self.submitted)
+        inside.addWidget(self.does)
         row = QHBoxLayout()
         self.folder_button = QToolButton(objectName="folderPicker")
         self.folder_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -466,6 +486,146 @@ def _centred(form: QWidget) -> QWidget:
     across.setContentsMargins(0, 0, 0, 0)
     across.addWidget(form, 0, Qt.AlignmentFlag.AlignHCenter)
     return page
+
+
+class DraftRow(QFrame):
+    """A fleet of a draft: its name, what it does, Task or Duty, and a way out of it."""
+
+    def __init__(self, name: str = "", does: str = "", ongoing: bool = True) -> None:
+        super().__init__(objectName="composer")
+        inside = QVBoxLayout(self)
+        inside.setContentsMargins(16, 12, 12, 10)
+        inside.setSpacing(8)
+        top = QHBoxLayout()
+        self.name = _name_field("Name")
+        self.name.setText(name)
+        self.remove = QToolButton(objectName="titleControl")
+        self.remove.setIcon(theme.icon("close", theme.current().muted))
+        self.remove.setIconSize(QSize(12, 12))
+        self.remove.setToolTip("Leave this fleet out")
+        self.remove.setAccessibleName("Leave this fleet out")
+        top.addWidget(self.name, 1)
+        top.addWidget(self.remove)
+        inside.addLayout(top)
+        self.does = MessageBox()
+        self.does.setPlaceholderText("What it does")
+        self.does.setPlainText(does)
+        inside.addWidget(self.does)
+        self.kind = KindSwitch()
+        (self.kind.duty if ongoing else self.kind.task_kind).setChecked(True)
+        row = QHBoxLayout()
+        row.addWidget(self.kind)
+        row.addStretch(1)
+        inside.addLayout(row)
+
+
+class DraftPage(QWidget):
+    """A project's fleets as an agent drafted them, for the person to change. Nothing runs
+    until `start` is clicked. `over`: started or discarded."""
+
+    start_asked = Signal()
+    over = Signal()
+
+    def __init__(self, opened: Project, description: str) -> None:
+        super().__init__()
+        self.project, self.description = opened, description
+        self.rows: list[DraftRow] = []
+        self.busy = True  # the agent is drafting
+        self._work: asyncio.Task[None] | None = None
+        self.setStyleSheet(BOX_STYLE.format(line=theme.current().line))
+        column = QWidget()
+        column.setMaximumWidth(FORM)
+        self._column = QVBoxLayout(column)
+        self._column.setContentsMargins(0, 24, 0, 16)
+        self._column.setSpacing(12)
+        self.heading = label("", wrap=False)
+        self.heading.setStyleSheet("font-size: 22px; font-weight: 600;")
+        self.note = label("", role="small", tone="muted")
+        self._column.addWidget(self.heading)
+        self._column.addWidget(self.note)
+        self.add_button = QPushButton(" Add fleet", objectName="nav")
+        self.add_button.setIcon(theme.icon("plus", theme.current().text, 16))
+        self.add_button.clicked.connect(lambda: self.add_row().name.setFocus())
+        self.budget = Budget()
+        self.budget.setToolTip("The most each fleet may spend")
+        self.discard = QPushButton("Discard")
+        self.discard.clicked.connect(self.cancel)
+        self.start = QPushButton("Start")
+        self.start.setProperty("primary", True)
+        self.start.clicked.connect(self.start_asked)
+        foot = QHBoxLayout()
+        foot.addWidget(self.add_button)
+        foot.addStretch(1)
+        foot.addWidget(self.budget)
+        foot.addWidget(self.discard)
+        foot.addWidget(self.start)
+        self._column.addLayout(foot)
+        self._column.addStretch(1)
+        across = QHBoxLayout()
+        across.setContentsMargins(20, 0, 20, 0)
+        across.addStretch(1)
+        across.addWidget(column, 100)
+        across.addStretch(1)
+        page = QWidget(objectName="transcript")
+        page.setLayout(across)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(page)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
+        self._show()
+
+    def run(self, config: FleetConfig, harness: Harness | None) -> None:
+        """Have an agent draft the fleets."""
+        self._work = asyncio.ensure_future(self._draft(config, harness))
+
+    def cancel(self) -> None:
+        """Drop the draft; an agent still at it is stopped."""
+        if self._work is not None:
+            self._work.cancel()
+        self.over.emit()
+
+    def add_row(self, name: str = "", does: str = "", ongoing: bool = True) -> DraftRow:
+        row = DraftRow(name, does, ongoing)
+        row.remove.clicked.connect(lambda: self._remove(row))
+        self.rows.append(row)
+        self._column.insertWidget(self._column.count() - 2, row)  # above the foot
+        return row
+
+    def warn(self, text: str) -> None:
+        self.note.setText(text)
+        theme.mark(self.note, "tone", "error")
+
+    async def _draft(self, config: FleetConfig, harness: Harness | None) -> None:
+        try:
+            harness = harness or await asyncio.to_thread(
+                harnesses.load, config.harness, config.harness_options)
+            made = await draft.draft(self.description, config=config, harness=harness,
+                                     folder=self.project.folder / "planner",
+                                     work=self.project.work)
+        except (draft.DraftError, UnitError, ValueError, OSError) as e:
+            self.busy = False
+            self._show()
+            self.warn(f"No draft: {e}")
+            return
+        for team in made.teams:
+            self.add_row(team.name, team.does, team.ongoing)
+        self.busy = False
+        self._show()
+        self.note.setText(f"Drafted for ${made.spent_usd:.2f}. Nothing runs until you start it.")
+
+    def _remove(self, row: DraftRow) -> None:
+        self.rows.remove(row)
+        row.setParent(None)
+        row.deleteLater()
+
+    def _show(self) -> None:
+        self.heading.setText("Drafting…" if self.busy else "Draft")
+        for part in (self.add_button, self.budget, self.start):
+            part.setVisible(not self.busy)
+        self.discard.setText("Cancel" if self.busy else "Discard")
 
 
 # ── A fleet ───────────────────────────────────────────────────────────────
@@ -705,6 +865,7 @@ class FleetWindow(QMainWindow):
         self.views: dict[Path, FleetView] = {}  # every fleet read so far, by its folder
         self.view: FleetView | None = None  # the fleet opened; None: the chart
         self.adding = False  # the form for a new fleet is shown
+        self.drafts: dict[Path, DraftPage] = {}  # by project folder, until started
         self.closed = asyncio.Event()
         self._rows: dict[str, QTreeWidgetItem] = {}
         self._rows_of: FleetView | None = None
@@ -839,8 +1000,9 @@ class FleetWindow(QMainWindow):
         self.pages = QStackedWidget()
         self._project_page, self._start_page = (_centred(self.project_form),
                                                 _centred(self.start_form))
+        self.draft_pages = QStackedWidget()  # a page for each draft
         for page in (self._project_page, self._start_page, self.chart_scroll,
-                     self.fleet_pages):
+                     self.fleet_pages, self.draft_pages):
             self.pages.addWidget(page)
 
         whole = QWidget()
@@ -865,15 +1027,50 @@ class FleetWindow(QMainWindow):
         return [view for folder, view in sorted(self.views.items())
                 if folder.parent == fleets]
 
-    async def create_project(self, name: str, work: Path) -> None:
+    async def create_project(self, name: str, work: Path, description: str = "") -> None:
+        """A new project; with a description, an agent drafts its fleets."""
         try:
             made = await asyncio.to_thread(project.create, self.home, name, work)
-        except OSError as e:
+            config = self._config or await asyncio.to_thread(load, self.home / CONFIG_FILE)
+        except (ValueError, OSError) as e:
             self.project_form.warn(f"The project could not be made: {e}")
             return
         self.project_form.name.clear()
+        self.project_form.does.clear()
         self.project_form.set_folder(None)
+        if description:
+            page = self.drafts[made.folder] = DraftPage(made, description)
+            page.budget.setValue(config.budget_usd)
+            page.start_asked.connect(lambda: self._run(self.start_draft(page)))
+            page.over.connect(lambda: self._drop_draft(page))
+            self.draft_pages.addWidget(page)
+            page.run(config, self._harness)
         await self.open_project(made)
+
+    async def start_draft(self, page: DraftPage) -> None:
+        """Start every fleet of the draft, and show the project's chart."""
+        fleets = [(row.name.text().strip(), row.does.toPlainText().strip(),
+                   row.kind.duty.isChecked()) for row in page.rows]
+        names = [name.lower() for name, _, _ in fleets]
+        if not fleets or not all(name and does for name, does, _ in fleets):
+            return page.warn("Each fleet needs a name and what it does.")
+        if len(set(names)) < len(names):
+            return page.warn("Two fleets have the same name.")
+        page.start.setEnabled(False)
+        for name, does, ongoing in fleets:
+            await self.start_fleet(name, does, ongoing=ongoing, work=page.project.work,
+                                   budget=page.budget.value(), opened=page.project,
+                                   show=False)
+        self._drop_draft(page)
+
+    def _drop_draft(self, page: DraftPage) -> None:
+        if self.drafts.pop(page.project.folder, None) is page:
+            self.draft_pages.removeWidget(page)
+            page.deleteLater()
+            if self.project is not None and self.project.folder == page.project.folder:
+                self.adding = not self.project_views()
+                self._prepare_start()
+            self._refresh()
 
     async def open_project(self, opened: Project) -> None:
         """Show the project's chart; a project with no fleet yet asks for its first."""
@@ -888,7 +1085,7 @@ class FleetWindow(QMainWindow):
             except (ValueError, OSError, KeyError):
                 self._drop(view)  # not a fleet this version reads
         if self.project is opened:
-            self.adding = not self.project_views()
+            self.adding = not self.project_views() and opened.folder not in self.drafts
             self._prepare_start()
         await self.list_projects()
 
@@ -917,9 +1114,10 @@ class FleetWindow(QMainWindow):
         self.agents.setCurrentItem(self._rows.get(unit_id or ""))
 
     async def start_fleet(self, name: str, task: str, *, ongoing: bool, work: Path,
-                          budget: float) -> None:
-        """A new fleet in the open project, on the task."""
-        opened = self.project
+                          budget: float, opened: Project | None = None,
+                          show: bool = True) -> None:
+        """A new fleet on the task, in `opened` or the open project; `show` opens it."""
+        opened = opened or self.project
         assert opened is not None
         try:
             config = self._config or await asyncio.to_thread(load, self.home / CONFIG_FILE)
@@ -933,9 +1131,10 @@ class FleetWindow(QMainWindow):
         except (ValueError, OSError) as e:
             self.start_form.warn(f"The fleet could not start: {e}")
             return
-        self.start_form.name.clear()
-        self.start_form.task.clear()
-        self.open_fleet(view)
+        if show:
+            self.start_form.name.clear()
+            self.start_form.task.clear()
+            self.open_fleet(view)
         await started
         await self.list_projects()
 
@@ -949,6 +1148,8 @@ class FleetWindow(QMainWindow):
 
     async def shut(self) -> None:
         """Stop every fleet and close the window."""
+        for page in list(self.drafts.values()):
+            page.cancel()
         await asyncio.gather(*(view.stop() for view in self.views.values()))
         for task in list(self._tasks):
             if task is not asyncio.current_task():
@@ -1056,7 +1257,7 @@ class FleetWindow(QMainWindow):
         if work is None:
             form.warn(problem)
             return
-        self._run(self.create_project(name, work))
+        self._run(self.create_project(name, work, form.does.toPlainText().strip()))
 
     def _start_clicked(self) -> None:
         form = self.start_form
@@ -1086,10 +1287,17 @@ class FleetWindow(QMainWindow):
         """The bar, the page and the sidebar, from things as they are now."""
         opened, view = self.project, self.view
         fleets = self.project_views()
+        drafted = self.drafts.get(opened.folder) if opened is not None else None
+        if drafted is not None and view is None and not self.adding:
+            self.draft_pages.setCurrentWidget(drafted)
+        else:
+            drafted = None
         self.pages.setCurrentWidget(
             self._project_page if opened is None else self._start_page if self.adding
-            else self.fleet_pages if view is not None else self.chart_scroll)
-        on_chart = opened is not None and view is None and not self.adding
+            else self.fleet_pages if view is not None
+            else self.draft_pages if drafted is not None else self.chart_scroll)
+        on_chart = (opened is not None and view is None and not self.adding
+                    and drafted is None)
         self.back_button.setVisible(view is not None or (self.adding and bool(fleets)))
         self.title.setVisible(opened is not None)
         self._bar_gap.setVisible(opened is None)

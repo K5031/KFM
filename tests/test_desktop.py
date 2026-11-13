@@ -236,6 +236,64 @@ async def test_fleets_run_side_by_side_and_projects_are_switched(window, tmp_pat
     assert shown.title.text() == "Acme"
 
 
+async def test_a_described_project_is_drafted_and_started_by_the_person(window,
+                                                                          tmp_path: Path):
+    teams = [{"name": "dev", "does": "Build the game.", "ongoing": True},
+             {"name": "trailer", "does": "Cut a trailer.", "ongoing": False},
+             {"name": "legal", "does": "Read contracts.", "ongoing": True}]
+    shown, harness = window({
+        "Planner": [{"do": [("tool", "propose", {"teams": teams}), ("report", "Proposed.")]}],
+        "Lead": [{"do": [("say", "On it.")]}, {"do": [("say", "On it.")]}]})
+    form = shown.project_form
+    form.name.setText("Studio")
+    form.does.setPlainText("Run my game studio")
+    form.set_folder(tmp_path / "work")
+    form.create.click()
+    await until(lambda: shown.drafts)
+    [page] = shown.drafts.values()
+    await until(lambda: not page.busy)
+    assert page.isVisibleTo(shown) and shown.title.text() == "Studio"
+    assert "Run my game studio" in harness.heard["Planner"][0]
+    assert [(r.name.text(), r.does.toPlainText(), r.kind.duty.isChecked())
+            for r in page.rows] == [("dev", "Build the game.", True),
+                                    ("trailer", "Cut a trailer.", False),
+                                    ("legal", "Read contracts.", True)]
+    assert not shown.views and "Lead" not in harness.heard  # nothing runs yet
+    page.rows[2].remove.click()  # the person changes the draft
+    page.rows[1].name.setText("video")
+    page.rows[0].name.clear()
+    page.start.click()
+    await asyncio.sleep(0.05)
+    assert not shown.views and "needs a name" in page.note.text()
+    page.rows[0].name.setText("dev")
+    page.budget.setValue(4.0)
+    page.start.click()
+    await until(lambda: chart(shown) == {"dev": ["Lead K5"], "video": ["Lead K5"]})
+    assert not shown.drafts and shown.chart.isVisibleTo(shown)
+    await until(lambda: len(harness.heard.get("Lead", [])) == 2)
+    assert any("Build the game." in told for told in harness.heard["Lead"])
+    dev, video = shown.project_views()
+    assert dev.fleet.lead.ongoing and not video.fleet.lead.ongoing
+    assert "of $4.00" in dev.status
+
+
+async def test_a_draft_that_fails_or_is_discarded_leaves_the_project(window, tmp_path: Path):
+    shown, _ = window({"Planner": [{"do": [("report", "A plan in words.")]}]})
+    form = shown.project_form
+    form.name.setText("Studio")
+    form.does.setPlainText("Run my game studio")
+    form.set_folder(tmp_path / "work")
+    form.create.click()
+    await until(lambda: shown.drafts and not next(iter(shown.drafts.values())).busy)
+    [page] = shown.drafts.values()
+    assert "No draft" in page.note.text() and page.rows == []
+    page.add_button.click()  # by hand, then
+    assert len(page.rows) == 1
+    page.discard.click()
+    await until(lambda: shown.start_form.isVisibleTo(shown))  # the project asks for a fleet
+    assert not shown.drafts and shown.project.name == "Studio"
+
+
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "me")
     (tmp_path / "me").mkdir()
@@ -246,14 +304,14 @@ async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, mo
     for folder, problem in ((None, "Choose a folder first."), (tmp_path / "me", "home folder"),
                             (tmp_path / "gone", "no folder")):
         form.set_folder(folder)
-        form.name.returnPressed.emit()
+        form.create.click()
         await asyncio.sleep(0.05)
         assert shown.project is None and problem in form.warning.text()
     assert not (tmp_path / "gone").exists()  # nothing is made that nobody asked for
     assert not (tmp_path / "home" / "projects").exists()
     form.set_folder(tmp_path / "work")
     assert not form.warning.isVisibleTo(shown) and form.folder_button.text().strip() == "work"
-    form.name.returnPressed.emit()
+    form.create.click()
     await until(lambda: shown.project is not None)
     assert shown.project.work == tmp_path / "work" and form.folder is None
 

@@ -88,6 +88,14 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
   folder its fleets work in. None is suggested, and your home folder itself is refused,
   since agents work freely inside the folder they are given. Projects are listed on the
   left; click one to switch to it.
+- **Describe the project** in the box under its name to have its fleets drafted: one
+  agent reads what you want and proposes the teams, each with a name and what it is
+  there to do. You can rename them, rewrite what they do, leave some out or add your
+  own. Nothing runs until you press **Start**, which starts them all, each with the
+  limit shown beside it. Leave the box empty to add the fleets yourself.
+
+  ![A draft](images/draft-light.png)
+
 - **The chart** is a project's main screen: its fleets side by side, each as the tree of
   who supervises whom, the K5 lead on top. Each agent shows its rank, its state and what
   it has spent. How large a fleet is, is what you see here: its lead hires as the work

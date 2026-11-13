@@ -216,6 +216,21 @@ async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QA
     await asyncio.wait_for(shown.closed.wait(), 5)
 
 
+async def test_the_window_has_rounded_corners_unless_maximized(window, qapp: QApplication):
+    shown, _ = window({})
+    shown.resize(900, 600)
+    shown.show()
+    qapp.processEvents()
+    image = shown.grab().toImage()
+    for x, y in ((0, 0), (899, 0), (0, 599), (899, 599)):
+        assert image.pixelColor(x, y).alpha() == 0  # the desktop shows through
+    assert image.pixelColor(450, 300).alpha() == 255
+    assert image.pixelColor(880, 592).alpha() == 255  # the window's own background
+    shown.showMaximized()
+    qapp.processEvents()
+    assert shown.grab().toImage().pixelColor(0, 0).alpha() == 255
+
+
 async def test_the_folder_is_chosen_for_each_fleet(window, tmp_path: Path, monkeypatch):
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest

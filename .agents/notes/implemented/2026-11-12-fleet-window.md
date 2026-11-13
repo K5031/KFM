@@ -35,8 +35,9 @@ event loop, its theme, its Markdown view.
 - **The message box** at the bottom goes to the lead.
 - **The bar** on top: the fleet's task, whether it runs, what it has spent of its limit,
   and Stop or Resume. The window has no title bar, as Kayden's has none: the bar is where
-  it is grabbed and holds minimize, maximize and close, and its edges resize it
-  (Kayden's `DragArea` and `WindowEdges`).
+  it is grabbed and holds minimize, maximize and close, its edges resize it and its
+  corners are rounded unless it is maximized (Kayden's `DragArea`, `WindowEdges` and
+  `RoundedCorners`).
 - **Starting a fleet** is the window's empty state, built like a chat's first screen:
   one box for what the fleet should do, with Task or Duty, the folder and the limit along
   its lower edge. A form with a label for each field was built first; it sat small in an

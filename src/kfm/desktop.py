@@ -25,6 +25,7 @@ from kayden.frontends.desktop.window import (
     ElidedLabel,
     MarkdownView,
     MessageBox,
+    RoundedCorners,
     RowDelegate,
     WindowEdges,
 )
@@ -394,6 +395,7 @@ class FleetWindow(QMainWindow):
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self._edges = WindowEdges(self)
         self._build()
+        self._corners = RoundedCorners(self)
         self.show_all.hide()
         self._timer = QTimer(self, interval=REFRESH_MS)
         self._timer.timeout.connect(self._refresh)

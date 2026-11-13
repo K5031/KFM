@@ -1,4 +1,4 @@
-"""The fleet window, offscreen, on the second harness (tests/fakeharness.py)."""
+"""The window, offscreen, on the second harness (tests/fakeharness.py)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from kayden.frontends.desktop.window import PREVIEW_ROLE
 from PySide6.QtWidgets import QApplication
 
 from kfm.config import FleetConfig
-from kfm.desktop import ApprovalCard, DeliveryCard, FleetWindow, YouEntry
+from kfm.desktop import ApprovalCard, DeliveryCard, FleetView, FleetWindow, YouEntry
 from tests.fakeharness import FakeHarness
 
 TEAM = {
@@ -65,13 +65,25 @@ async def window(tmp_path: Path, qapp: QApplication):
         await shown.shut()
 
 
-def start(window: FleetWindow, tmp_path: Path, task: str, *, duty: bool = False) -> None:
+async def start(window: FleetWindow, tmp_path: Path, task: str, *, name: str = "dev",
+                duty: bool = False, project: str = "Acme") -> FleetView:
+    """Add a fleet through the forms, making the project first when there is none."""
+    if window.project is None:
+        window.project_form.name.setText(project)
+        window.project_form.set_folder(tmp_path / "work")
+        window.project_form.create.click()
+    elif not window.adding:
+        window.chart.add_button.click()
     form = window.start_form
+    await until(lambda: form.isVisibleTo(window))
+    before = set(window.views)
+    form.name.setText(name)
     form.task.setPlainText(task)
-    form.duty.setChecked(duty)
-    form.set_folder(tmp_path / "work")
+    (form.duty if duty else form.task_kind).setChecked(True)
     form.budget.setValue(3.0)
     form.start.click()
+    await until(lambda: set(window.views) - before and window.view is not None)
+    return window.view
 
 
 def agents(window: FleetWindow) -> list[tuple[int, str, str]]:
@@ -88,33 +100,50 @@ def agents(window: FleetWindow) -> list[tuple[int, str, str]]:
     return rows
 
 
-def cards(window: FleetWindow) -> list[tuple[str, str]]:
-    return [(c.header.text(), c.body.toPlainText()) for c in window.entries
-            if isinstance(c, DeliveryCard) and c.isVisibleTo(window)]
+def cards(view: FleetView) -> list[tuple[str, str]]:
+    return [(c.header.text(), c.body.toPlainText()) for c in view.entries
+            if isinstance(c, DeliveryCard) and not c.isHidden()]
 
 
-async def test_a_fleet_is_started_and_followed_in_the_window(window, tmp_path: Path):
+def chart(window: FleetWindow) -> dict[str, list[str]]:
+    """Each fleet on the chart, with its agents as "name rank"."""
+    shown = window.chart
+    return {head.name.text(): sorted(f"{node.name.text()} {node.rank.text()}"
+                                     for (fleet, _), node in shown.nodes.items() if fleet == key)
+            for key, head in shown.heads.items()}
+
+
+async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
     shown, _ = window(TEAM)
-    form = shown.start_form
-    assert form.isVisibleTo(shown) and not shown.composer.isVisibleTo(shown)
-    assert not shown.title.isVisibleTo(shown)  # nothing to name yet
+    assert shown.project_form.isVisibleTo(shown) and not shown.title.isVisibleTo(shown)
     assert not shown.agents_section.isVisibleTo(shown)
-    assert "Ends" in form.hint.text() and not form.duty.isChecked()  # a task, by default
-    form.duty.setChecked(True)
-    assert "until you stop" in form.hint.text() and not form.task_kind.isChecked()
+    shown.project_form.name.setText("Acme")
+    shown.project_form.set_folder(tmp_path / "work")
+    shown.project_form.create.click()
+    form = shown.start_form
+    await until(lambda: form.isVisibleTo(shown))  # a project with no fleet asks for one
+    assert shown.title.text() == "Acme" and shown.projects.item(0).text() == "Acme"
+    assert form.folder == tmp_path / "work"  # the project's, unless another is chosen
+    assert form.duty.isChecked() and "until you stop" in form.hint.text()
     form.task_kind.setChecked(True)
-    start(shown, tmp_path, "Tidy up")
-    await until(lambda: shown.manager is not None and shown.manager.finished.is_set())
-    await until(lambda: len(cards(shown)) == 3)
-    assert not shown.start_form.isVisibleTo(shown) and shown.agents_section.isVisibleTo(shown)
+    assert "Ends" in form.hint.text()
+    form.task.setPlainText("Tidy up")
+    form.start.click()  # not without a name
+    await asyncio.sleep(0.05)
+    assert not shown.views
+    view = await start(shown, tmp_path, "Tidy up", name="dev")
+    await until(lambda: view.manager is not None and view.manager.finished.is_set())
+    await until(lambda: len(cards(view)) == 3)
+    assert view.isVisibleTo(shown) and shown.agents_section.isVisibleTo(shown)
     assert agents(shown) == [(0, "Lead  K5", "done"), (1, "Scout  K4", "done")]
-    assert cards(shown) == [("Scout → Lead · question", "Which folder?"),
-                            ("Scout → Lead · report", "Tidied docs/"),
-                            ("Lead → you · report", "Docs are tidy.")]
-    assert "Tidy up" in shown.title.text()
+    assert cards(view) == [("Scout → Lead · question", "Which folder?"),
+                           ("Scout → Lead · report", "Tidied docs/"),
+                           ("Lead → you · report", "Docs are tidy.")]
+    assert shown.title.text() == "dev"
     await until(lambda: "finished" in shown.status.text())
     assert "of $3.00" in shown.status.text()
-    assert shown.manager.fleet.work == str(tmp_path / "work")
+    assert view.manager.fleet.work == str(tmp_path / "work")
+    assert view.folder.parent == shown.project.folder / "fleets"
 
 
 async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: Path):
@@ -122,62 +151,111 @@ async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: P
         {"do": [("approval", "r1", "write_file", "{'path': '/etc/motd'}"), ("say", "Wrote it.")]},
         {"when": "hello", "do": [("say", "Hi there.")]},
         {"when": "started again", "do": [("say", "Back on watch.")]}]})
-    start(shown, tmp_path, "Keep watch", duty=True)
-    await until(lambda: any(isinstance(e, ApprovalCard) for e in shown.entries))
-    [card] = [e for e in shown.entries if isinstance(e, ApprovalCard)]
+    view = await start(shown, tmp_path, "Keep watch", duty=True)
+    await until(lambda: any(isinstance(e, ApprovalCard) for e in view.entries))
+    [card] = [e for e in view.entries if isinstance(e, ApprovalCard)]
     assert "write_file" in card.question.text() and "/etc/motd" in card.question.text()
     card.allow.click()
     await until(lambda: harness.approved == [("r1", True)])
     await until(lambda: not card.allow.isVisibleTo(shown) and "Allowed" in card.question.text())
 
-    shown.input.setPlainText("hello")
-    shown.send_button.click()
+    view.input.setPlainText("hello")
+    view.send_button.click()
     await until(lambda: any("hello" in heard for heard in harness.heard["Lead"]))
-    assert shown.input.toPlainText() == ""
-    await until(lambda: [e.text.text() for e in shown.entries if isinstance(e, YouEntry)]
+    assert view.input.toPlainText() == ""
+    await until(lambda: [e.text.text() for e in view.entries if isinstance(e, YouEntry)]
                 == ["hello"])
 
     shown.stop_button.click()
     await until(lambda: "stopped" in shown.status.text())
-    assert shown.resume_button.isVisibleTo(shown) and not shown.input.isEnabled()
+    assert shown.resume_button.isVisibleTo(shown) and not view.input.isEnabled()
     shown.resume_button.click()
     await until(lambda: ("Lead", "session-u1") in harness.opened)
-    await until(lambda: "running" in shown.status.text() and shown.input.isEnabled())
+    await until(lambda: "running" in shown.status.text() and view.input.isEnabled())
 
 
-async def test_a_stopped_fleet_is_opened_with_its_history(window, tmp_path: Path):
+async def test_the_window_opens_on_the_chart_of_the_newest_project(window, tmp_path: Path):
     first, _ = window(TEAM)
-    start(first, tmp_path, "Tidy up")
-    await until(lambda: first.manager is not None and first.manager.finished.is_set())
-    await until(lambda: len(cards(first)) == 3)
-    folder = first.manager.folder
+    view = await start(first, tmp_path, "Tidy up", name="dev")
+    await until(lambda: view.manager.finished.is_set() and len(cards(view)) == 3)
     await first.shut()
 
     again, _ = window({})
-    await until(lambda: again.fleets.count() == 1)  # the sidebar lists earlier fleets
-    row = again.fleets.item(0)
-    assert row.text() == "Tidy up" and "2 agents" in row.data(PREVIEW_ROLE)
-    assert [f.folder for f in again.earlier_fleets()] == [folder]
-    again.fleets.itemClicked.emit(row)
-    await until(lambda: again.fleet is not None)
-    assert [header for header, _ in cards(again)] == [
-        "Scout → Lead · question", "Scout → Lead · report", "Lead → you · report"]
+    await until(lambda: chart(again) == {"dev": ["Lead K5", "Scout K4"]})
+    assert again.chart.isVisibleTo(again) and again.title.text() == "Acme"
+    assert "0 running" in again.status.text()
+    assert again.projects.item(0).data(PREVIEW_ROLE) == "1 fleet"
+    [head] = again.chart.heads.values()
+    assert "stopped" in head.status.text()
+    lead, scout = (again.chart.nodes[key] for key in sorted(again.chart.nodes))
+    assert lead.y() < scout.y()  # the K5 on top
+    scout.clicked.emit()  # an agent on the chart opens its fleet, on what concerns it
+    opened = again.view
+    assert opened is not None and opened.isVisibleTo(again) and again.title.text() == "dev"
+    assert [header for header, _ in cards(opened)] == ["Scout → Lead · question",
+                                                       "Scout → Lead · report"]
     assert agents(again) == [(0, "Lead  K5", "done"), (1, "Scout  K4", "done")]
-    assert "stopped" in again.status.text()
     assert not again.resume_button.isVisibleTo(again)  # nothing was at work
+    again.show_all.click()
+    assert len(cards(opened)) == 3 and not again.show_all.isVisibleTo(again)
+    again.back_button.click()
+    assert again.chart.isVisibleTo(again) and again.view is None
+    head.clicked.emit()  # a fleet's name opens it whole
+    assert again.view is opened and len(cards(opened)) == 3
 
 
-async def test_choosing_an_agent_shows_what_concerns_it(window, tmp_path: Path):
-    shown, _ = window(TEAM)
-    start(shown, tmp_path, "Tidy up")
-    await until(lambda: len(cards(shown)) == 3)
-    lead = shown.agents.topLevelItem(0)
-    shown.agents.setCurrentItem(lead.child(0))  # Scout
-    assert [header for header, _ in cards(shown)] == ["Scout → Lead · question",
-                                                      "Scout → Lead · report"]
-    assert shown.show_all.isVisibleTo(shown)
-    shown.show_all.click()
-    assert len(cards(shown)) == 3 and not shown.show_all.isVisibleTo(shown)
+async def test_fleets_run_side_by_side_and_projects_are_switched(window, tmp_path: Path):
+    shown, _ = window({"Lead": [{"do": [("say", "On watch.")]}]})
+    dev = await start(shown, tmp_path, "Build it", name="dev", duty=True)
+    shown.back_button.click()
+    art = await start(shown, tmp_path, "Draw it", name="art", duty=True)
+    await until(lambda: dev.running and art.running)
+    shown.back_button.click()
+    await until(lambda: chart(shown) == {"dev": ["Lead K5"], "art": ["Lead K5"]})
+    assert "2 running" in shown.status.text()
+    dev_head, art_head = shown.chart.heads.values()
+    assert dev_head.x() < art_head.x() and dev_head.y() == art_head.y()
+    dev_head.clicked.emit()
+    shown.stop_button.click()
+    await until(lambda: "stopped" in shown.status.text())
+    assert art.running  # the other fleet is left alone
+    shown.back_button.click()
+    assert "1 running" in shown.status.text()
+
+    shown.new_button.click()
+    assert shown.project_form.isVisibleTo(shown) and art.running
+    await start(shown, tmp_path, "Hire", name="HR", duty=True, project="Other")
+    shown.back_button.click()
+    await until(lambda: chart(shown) == {"HR": ["Lead K5"]})  # only this project's fleets
+    await until(lambda: shown.projects.count() == 2)
+    acme = next(shown.projects.item(i) for i in range(2)
+                if shown.projects.item(i).text() == "Acme")
+    assert acme.data(PREVIEW_ROLE) == "2 fleets · 1 running"
+    shown.projects.itemClicked.emit(acme)
+    await until(lambda: set(chart(shown)) == {"dev", "art"})
+    assert shown.title.text() == "Acme"
+
+
+async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "me")
+    (tmp_path / "me").mkdir()
+    shown, _ = window({})
+    form = shown.project_form
+    assert form.folder is None and form.folder_button.text().strip() == "Choose a folder"
+    form.name.setText("Acme")
+    for folder, problem in ((None, "Choose a folder first."), (tmp_path / "me", "home folder"),
+                            (tmp_path / "gone", "no folder")):
+        form.set_folder(folder)
+        form.name.returnPressed.emit()
+        await asyncio.sleep(0.05)
+        assert shown.project is None and problem in form.warning.text()
+    assert not (tmp_path / "gone").exists()  # nothing is made that nobody asked for
+    assert not (tmp_path / "home" / "projects").exists()
+    form.set_folder(tmp_path / "work")
+    assert not form.warning.isVisibleTo(shown) and form.folder_button.text().strip() == "work"
+    form.name.returnPressed.emit()
+    await until(lambda: shown.project is not None)
+    assert shown.project.work == tmp_path / "work" and form.folder is None
 
 
 async def test_the_window_adds_itself_to_the_app_menu(window, tmp_path: Path, monkeypatch):
@@ -229,50 +307,3 @@ async def test_the_window_has_rounded_corners_unless_maximized(window, qapp: QAp
     shown.showMaximized()
     qapp.processEvents()
     assert shown.grab().toImage().pixelColor(0, 0).alpha() == 255
-
-
-async def test_the_folder_is_chosen_for_each_fleet(window, tmp_path: Path, monkeypatch):
-    from PySide6.QtCore import Qt
-    from PySide6.QtTest import QTest
-
-    monkeypatch.setattr(Path, "home", lambda: tmp_path / "me")
-    (tmp_path / "me").mkdir()
-    shown, harness = window({"Lead": [{"do": [("report", "Done.")]}]})
-    form = shown.start_form
-    assert form.folder is None and form.folder_button.text().strip() == "Choose a folder"
-    form.task.setPlainText("Tidy up")
-    QTest.keyClick(form.task, Qt.Key.Key_Return)  # Enter starts, but not without a folder
-    await asyncio.sleep(0.1)
-    assert shown.fleet is None and form.warning.text() == "Choose a folder first."
-    form.set_folder(tmp_path / "me")
-    QTest.keyClick(form.task, Qt.Key.Key_Return)
-    await asyncio.sleep(0.1)
-    assert shown.fleet is None and "home folder" in form.warning.text()
-    form.set_folder(tmp_path / "gone")
-    QTest.keyClick(form.task, Qt.Key.Key_Return)
-    await asyncio.sleep(0.1)
-    assert shown.fleet is None and "no folder" in form.warning.text()
-    assert not (tmp_path / "gone").exists()  # nothing is made that nobody asked for
-    form.set_folder(tmp_path / "work")
-    assert not form.warning.isVisibleTo(shown) and form.folder_button.text().strip() == "work"
-    QTest.keyClick(form.task, Qt.Key.Key_Return)
-    await until(lambda: shown.manager is not None and shown.manager.finished.is_set())
-    assert harness.heard["Lead"]
-    shown.new_button.click()
-    await until(lambda: shown.fleet is None)
-    assert form.folder is None  # the next fleet's folder is chosen again
-
-
-async def test_a_running_fleet_keeps_the_others_closed(window, tmp_path: Path):
-    first, _ = window({"Lead": [{"do": [("report", "Done.")]}]})
-    start(first, tmp_path, "One")
-    await until(lambda: first.manager is not None and first.manager.finished.is_set())
-    await first.shut()
-    shown, _ = window({"Lead": [{"do": [("say", "On watch.")]}]})
-    await until(lambda: shown.fleets.count() == 1)
-    start(shown, tmp_path, "Two", duty=True)
-    await until(lambda: shown.fleets.count() == 2)
-    assert not shown.fleets.isEnabled() and shown.fleets_hint.isVisibleTo(shown)
-    assert shown.fleets.currentItem().text() == "Two"  # the open one is marked
-    shown.stop_button.click()
-    await until(lambda: shown.fleets.isEnabled())

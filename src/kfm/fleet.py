@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-FORMAT = 3  # of fleet.json; a file of another format is refused
+FORMAT = 4  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
 # starting: its process is coming up.  working: on its task, between check-ins included.
@@ -54,10 +54,11 @@ class Unit:
 class Fleet:
     """Units by id, in the order they were added."""
 
-    def __init__(self, top_rank: int = 5, max_units: int = 12) -> None:
+    def __init__(self, top_rank: int = 5, max_units: int = 12, name: str = "") -> None:
         if not 1 <= top_rank <= 5:
             raise ValueError("the top rank is between 1 and 5")
         self.top_rank, self.max_units = top_rank, max_units
+        self.name = name  # what a person calls it: "marketing"
         self.units: dict[str, Unit] = {}
         self._next = 1
         # What starting the fleet again needs (the manager fills these in).
@@ -142,7 +143,8 @@ class Fleet:
     # ── fleet.json: for people, `kfm status` and `kfm resume` ────────────
 
     def save(self, folder: Path) -> None:
-        data = {"format": FORMAT, "top_rank": self.top_rank, "max_units": self.max_units,
+        data = {"format": FORMAT, "name": self.name, "top_rank": self.top_rank,
+                "max_units": self.max_units,
                 "work": self.work, "settings": self.settings,
                 "manager_pid": self.manager_pid,
                 "units": [asdict(u) for u in self.units.values()]}
@@ -156,7 +158,7 @@ class Fleet:
         data = json.loads((folder / RECORD).read_text())
         if data.get("format") != FORMAT:
             raise ValueError(f"{folder / RECORD} is of format {data.get('format')}, not {FORMAT}")
-        fleet = cls(data["top_rank"], data["max_units"])
+        fleet = cls(data["top_rank"], data["max_units"], data["name"])
         fleet.work, fleet.settings = data["work"], data["settings"]
         fleet.manager_pid = data["manager_pid"]
         for record in data["units"]:

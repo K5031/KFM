@@ -38,12 +38,12 @@ class Manager:
     def __init__(self, config: FleetConfig, folder: Path, work: Path, *,
                  harness: Harness | None = None,
                  on_event: Callable[[FleetEvent], None] = lambda event: None,
-                 fleet: Fleet | None = None) -> None:
-        """`harness`: the agent program the units run; None loads the one the settings
+                 fleet: Fleet | None = None, name: str = "") -> None:
+        """`name`: what a new fleet is called. `harness`: the agent program the units run; None loads the one the settings
         name (ValueError when it cannot be)."""
         self.config, self.folder, self.work = config, folder, work
         self._resuming = fleet is not None
-        self.fleet = fleet or Fleet(config.top_rank, config.max_units)
+        self.fleet = fleet or Fleet(config.top_rank, config.max_units, name)
         self.fleet.work, self.fleet.settings = str(work), settings.record(config)
         self.finished = asyncio.Event()  # the lead reported, or the budget ran out
         self._harness = harness or harnesses.load(config.harness, config.harness_options)

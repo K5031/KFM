@@ -78,23 +78,35 @@ what changed meanwhile. Agents that had finished stay finished.
 kfm-desktop
 ```
 
-![The fleet window](images/window-light.png)
+![A project's chart](images/window-light.png)
 
 opens a window that does what `kfm run`, `kfm status` and `kfm resume` do, without a
 terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"`.
 
-- **Start a fleet** on the first screen: write what it should do and press Enter. Under
-  the text you choose **Task** (ends when the lead reports it done) or **Duty** (standing
-  work that never ends), the folder the agents work in, and the most the fleet may spend.
-  You choose the folder for each fleet: none is suggested, and your home folder itself
-  is refused, since agents work freely inside the folder they are given.
+- **A project** is an organisation of fleets: a company, with a fleet for each team
+  ("marketing", "dev"). Make one with **New project**: give it a name and choose the
+  folder its fleets work in. None is suggested, and your home folder itself is refused,
+  since agents work freely inside the folder they are given. Projects are listed on the
+  left; click one to switch to it.
+- **The chart** is a project's main screen: its fleets side by side, each as the tree of
+  who supervises whom, the K5 lead on top. Each agent shows its rank, its state and what
+  it has spent. How large a fleet is, is what you see here: its lead hires as the work
+  needs.
+- **Add fleet**, after the last fleet on the chart: give it a name, write what it does and
+  press Enter. Under the text you choose **Duty** (standing work that never ends) or
+  **Task** (ends when the lead reports it done), a folder of its own if it should not
+  work in the project's, and the most the fleet may spend.
 
-  ![The start screen](images/start-light.png)
+  ![A new fleet](images/start-light.png)
 
-- **Fleets** you ran before are listed on the left, newest first, with their agents and
-  what they spent. Click one to see everything that happened in it. While a fleet runs,
-  the others stay closed: stop it first.
-- **Agents** of the open fleet are above that list, each under its supervisor, with its
+- **Several fleets run at once.** Each has its own limit, and is stopped and resumed by
+  itself. Fleets do not talk to each other: each lead reports to you.
+- **Open a fleet** by clicking its name on the chart, or an agent to see only what
+  concerns it. The arrow at the top left leads back to the chart.
+
+  ![A fleet](images/fleet-light.png)
+
+- **Agents** of the open fleet are on the left, each under its supervisor, with its
   state and what it has spent. Click one to see only what concerns it; **Show all**
   brings everything back.
 - **The timeline** shows what the lead says and every report, question and update in
@@ -104,8 +116,8 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
 - **The window has no title bar.** Drag it by the bar at the top, double-click that bar
   to maximize, and resize it at its edges; minimize, maximize and close are at the top
   right.
-- **Stop** ends the fleet's processes; **Resume** carries it on. Closing the window stops
-  the fleet too: it does not run in the background.
+- **Stop** ends the open fleet's processes; **Resume** carries it on. Closing the window
+  stops every fleet: none runs in the background.
 - **Add to App Menu**, at the bottom left on Linux, puts KFM in your app menu with its own
   icon, so it starts without a terminal. The button is there until that is done.
 
@@ -166,5 +178,7 @@ in `src/kfm/api.py`, and `tests/fakeharness.py` is a small complete example.
 
 ## Not there yet
 
-- One fleet per `kfm run` or per window, and only while that runs.
+- Fleets run only while the window or `kfm run` does.
+- A fleet started with `kfm run` belongs to no project and is not shown in the window.
+- Fleets of a project do not talk to each other.
 - Agents share one folder, and nothing stops two from editing the same file.

@@ -1,16 +1,15 @@
-"""The fleet window (`kfm-desktop`): the fleet's agents, what passes between them, and the
-person's part in it. A frontend on the Manager, like the terminal's Console: its events
-in, its methods out. Built on Kayden's desktop code: its event loop, theme and Markdown
+"""The window (`kfm-desktop`): projects, each one's fleets as a chart, and for a fleet its
+agents, what passes between them and the person's part in it. A frontend on Managers, like
+the terminal's Console: their events in, their methods out. Built on Kayden's desktop code: its event loop, theme and Markdown
 view."""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
 import time
 from collections.abc import Coroutine
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +44,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QScrollArea,
+    QStackedWidget,
     QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -52,20 +52,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kfm import app_menu, log
+from kfm import app_menu, log, project
 from kfm.api import Harness, UnitError
+from kfm.chart import Chart, ChartFleet
 from kfm.config import CONFIG_FILE, HOME, FleetConfig, load
 from kfm.events import Answered, Approval, Changed, Delivered, FleetEvent, Notice, Said, Told
-from kfm.fleet import RECORD, Fleet, FleetError, Unit
+from kfm.fleet import Fleet, FleetError, Unit
 from kfm.manager import Manager
+from kfm.project import Project
 
 SIDEBAR = 280  # px
 FORM = 760  # px, the start screen's width
 LOGO = 64  # px, on the start screen
 AGENT_ROWS = 10  # agents shown before their list scrolls
 AGENT_ROW_PX = 30
-FOLDER_ROLE = Qt.ItemDataRole.UserRole  # a fleet row's folder
+FOLDER_ROLE = Qt.ItemDataRole.UserRole  # a project row's folder
 QUIET_STATES = ("starting", "working", "waiting", "done")  # shown by the agents list alone
+BAR = 48  # px, the bar on top
 COLUMN = 860  # px, the widest the timeline's entries get
 REFRESH_MS = 1000  # spending and states, while a fleet runs
 TITLE_CHARS = 90
@@ -84,7 +87,7 @@ def label(text: str = "", *, role: str | None = None, tone: str | None = None,
 
 
 def _when(started: str) -> str:
-    """A fleet folder's name (20261112-210500) as its row's date: the time today, else
+    """A project folder's name (20261112-210500) as its row's date: the time today, else
     the day."""
     try:
         at = time.strptime(started, "%Y%m%d-%H%M%S")
@@ -238,8 +241,8 @@ class Budget(QFrame):
 
 
 class StartForm(QWidget):
-    """The window's empty state: one box for what the fleet should do, with what else a
-    fleet needs along its lower edge."""
+    """A new fleet: its name, one box for what it should do, and what else a fleet needs
+    along the box's lower edge."""
 
     submitted = Signal()
 
@@ -258,14 +261,14 @@ class StartForm(QWidget):
             f"QFrame#budget {{ border: 1px solid {colors.line}; border-radius: 10px; }}"
             f"QFrame#budget QLineEdit {{ background: transparent; border: none; "
             f"padding: 0; }}")
-        self.folder: Path | None = None  # chosen for each fleet
+        self.folder: Path | None = None  # the project's, unless another is chosen
         outer = QVBoxLayout(self)
         outer.setSpacing(0)
         outer.addStretch(3)
         logo = QLabel()
         logo.setPixmap(QIcon(str(app_menu.ICON)).pixmap(LOGO, LOGO))
         logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        heading = label("What should your fleet do?", wrap=False)
+        heading = label("New fleet", wrap=False)
         heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         heading.setStyleSheet("font-size: 22px; font-weight: 600;")
         outer.addWidget(logo)
@@ -277,8 +280,11 @@ class StartForm(QWidget):
         inside = QVBoxLayout(box)
         inside.setContentsMargins(16, 14, 12, 12)
         inside.setSpacing(12)
+        self.name = _name_field("Name")
+        self.name.returnPressed.connect(lambda: self.task.setFocus())
+        inside.addWidget(self.name)
         self.task = TaskBox()
-        self.task.setPlaceholderText("A task, or a role to hold")
+        self.task.setPlaceholderText("What it does")
         self.task.submitted.connect(self.submitted)
         inside.addWidget(self.task)
         row = QHBoxLayout()
@@ -295,7 +301,7 @@ class StartForm(QWidget):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             self._kinds.addButton(button)
             kinds.addWidget(button)
-        self.task_kind.setChecked(True)
+        self.duty.setChecked(True)  # a fleet in a project holds a role
         self.folder_button = QToolButton(objectName="folderPicker")
         self.folder_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.folder_button.setIcon(theme.icon("folder", colors.muted, 16))
@@ -358,148 +364,130 @@ class StartForm(QWidget):
         dialog.open()
 
 
-@dataclass(frozen=True, slots=True)
-class FleetRow:
-    """An earlier fleet, as the sidebar lists it."""
+class ProjectForm(QWidget):
+    """The window with no project: a name and the folder the project's fleets work in."""
 
-    folder: Path
-    task: str
-    started: str  # its folder's name: the date and time it was started
-    agents: int
-    spent_usd: float
+    submitted = Signal()
 
-
-# ── The window ────────────────────────────────────────────────────────────
-
-
-class FleetWindow(QMainWindow):
-    """`home`: where fleets and their settings are kept (~/.kfm). `harness` and `config`
-    replace what the settings name, for tests."""
-
-    def __init__(self, home: Path = HOME, *, harness: Harness | None = None,
-                 config: FleetConfig | None = None) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.home, self._harness, self._config = home, harness, config
-        self.manager: Manager | None = None  # while a fleet runs
-        self.fleet: Fleet | None = None  # the fleet shown, running or not
-        self.folder: Path | None = None
-        self.entries: list[QWidget] = []
-        self.closed = asyncio.Event()
-        self._rows: dict[str, QTreeWidgetItem] = {}
-        self._approvals: dict[str, ApprovalCard] = {}
-        self._shown: str | None = None  # the agent whose entries are shown; None: all
-        self._stopping = False  # its processes are ending
-        self._tasks: set[asyncio.Task[None]] = set()
-        self.setWindowTitle("KFM")
-        # No title bar: the bar on top is where the window is grabbed, and has its controls.
-        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
-        self._edges = WindowEdges(self)
-        self._build()
-        self._corners = RoundedCorners(self)
-        self.show_all.hide()
-        self._timer = QTimer(self, interval=REFRESH_MS)
-        self._timer.timeout.connect(self._refresh)
-        self._refresh()
-        self._run(self._offer_app_menu())
-        self._run(self.list_fleets())
-
-    def _build(self) -> None:
-        self.agents = QTreeWidget()
-        self.agents.setColumnCount(3)
-        self.agents.setHeaderHidden(True)
-        self.agents.setRootIsDecorated(False)
-        self.agents.setIndentation(16)
-        self.agents.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in (1, 2):
-            self.agents.header().setSectionResizeMode(
-                column, QHeaderView.ResizeMode.ResizeToContents)
-        self.agents.setFrameShape(QFrame.Shape.NoFrame)
-        self.agents.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.agents.currentItemChanged.connect(self._agent_chosen)
-        self.new_button = QPushButton(" New fleet", objectName="nav")
-        self.new_button.setIcon(theme.icon("plus", theme.current().text, 16))
-        self.new_button.clicked.connect(lambda: self._run(self.new_fleet()))
-        side = QFrame(objectName="fleetSide")
-        side.setFixedWidth(SIDEBAR)
+        self.setMaximumWidth(FORM)
+        self.setMinimumWidth(480)
         colors = theme.current()
-        side.setStyleSheet(
-            f"QFrame#fleetSide {{ background: {colors.side}; }}"
-            f"QTreeWidget {{ background: transparent; border: none; }}"
-            f"QTreeWidget::item {{ padding: 5px 2px; }}"
-            f"QTreeWidget::item:selected {{ background: {colors.select}; "
-            f"color: {colors.text}; }}"
-            f"QListWidget {{ background: transparent; border: none; }}")
-        side_layout = QVBoxLayout(side)
-        side_layout.setContentsMargins(10, 12, 10, 12)
-        side_layout.addWidget(self.new_button)
-        side_layout.addSpacing(6)
+        self.folder: Path | None = None
+        outer = QVBoxLayout(self)
+        outer.setSpacing(0)
+        outer.addStretch(3)
+        logo = QLabel()
+        logo.setPixmap(QIcon(str(app_menu.ICON)).pixmap(LOGO, LOGO))
+        logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        heading = label("New project", wrap=False)
+        heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        heading.setStyleSheet("font-size: 22px; font-weight: 600;")
+        outer.addWidget(logo)
+        outer.addSpacing(14)
+        outer.addWidget(heading)
+        outer.addSpacing(22)
+        box = QFrame(objectName="composer")
+        inside = QVBoxLayout(box)
+        inside.setContentsMargins(16, 14, 12, 12)
+        inside.setSpacing(12)
+        self.name = _name_field("Name")
+        self.name.returnPressed.connect(self.submitted)
+        inside.addWidget(self.name)
+        row = QHBoxLayout()
+        self.folder_button = QToolButton(objectName="folderPicker")
+        self.folder_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.folder_button.setIcon(theme.icon("folder", colors.muted, 16))
+        self.folder_button.clicked.connect(self._choose)
+        self.create = QPushButton("Create")
+        self.create.setProperty("primary", True)
+        self.create.clicked.connect(self.submitted)
+        row.addWidget(self.folder_button)
+        row.addStretch(1)
+        row.addWidget(self.create)
+        inside.addLayout(row)
+        outer.addWidget(box)
+        outer.addSpacing(10)
+        self.warning = label("", role="small", tone="error")
+        self.warning.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        outer.addWidget(self.warning)
+        outer.addStretch(5)
+        self.set_folder(None)
 
-        # The open fleet's agents, above the list of every fleet.
-        self.show_all = QPushButton("Show all", objectName="nav")
-        self.show_all.clicked.connect(lambda: self.agents.setCurrentItem(None))
-        self.agents_section = QWidget()
-        section = QVBoxLayout(self.agents_section)
-        section.setContentsMargins(0, 0, 0, 8)
-        heading = QHBoxLayout()
-        heading.addWidget(label("Agents", role="small", tone="muted"), 1)
-        heading.addWidget(self.show_all)
-        section.addLayout(heading)
-        section.addWidget(self.agents)
-        side_layout.addWidget(self.agents_section)
+    def sizeHint(self) -> QSize:
+        return QSize(FORM, super().sizeHint().height())
 
-        self.fleets = QListWidget(objectName="conversations")
-        self.fleets.setItemDelegate(RowDelegate(self.fleets))
-        self.fleets.setFrameShape(QFrame.Shape.NoFrame)
-        self.fleets.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.fleets.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.fleets.itemClicked.connect(self._fleet_chosen)
-        self.fleets_label = label("Fleets", role="small", tone="muted")
-        self.fleets_hint = label("Stop this fleet to open another.", role="small",
-                                 tone="muted")
-        side_layout.addWidget(self.fleets_label)
-        side_layout.addWidget(self.fleets, 1)
-        side_layout.addWidget(self.fleets_hint)
-        self.app_menu_button = QPushButton("Add to App Menu", objectName="nav")
-        self.app_menu_button.clicked.connect(lambda: self._run(self._add_to_app_menu()))
-        self.app_menu_button.hide()
-        side_layout.addWidget(self.app_menu_button)
+    def set_folder(self, folder: Path | None) -> None:
+        self.folder = Path(folder).expanduser() if folder is not None else None
+        chosen = self.folder
+        self.folder_button.setText(f" {chosen.name or chosen}" if chosen else " Choose a folder")
+        self.folder_button.setToolTip(f"Its fleets work in {chosen}" if chosen
+                                      else "The folder its fleets work in")
+        self.warn("")
 
-        self.title = ElidedLabel()
-        self.title.setProperty("role", "heading")
-        self.status = label("", role="small", tone="muted", wrap=False)
-        self.stop_button = QPushButton("Stop")
-        self.resume_button = QPushButton("Resume")
-        self.resume_button.setProperty("primary", True)
-        self.stop_button.clicked.connect(lambda: self._run(self.stop()))
-        self.resume_button.clicked.connect(lambda: self._run(self.resume()))
-        self.bar = DragArea()
-        bar = QHBoxLayout(self.bar)
-        bar.setContentsMargins(20, 0, 0, 0)  # the controls reach the window's corner
-        bar.setSpacing(4)
-        bar.addWidget(self.title, 1)
-        self._bar_gap = QWidget()  # keeps the controls at the right while no fleet is named
-        bar.addWidget(self._bar_gap, 1)
-        bar.addWidget(self.status)
-        bar.addWidget(self.stop_button)
-        bar.addWidget(self.resume_button)
-        bar.addSpacing(8)
-        self.window_buttons: dict[str, QToolButton] = {}
-        for name, tip, command in (("minimize", "Minimize", self.showMinimized),
-                                   ("maximize", "Maximize", self._toggle_maximized),
-                                   ("close", "Close", self.close)):
-            button = QToolButton(objectName="titleClose" if name == "close"
-                                 else "titleControl")
-            button.setToolTip(tip)
-            button.setAccessibleName(tip)
-            button.setIconSize(QSize(14, 14))
-            button.setFixedSize(WINDOW_BUTTON)
-            button.clicked.connect(command)
-            self.window_buttons[name] = button
-            bar.addWidget(button, 0, Qt.AlignmentFlag.AlignTop)
-        self._paint_controls()
+    def warn(self, text: str) -> None:
+        self.warning.setText(text)
+        self.warning.setVisible(bool(text))
 
-        self.start_form = StartForm()
-        self.start_form.submitted.connect(self._start_clicked)
+    def _choose(self) -> None:
+        start = self.folder.parent if self.folder is not None else Path.home()
+        dialog = QFileDialog(self, "The folder the project's fleets work in", str(start))
+        dialog.setFileMode(QFileDialog.FileMode.Directory)
+        dialog.fileSelected.connect(lambda chosen: self.set_folder(Path(chosen)))
+        dialog.open()
+
+
+def _name_field(placeholder: str) -> QLineEdit:
+    field = QLineEdit()
+    field.setFrame(False)
+    field.setPlaceholderText(placeholder)
+    field.setStyleSheet("QLineEdit { background: transparent; border: none; padding: 0; "
+                        "font-weight: 600; }")
+    return field
+
+
+def _work_folder(folder: Path | None) -> tuple[Path | None, str]:
+    """The folder agents may work in, or why they may not."""
+    if folder is None:
+        return None, "Choose a folder first."
+    work = folder.resolve()
+    if work == Path.home().resolve():
+        return None, ("Not your home folder: agents can change anything in the folder they "
+                      "work in.")
+    if not work.is_dir():
+        return None, f"There is no folder {work}."
+    return work, ""
+
+
+def _centred(form: QWidget) -> QWidget:
+    page = QWidget()
+    across = QHBoxLayout(page)
+    across.setContentsMargins(0, 0, 0, 0)
+    across.addWidget(form, 0, Qt.AlignmentFlag.AlignHCenter)
+    return page
+
+
+# ── A fleet ───────────────────────────────────────────────────────────────
+
+
+class FleetView(QWidget):
+    """One fleet: its timeline, the box for messages to its lead, and its manager while it
+    runs. `changed` after anything that alters how it stands."""
+
+    changed = Signal()
+
+    def __init__(self, folder: Path, harness: Harness | None) -> None:
+        super().__init__()
+        self.folder, self._harness = folder, harness
+        self.manager: Manager | None = None  # while it runs
+        self.fleet: Fleet | None = None
+        self.entries: list[QWidget] = []
+        self.shown: str | None = None  # the agent whose entries are shown; None: all
+        self.stopping = False  # its processes are ending
+        self._approvals: dict[str, ApprovalCard] = {}
+        self._tasks: set[asyncio.Task[None]] = set()
+
         # The timeline is one column in the middle, as wide as text reads well.
         page = QWidget(objectName="transcript")
         across = QHBoxLayout(page)
@@ -535,226 +523,104 @@ class FleetWindow(QMainWindow):
         inside.addWidget(self.input, 1)
         inside.addWidget(self.send_button, 0, Qt.AlignmentFlag.AlignBottom)
         composer = QHBoxLayout()
+        composer.setContentsMargins(0, 0, 0, 0)
         composer.addStretch(1)
         composer.addWidget(box, 100)
         composer.addStretch(1)
-
-        main = QVBoxLayout()
-        main.setContentsMargins(20, 0, 20, 14)
-        main.addWidget(self.start_form, 1, Qt.AlignmentFlag.AlignHCenter)
-        main.addWidget(self.scroll, 1)
-        self.composer = QWidget()
-        self.composer.setLayout(composer)
-        composer.setContentsMargins(0, 0, 0, 0)
-        main.addWidget(self.composer)
-        whole = QWidget()
-        layout = QHBoxLayout(whole)
-        layout.setContentsMargins(0, 0, 0, 0)
-        right = QVBoxLayout()
-        right.setContentsMargins(0, 0, 0, 0)
-        right.setSpacing(0)
-        right.addWidget(self.bar)
-        right.addLayout(main, 1)
-        layout.addWidget(side)
-        layout.addLayout(right, 1)
-        self.setCentralWidget(whole)
-        if self._config is not None:
-            self.start_form.budget.setValue(self._config.budget_usd)
-        else:
-            self.start_form.budget.setValue(FleetConfig().budget_usd)
-
-    # ── What the person does ─────────────────────────────────────────────
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 0, 20, 14)
+        layout.addWidget(self.scroll, 1)
+        layout.addLayout(composer)
+        self._enable()
 
     @property
     def running(self) -> bool:
         return self.manager is not None
 
-    async def start_fleet(self, task: str, *, ongoing: bool, work: Path, budget: float) -> None:
-        """A new fleet on the task, in a new folder under `home`."""
-        await self.stop()
-        try:
-            config = self._config or await asyncio.to_thread(load, self.home / CONFIG_FILE)
-            config = replace(config, budget_usd=budget)
-            folder = self.home / "fleets" / time.strftime("%Y%m%d-%H%M%S")
-            while folder.exists():  # a second fleet within the same second
-                await asyncio.sleep(1)
-                folder = self.home / "fleets" / time.strftime("%Y%m%d-%H%M%S")
-            manager = Manager(config, folder, work.expanduser().resolve(), harness=self._harness,
-                              on_event=self._on_event)
-        except (ValueError, OSError) as e:
-            self.start_form.warn(f"The fleet could not start: {e}")
-            return
-        self._clear()
-        self.manager, self.fleet, self.folder = manager, manager.fleet, folder
-        self.start_form.task.clear()
-        self.start_form.set_folder(None)
-        await manager.start()
-        self._timer.start()
-        self._refresh()
-        await manager.lead(task, ongoing=ongoing)
-        await self.list_fleets()
+    @property
+    def name(self) -> str:
+        return self.fleet.name if self.fleet is not None else ""
 
-    async def open_fleet(self, folder: Path) -> None:
-        """Show a fleet that is not running, with what happened in it."""
-        await self.stop()
-        try:
-            fleet = await asyncio.to_thread(Fleet.load, folder)
-            history = await asyncio.to_thread(log.read, folder, fleet)
-        except (ValueError, OSError, KeyError) as e:
-            self._say(f"{folder} could not be opened: {e}", tone="error")
-            return
-        self._clear()
-        self.fleet, self.folder = fleet, folder
+    @property
+    def can_resume(self) -> bool:
+        return (not self.running and not self.stopping and self.fleet is not None
+                and any(unit.active for unit in self.fleet.units.values()))
+
+    @property
+    def status(self) -> str:
+        """How it stands and what it has spent of its limit."""
+        fleet = self.fleet
+        if fleet is None:
+            return ""
+        budget = (self.manager.config.budget_usd if self.manager is not None
+                  else fleet.settings.get("budget_usd", 0.0))
+        state = "running" if self.running else "stopping" if self.stopping else "stopped"
+        if (self.manager is not None and self.manager.finished.is_set()
+                and not any(unit.active for unit in fleet.units.values())):
+            state = "finished"  # its task is done; the lead still takes messages
+        return f"{state} · ${fleet.spent_usd:.2f} of ${budget:.2f}"
+
+    async def start(self, config: FleetConfig, name: str, task: str, *, ongoing: bool,
+                    work: Path) -> None:
+        """A new fleet on the task. ValueError or OSError when it cannot be made."""
+        manager = Manager(config, self.folder, work, harness=self._harness,
+                          on_event=self._on_event, name=name)
+        self.manager, self.fleet = manager, manager.fleet
+        self._enable()
+        await manager.start()
+        self.changed.emit()
+        await manager.lead(task, ongoing=ongoing)
+
+    async def load(self) -> None:
+        """The fleet as it was left, with what happened in it. ValueError, OSError or
+        KeyError when its record cannot be read."""
+        fleet = await asyncio.to_thread(Fleet.load, self.folder)
+        history = await asyncio.to_thread(log.read, self.folder, fleet)
+        self.fleet = fleet
         for _, event in history:
             self._show(event)
-        await self.list_fleets()
-
-    async def new_fleet(self) -> None:
-        """Back to the empty state; a running fleet is stopped."""
-        await self.stop()
-        self._clear()
-        self.fleet = self.folder = None
-        self.start_form.set_folder(None)
-        await self.list_fleets()
-        self.start_form.task.setFocus()
 
     async def resume(self) -> None:
-        if self.running or self.folder is None:
+        if self.running or self.fleet is None:
             return
         try:
             manager = await asyncio.to_thread(
                 lambda: Manager.resumed(self.folder, harness=self._harness,
                                         on_event=self._on_event))
         except (ValueError, OSError) as e:  # FleetError: it runs elsewhere, or is out of money
-            self._say(str(e), tone="error")
+            self.say(str(e), tone="error")
             return
         self.manager, self.fleet = manager, manager.fleet
-        self._rows.clear()
-        self.agents.clear()
+        self._enable()
         await manager.start()
-        self._timer.start()
-        self._refresh()
+        self.changed.emit()
 
     async def stop(self) -> None:
-        """Stop the fleet's processes; it stays shown and can be resumed."""
+        """Stop the fleet's processes; it can be resumed."""
         if (manager := self.manager) is None:
             return
         self.manager = None
-        self._timer.stop()
-        self._stopping = True
-        self._refresh()
+        self.stopping = True
+        self._enable()
+        self.changed.emit()
         try:
             await manager.aclose()
         finally:
-            self._stopping = False
-            await self.list_fleets()
+            self.stopping = False
+            self.changed.emit()
 
-    async def shut(self) -> None:
-        """Stop the fleet and close the window."""
-        await self.stop()
-        for task in list(self._tasks):
-            if task is not asyncio.current_task():
-                task.cancel()
-        self.closed.set()
-        self.close()
+    def choose(self, unit_id: str | None) -> None:
+        """Show only what concerns the agent; None: everything."""
+        self.shown = unit_id
+        for entry in self.entries:
+            entry.setVisible(self._concerns(entry))
 
-    def _toggle_maximized(self) -> None:
-        if self.isMaximized():
-            self.showNormal()
-        else:
-            self.showMaximized()
+    def say(self, text: str, tone: str) -> None:
+        self._add(Line(text, set(), tone))
 
-    def _paint_controls(self) -> None:
-        maximized = self.isMaximized()
-        for name, button in self.window_buttons.items():
-            kind = "restore" if name == "maximize" and maximized else name
-            button.setIcon(theme.icon(kind, theme.current().muted))
-        self.window_buttons["maximize"].setToolTip("Restore" if maximized else "Maximize")
-
-    def changeEvent(self, event: QEvent) -> None:
-        super().changeEvent(event)
-        if (event.type() in (QEvent.Type.PaletteChange, QEvent.Type.WindowStateChange)
-                and hasattr(self, "window_buttons")):  # not while it is being built
-            self._paint_controls()
-
-    def closeEvent(self, event: QCloseEvent) -> None:
-        if not self.closed.is_set():
-            self._run(self.shut())
-        event.accept()
-
-    def earlier_fleets(self) -> list[FleetRow]:
-        """Every fleet under `home`, newest first. Blocking."""
-        found = []
-        for record in sorted((self.home / "fleets").glob(f"*/{RECORD}"), reverse=True):
-            try:
-                units = json.loads(record.read_text())["units"]
-                task = next(u["task"] for u in units if u["supervisor"] is None)
-                spent = sum(u["spent_usd"] for u in units)
-            except (ValueError, KeyError, TypeError, StopIteration, OSError):
-                continue
-            found.append(FleetRow(record.parent, task, record.parent.name, len(units), spent))
-        return found
-
-    async def list_fleets(self) -> None:
-        """Fill the sidebar's list of fleets."""
-        rows = await asyncio.to_thread(self.earlier_fleets)
-        fleet, folder = self.fleet, self.folder
-        if fleet is not None and folder is not None and fleet.lead is not None:
-            # The open fleet as it is now: its record may not be written yet.
-            shown = FleetRow(folder, fleet.lead.task, folder.name, len(fleet.units),
-                             fleet.spent_usd)
-            rows = sorted([shown, *(row for row in rows if row.folder != folder)],
-                          key=lambda row: row.started, reverse=True)
-        self.fleets.clear()
-        for row in rows:
-            item = QListWidgetItem(_clip(row.task, 80))
-            agents = "1 agent" if row.agents == 1 else f"{row.agents} agents"
-            item.setData(PREVIEW_ROLE, f"{agents} · ${row.spent_usd:.2f}")
-            item.setData(DATE_ROLE, _when(row.started))
-            item.setData(FOLDER_ROLE, str(row.folder))
-            item.setToolTip(row.task)
-            self.fleets.addItem(item)
-            if row.folder == self.folder:
-                self.fleets.setCurrentItem(item)
-        self._refresh()
-
-    def _fleet_chosen(self, item: QListWidgetItem) -> None:
-        folder = Path(item.data(FOLDER_ROLE))
-        if not self.running and folder != self.folder:
-            self._run(self.open_fleet(folder))
-
-    async def _offer_app_menu(self) -> None:
-        """The button is there until the app menu starts this install."""
-        if app_menu.supported():
-            self.app_menu_button.setVisible(not await asyncio.to_thread(app_menu.is_current))
-
-    async def _add_to_app_menu(self) -> None:
-        try:
-            await asyncio.to_thread(app_menu.install)
-        except OSError as e:
-            self._say(f"KFM could not be added to the app menu: {e}", tone="error")
-            return
-        self.app_menu_button.hide()
-
-    def _start_clicked(self) -> None:
-        form = self.start_form
-        task = form.task.toPlainText().strip()
-        if not task:
-            form.task.setFocus()
-            return
-        if form.folder is None:
-            form.warn("Choose a folder first.")
-            return
-        work = form.folder.resolve()
-        if work == Path.home().resolve():
-            form.warn("Not your home folder: agents can change anything in the folder "
-                      "they work in.")
-            return
-        if not work.is_dir():
-            form.warn(f"There is no folder {work}.")
-            return
-        self._run(self.start_fleet(task, ongoing=form.duty.isChecked(), work=work,
-                                   budget=form.budget.value()))
+    def _enable(self) -> None:
+        self.input.setEnabled(self.running)
+        self.send_button.setEnabled(self.running)
 
     def _send_clicked(self) -> None:
         text = self.input.toPlainText().strip()
@@ -766,21 +632,19 @@ class FleetWindow(QMainWindow):
         try:
             await manager.say(text)
         except (FleetError, UnitError) as e:
-            self._say(str(e), tone="error")
+            self.say(str(e), tone="error")
 
     async def _answer(self, event: Approval, allow: bool) -> None:
         if self.manager is not None:
             try:
                 await self.manager.approve(event.unit, event.request_id, allow)
             except UnitError as e:
-                self._say(str(e), tone="error")
-
-    # ── What the fleet says ──────────────────────────────────────────────
+                self.say(str(e), tone="error")
 
     def _on_event(self, event: FleetEvent) -> None:
         self._show(event)
         # After the manager has finished with the event: it may end the fleet's task.
-        asyncio.get_running_loop().call_soon(self._refresh)
+        asyncio.get_running_loop().call_soon(self.changed.emit)
         QTimer.singleShot(0, lambda: self.scroll.verticalScrollBar().setValue(
             self.scroll.verticalScrollBar().maximum()))
 
@@ -808,10 +672,7 @@ class FleetWindow(QMainWindow):
                 lead = self.fleet.lead if self.fleet is not None else None
                 self._add(YouEntry(text, lead.id if lead is not None else None))
             case Notice(text=text):
-                self._say(text, tone="warning")
-
-    def _say(self, text: str, tone: str) -> None:
-        self._add(Line(text, set(), tone))
+                self.say(text, tone="warning")
 
     def _add(self, entry: QWidget) -> None:
         entry.setMaximumWidth(COLUMN)
@@ -821,56 +682,452 @@ class FleetWindow(QMainWindow):
 
     def _concerns(self, entry: QWidget) -> bool:
         concerns: set[str] = entry.concerns  # type: ignore[attr-defined]
-        return self._shown is None or not concerns or self._shown in concerns
+        return self.shown is None or not concerns or self.shown in concerns
 
-    def _clear(self) -> None:
-        for entry in self.entries:
-            entry.setParent(None)
-            entry.deleteLater()
-        self.entries.clear()
-        self._approvals.clear()
-        self._rows.clear()
-        self.agents.clear()
-        self._shown = None
+    def _run(self, work: Coroutine[Any, Any, None]) -> None:
+        task = asyncio.ensure_future(work)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+
+# ── The window ────────────────────────────────────────────────────────────
+
+
+class FleetWindow(QMainWindow):
+    """`home`: where projects and the settings are kept (~/.kfm). `harness` and `config`
+    replace what the settings name, for tests."""
+
+    def __init__(self, home: Path = HOME, *, harness: Harness | None = None,
+                 config: FleetConfig | None = None) -> None:
+        super().__init__()
+        self.home, self._harness, self._config = home, harness, config
+        self.project: Project | None = None  # the one shown
+        self.views: dict[Path, FleetView] = {}  # every fleet read so far, by its folder
+        self.view: FleetView | None = None  # the fleet opened; None: the chart
+        self.adding = False  # the form for a new fleet is shown
+        self.closed = asyncio.Event()
+        self._rows: dict[str, QTreeWidgetItem] = {}
+        self._rows_of: FleetView | None = None
+        self._tasks: set[asyncio.Task[None]] = set()
+        self.setWindowTitle("KFM")
+        # No title bar: the bar on top is where the window is grabbed, and has its controls.
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        self._edges = WindowEdges(self)
+        self._build()
+        self._corners = RoundedCorners(self)
+        self._timer = QTimer(self, interval=REFRESH_MS)
+        self._timer.timeout.connect(self._refresh)
+        self._timer.start()
+        self._refresh()
+        self._run(self._offer_app_menu())
+        self._run(self._open_newest())
+
+    def _build(self) -> None:
+        self.agents = QTreeWidget()
+        self.agents.setColumnCount(3)
+        self.agents.setHeaderHidden(True)
+        self.agents.setRootIsDecorated(False)
+        self.agents.setIndentation(16)
+        self.agents.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column in (1, 2):
+            self.agents.header().setSectionResizeMode(
+                column, QHeaderView.ResizeMode.ResizeToContents)
+        self.agents.setFrameShape(QFrame.Shape.NoFrame)
+        self.agents.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.agents.currentItemChanged.connect(self._agent_chosen)
+        self.new_button = QPushButton(" New project", objectName="nav")
+        self.new_button.setIcon(theme.icon("plus", theme.current().text, 16))
+        self.new_button.clicked.connect(self.new_project)
+        side = QFrame(objectName="fleetSide")
+        side.setFixedWidth(SIDEBAR)
+        colors = theme.current()
+        side.setStyleSheet(
+            f"QFrame#fleetSide {{ background: {colors.side}; }}"
+            f"QTreeWidget {{ background: transparent; border: none; }}"
+            f"QTreeWidget::item {{ padding: 5px 2px; }}"
+            f"QTreeWidget::item:selected {{ background: {colors.select}; "
+            f"color: {colors.text}; }}"
+            f"QListWidget {{ background: transparent; border: none; }}")
+        side_layout = QVBoxLayout(side)
+        side_layout.setContentsMargins(10, 12, 10, 12)
+        side_layout.addWidget(self.new_button)
+        side_layout.addSpacing(6)
+
+        # The open fleet's agents, above the list of projects.
+        self.show_all = QPushButton("Show all", objectName="nav")
+        self.show_all.clicked.connect(lambda: self.agents.setCurrentItem(None))
         self.show_all.hide()
+        self.agents_section = QWidget()
+        section = QVBoxLayout(self.agents_section)
+        section.setContentsMargins(0, 0, 0, 8)
+        heading = QHBoxLayout()
+        heading.addWidget(label("Agents", role="small", tone="muted"), 1)
+        heading.addWidget(self.show_all)
+        section.addLayout(heading)
+        section.addWidget(self.agents)
+        side_layout.addWidget(self.agents_section)
+
+        self.projects = QListWidget(objectName="conversations")
+        self.projects.setItemDelegate(RowDelegate(self.projects))
+        self.projects.setFrameShape(QFrame.Shape.NoFrame)
+        self.projects.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.projects.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.projects.itemClicked.connect(self._project_chosen)
+        self.projects_label = label("Projects", role="small", tone="muted")
+        side_layout.addWidget(self.projects_label)
+        side_layout.addWidget(self.projects, 1)
+        self.app_menu_button = QPushButton("Add to App Menu", objectName="nav")
+        self.app_menu_button.clicked.connect(lambda: self._run(self._add_to_app_menu()))
+        self.app_menu_button.hide()
+        side_layout.addWidget(self.app_menu_button)
+
+        self.back_button = QToolButton(objectName="titleControl")
+        self.back_button.setText("←")
+        self.back_button.setToolTip("The project")
+        self.back_button.setAccessibleName("Back to the project")
+        self.back_button.setFixedSize(WINDOW_BUTTON)
+        self.back_button.clicked.connect(self.show_chart)
+        self.title = ElidedLabel()
+        self.title.setProperty("role", "heading")
+        self.status = label("", role="small", tone="muted", wrap=False)
+        self.stop_button = QPushButton("Stop")
+        self.resume_button = QPushButton("Resume")
+        self.resume_button.setProperty("primary", True)
+        self.stop_button.clicked.connect(lambda: self._run(self.stop()))
+        self.resume_button.clicked.connect(lambda: self._run(self.resume()))
+        self.bar = DragArea()
+        self.bar.setFixedHeight(BAR)
+        bar = QHBoxLayout(self.bar)
+        bar.setContentsMargins(20, 0, 0, 0)  # the controls reach the window's corner
+        bar.setSpacing(4)
+        bar.addWidget(self.back_button)
+        bar.addWidget(self.title, 1)
+        self._bar_gap = QWidget()  # keeps the controls at the right while nothing is named
+        bar.addWidget(self._bar_gap, 1)
+        bar.addWidget(self.status)
+        bar.addWidget(self.stop_button)
+        bar.addWidget(self.resume_button)
+        bar.addSpacing(8)
+        self.window_buttons: dict[str, QToolButton] = {}
+        for name, tip, command in (("minimize", "Minimize", self.showMinimized),
+                                   ("maximize", "Maximize", self._toggle_maximized),
+                                   ("close", "Close", self.close)):
+            button = QToolButton(objectName="titleClose" if name == "close"
+                                 else "titleControl")
+            button.setToolTip(tip)
+            button.setAccessibleName(tip)
+            button.setIconSize(QSize(14, 14))
+            button.setFixedSize(WINDOW_BUTTON)
+            button.clicked.connect(command)
+            self.window_buttons[name] = button
+            bar.addWidget(button, 0, Qt.AlignmentFlag.AlignTop)
+        self._paint_controls()
+
+        self.project_form = ProjectForm()
+        self.project_form.submitted.connect(self._create_clicked)
+        self.start_form = StartForm()
+        self.start_form.submitted.connect(self._start_clicked)
+        self.start_form.budget.setValue((self._config or FleetConfig()).budget_usd)
+        self.chart = Chart()
+        self.chart.opened.connect(self._chart_clicked)
+        self.chart.add_button.clicked.connect(self.add_fleet)
+        self.chart_scroll = QScrollArea()
+        self.chart_scroll.setWidgetResizable(True)
+        self.chart_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.chart_scroll.setWidget(self.chart)
+        self.fleet_pages = QStackedWidget()  # a page for each fleet read
+        self.pages = QStackedWidget()
+        self._project_page, self._start_page = (_centred(self.project_form),
+                                                _centred(self.start_form))
+        for page in (self._project_page, self._start_page, self.chart_scroll,
+                     self.fleet_pages):
+            self.pages.addWidget(page)
+
+        whole = QWidget()
+        layout = QHBoxLayout(whole)
+        layout.setContentsMargins(0, 0, 0, 0)
+        right = QVBoxLayout()
+        right.setContentsMargins(0, 0, 0, 0)
+        right.setSpacing(0)
+        right.addWidget(self.bar)
+        right.addWidget(self.pages, 1)
+        layout.addWidget(side)
+        layout.addLayout(right, 1)
+        self.setCentralWidget(whole)
+
+    # ── What the person does ─────────────────────────────────────────────
+
+    def project_views(self) -> list[FleetView]:
+        """The open project's fleets, oldest first."""
+        if self.project is None:
+            return []
+        fleets = self.project.folder / "fleets"
+        return [view for folder, view in sorted(self.views.items())
+                if folder.parent == fleets]
+
+    async def create_project(self, name: str, work: Path) -> None:
+        try:
+            made = await asyncio.to_thread(project.create, self.home, name, work)
+        except OSError as e:
+            self.project_form.warn(f"The project could not be made: {e}")
+            return
+        self.project_form.name.clear()
+        self.project_form.set_folder(None)
+        await self.open_project(made)
+
+    async def open_project(self, opened: Project) -> None:
+        """Show the project's chart; a project with no fleet yet asks for its first."""
+        self.project, self.view = opened, None
+        folders = await asyncio.to_thread(opened.fleets)
+        for folder in folders:
+            if folder in self.views:
+                continue
+            view = self._view(folder)
+            try:
+                await view.load()
+            except (ValueError, OSError, KeyError):
+                self._drop(view)  # not a fleet this version reads
+        if self.project is opened:
+            self.adding = not self.project_views()
+            self._prepare_start()
+        await self.list_projects()
+
+    def new_project(self) -> None:
+        """The form for a project; fleets that run keep running."""
+        self.project = self.view = None
+        self.adding = False
+        self._refresh()
+        self.project_form.name.setFocus()
+
+    def add_fleet(self) -> None:
+        self.view, self.adding = None, True
+        self._prepare_start()
+        self._refresh()
+        self.start_form.name.setFocus()
+
+    def show_chart(self) -> None:
+        self.view, self.adding = None, False
+        self._refresh()
+
+    def open_fleet(self, view: FleetView, unit_id: str | None = None) -> None:
+        """The fleet's timeline, for one agent or for all."""
+        self.view, self.adding = view, False
+        self.fleet_pages.setCurrentWidget(view)
+        self._refresh()
+        self.agents.setCurrentItem(self._rows.get(unit_id or ""))
+
+    async def start_fleet(self, name: str, task: str, *, ongoing: bool, work: Path,
+                          budget: float) -> None:
+        """A new fleet in the open project, on the task."""
+        opened = self.project
+        assert opened is not None
+        try:
+            config = self._config or await asyncio.to_thread(load, self.home / CONFIG_FILE)
+            config = replace(config, budget_usd=budget)
+            view = self._view(await asyncio.to_thread(opened.new_fleet))
+            started = asyncio.ensure_future(
+                view.start(config, name, task, ongoing=ongoing, work=work))
+            await asyncio.sleep(0)  # the manager is made, or could not be
+            if started.done():
+                started.result()
+        except (ValueError, OSError) as e:
+            self.start_form.warn(f"The fleet could not start: {e}")
+            return
+        self.start_form.name.clear()
+        self.start_form.task.clear()
+        self.open_fleet(view)
+        await started
+        await self.list_projects()
+
+    async def resume(self) -> None:
+        if self.view is not None:
+            await self.view.resume()
+
+    async def stop(self) -> None:
+        if self.view is not None:
+            await self.view.stop()
+
+    async def shut(self) -> None:
+        """Stop every fleet and close the window."""
+        await asyncio.gather(*(view.stop() for view in self.views.values()))
+        for task in list(self._tasks):
+            if task is not asyncio.current_task():
+                task.cancel()
+        self.closed.set()
+        self.close()
+
+    def _view(self, folder: Path) -> FleetView:
+        view = FleetView(folder, self._harness)
+        view.changed.connect(self._refresh)
+        self.views[folder] = view
+        self.fleet_pages.addWidget(view)
+        return view
+
+    def _drop(self, view: FleetView) -> None:
+        del self.views[view.folder]
+        self.fleet_pages.removeWidget(view)
+        view.deleteLater()
+
+    def _prepare_start(self) -> None:
+        if self.project is not None:
+            self.start_form.set_folder(self.project.work)
+
+    def _toggle_maximized(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def _paint_controls(self) -> None:
+        maximized = self.isMaximized()
+        for name, button in self.window_buttons.items():
+            kind = "restore" if name == "maximize" and maximized else name
+            button.setIcon(theme.icon(kind, theme.current().muted))
+        self.window_buttons["maximize"].setToolTip("Restore" if maximized else "Maximize")
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if (event.type() in (QEvent.Type.PaletteChange, QEvent.Type.WindowStateChange)
+                and hasattr(self, "window_buttons")):  # not while it is being built
+            self._paint_controls()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if not self.closed.is_set():
+            self._run(self.shut())
+        event.accept()
+
+    async def _open_newest(self) -> None:
+        """The window opens on the project made last."""
+        found = await asyncio.to_thread(project.every, self.home)
+        if found and self.project is None and not self.views:
+            await self.open_project(found[0])
+        else:
+            await self.list_projects()
+
+    async def list_projects(self) -> None:
+        """Fill the sidebar's list of projects."""
+        found = await asyncio.to_thread(project.every, self.home)
+        counts = await asyncio.to_thread(lambda: [len(p.fleets()) for p in found])
+        self.projects.clear()
+        for listed, fleets in zip(found, counts, strict=True):
+            item = QListWidgetItem(listed.name)
+            running = sum(1 for folder, view in self.views.items()
+                          if view.running and folder.parent.parent == listed.folder)
+            preview = "1 fleet" if fleets == 1 else f"{fleets} fleets"
+            item.setData(PREVIEW_ROLE, f"{preview} · {running} running" if running
+                         else preview)
+            item.setData(DATE_ROLE, _when(listed.folder.name))
+            item.setData(FOLDER_ROLE, str(listed.folder))
+            item.setToolTip(str(listed.work))
+            self.projects.addItem(item)
+        self._refresh()
+
+    def _project_chosen(self, item: QListWidgetItem) -> None:
+        folder = Path(item.data(FOLDER_ROLE))
+        if self.project is None or folder != self.project.folder:
+            self._run(self._open_folder(folder))
+
+    async def _open_folder(self, folder: Path) -> None:
+        try:
+            opened = await asyncio.to_thread(project.load, folder)
+        except (ValueError, KeyError, OSError):
+            return await self.list_projects()
+        await self.open_project(opened)
+
+    async def _offer_app_menu(self) -> None:
+        """The button is there until the app menu starts this install."""
+        if app_menu.supported():
+            self.app_menu_button.setVisible(not await asyncio.to_thread(app_menu.is_current))
+
+    async def _add_to_app_menu(self) -> None:
+        try:
+            await asyncio.to_thread(app_menu.install)
+        except OSError:
+            return
+        self.app_menu_button.hide()
+
+    def _create_clicked(self) -> None:
+        form = self.project_form
+        name = form.name.text().strip()
+        if not name:
+            form.name.setFocus()
+            return
+        work, problem = _work_folder(form.folder)
+        if work is None:
+            form.warn(problem)
+            return
+        self._run(self.create_project(name, work))
+
+    def _start_clicked(self) -> None:
+        form = self.start_form
+        name, task = form.name.text().strip(), form.task.toPlainText().strip()
+        if not name or not task:
+            (form.task if name else form.name).setFocus()
+            return
+        work, problem = _work_folder(form.folder)
+        if work is None:
+            form.warn(problem)
+            return
+        self._run(self.start_fleet(name, task, ongoing=form.duty.isChecked(), work=work,
+                                   budget=form.budget.value()))
+
+    def _chart_clicked(self, key: str, unit_id: str) -> None:
+        if (view := self.views.get(Path(key))) is not None:
+            self.open_fleet(view, unit_id or None)
 
     def _agent_chosen(self, item: QTreeWidgetItem | None, _: object = None) -> None:
-        self._shown = item.data(0, UNIT_ROLE) if item is not None else None
-        self.show_all.setVisible(self._shown is not None)
-        for entry in self.entries:
-            entry.setVisible(self._concerns(entry))
+        if self.view is not None:
+            self.view.choose(item.data(0, UNIT_ROLE) if item is not None else None)
+            self.show_all.setVisible(self.view.shown is not None)
+
+    # ── What is shown ────────────────────────────────────────────────────
 
     def _refresh(self) -> None:
-        """The bar and the agents, from the fleet as it is now."""
-        fleet = self.fleet
-        self.start_form.setVisible(fleet is None)
-        self.scroll.setVisible(fleet is not None)
-        self.composer.setVisible(fleet is not None)
-        self.input.setEnabled(self.running)
-        self.send_button.setEnabled(self.running)
-        self.stop_button.setVisible(self.running)
-        can_resume = (not self.running and not self._stopping and fleet is not None
-                      and any(unit.active for unit in fleet.units.values()))
-        self.resume_button.setVisible(can_resume)
-        self.title.setVisible(fleet is not None)
-        self._bar_gap.setVisible(fleet is None)
-        self.status.setVisible(fleet is not None)
-        self.agents_section.setVisible(fleet is not None)
-        self.fleets.setEnabled(not self.running and not self._stopping)
-        self.fleets_hint.setVisible(self.running or self._stopping)
-        self.fleets_label.setVisible(self.fleets.count() > 0)
-        if fleet is None:
-            self.fleets.setCurrentItem(None)
+        """The bar, the page and the sidebar, from things as they are now."""
+        opened, view = self.project, self.view
+        fleets = self.project_views()
+        self.pages.setCurrentWidget(
+            self._project_page if opened is None else self._start_page if self.adding
+            else self.fleet_pages if view is not None else self.chart_scroll)
+        on_chart = opened is not None and view is None and not self.adding
+        self.back_button.setVisible(view is not None or (self.adding and bool(fleets)))
+        self.title.setVisible(opened is not None)
+        self._bar_gap.setVisible(opened is None)
+        self.status.setVisible(view is not None or on_chart)
+        self.stop_button.setVisible(view is not None and view.running)
+        self.resume_button.setVisible(view is not None and view.can_resume)
+        self.agents_section.setVisible(view is not None)
+        self.projects_label.setVisible(self.projects.count() > 0)
+        for i in range(self.projects.count()):
+            item = self.projects.item(i)
+            if opened is not None and item.data(FOLDER_ROLE) == str(opened.folder):
+                self.projects.setCurrentItem(item)
+        if opened is None:
+            self.projects.setCurrentItem(None)
             return
-        lead = fleet.lead
-        self.title.setText(_clip(lead.task) if lead is not None else "Starting…")
-        budget = (self.manager.config.budget_usd if self.manager is not None
-                  else fleet.settings.get("budget_usd", 0.0))
-        state = "running" if self.running else "stopping" if self._stopping else "stopped"
-        if (self.manager is not None and self.manager.finished.is_set()
-                and not any(unit.active for unit in fleet.units.values())):
-            state = "finished"  # its task is done; the lead still takes messages
-        self.status.setText(f"{state} · ${fleet.spent_usd:.2f} of ${budget:.2f}")
+        if view is None:
+            self.title.setText(opened.name)
+            running = sum(1 for shown in fleets if shown.running)
+            spent = sum(shown.fleet.spent_usd for shown in fleets if shown.fleet is not None)
+            self.status.setText(f"{running} running · ${spent:.2f}")
+            if on_chart:
+                self.chart.show_fleets([ChartFleet(str(shown.folder), shown.name,
+                                                   shown.status, shown.fleet)
+                                        for shown in fleets])
+            return
+        self.title.setText(view.name)
+        self.status.setText(view.status)
+        self._show_agents(view)
+
+    def _show_agents(self, view: FleetView) -> None:
+        if self._rows_of is not view:
+            self._rows.clear()
+            self.agents.clear()
+            self._rows_of = view
+        fleet = view.fleet
+        if fleet is None:
+            return
+        colors = theme.current()
         for unit in fleet.units.values():
             row = self._rows.get(unit.id)
             if row is None:
@@ -885,14 +1142,13 @@ class FleetWindow(QMainWindow):
             row.setText(0, f"{unit.name}  K{unit.rank}")
             row.setText(1, unit.state)
             row.setText(2, f"${unit.spent_usd:.2f}")
-            colors = theme.current()
             tone = {"working": colors.accent, "starting": colors.accent,
                     "waiting": colors.warning, "failed": colors.error,
                     "done": colors.ok}.get(unit.state, colors.muted)
             row.setForeground(1, QColor(tone))
             row.setForeground(2, QColor(colors.muted))
             row.setToolTip(0, unit.task)
-        # As tall as its agents, up to a part of the sidebar: the fleets list has the rest.
+        # As tall as its agents, up to a part of the sidebar: the projects have the rest.
         rows = min(len(fleet.units), AGENT_ROWS)
         self.agents.setFixedHeight(max(1, rows) * AGENT_ROW_PX + 6)
 
@@ -903,6 +1159,7 @@ class FleetWindow(QMainWindow):
 
 
 def main() -> None:
+
     app = QApplication(sys.argv)
     app.setApplicationName("KFM")
     app.setDesktopFileName(app_menu.APP_ID)  # the app menu's entry: its icon and its name

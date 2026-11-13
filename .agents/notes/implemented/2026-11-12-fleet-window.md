@@ -38,12 +38,13 @@ event loop, its theme, its Markdown view.
   it is grabbed and holds minimize, maximize and close, its edges resize it and its
   corners are rounded unless it is maximized (Kayden's `DragArea`, `WindowEdges` and
   `RoundedCorners`).
-- **Starting a fleet** is the window's empty state, built like a chat's first screen:
-  one box for what the fleet should do, with Task or Duty, the folder and the limit along
-  its lower edge. A form with a label for each field was built first; it sat small in an
+- **Starting a fleet** is a screen built like a chat's first screen: the fleet's name,
+  one box for what it should do, with Task or Duty, the folder and the limit along its
+  lower edge. A form with a label for each field was built first; it sat small in an
   empty window and read as a settings page.
-- **Earlier fleets** are listed in the sidebar under the agents; clicking one opens it.
-- The window runs the fleet: closing it stops the fleet, which is resumed from the window
+- **Fleets belong to projects**, and a project's chart is where a fleet is opened from
+  ([note](2026-11-13-projects.md)); the sidebar lists the projects under the agents.
+- The window runs the fleets: closing it stops them, and one is resumed from the window
   or with `kfm resume`.
 
 ## Alternatives considered
@@ -65,8 +66,8 @@ event loop, its theme, its Markdown view.
   and was closed. Not checked: on a real display, and with a real model.
 - The window is the fleet's process: a fleet cannot run with the window closed.
 - KFM's window depends on Kayden's desktop code (`theme`, `QtEventLoop`,
-  `MarkdownView`, `DragArea`, `WindowEdges`), which Kayden may change for its own needs; the manager stays free of
+  `MarkdownView`, `DragArea`, `WindowEdges`, `RoundedCorners`), which Kayden may change for its own needs; the manager stays free of
   it. The `desktop` extra brings all of Kayden's, its speech libraries included.
-- One fleet per window. An agent's own conversation cannot be read in it: only what it
+- An agent's own conversation cannot be read in it: only what it
   said, reported and asked.
 - The record grows for as long as a duty runs; nothing trims it.

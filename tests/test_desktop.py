@@ -166,3 +166,21 @@ async def test_choosing_an_agent_shows_what_concerns_it(window, tmp_path: Path):
     assert shown.show_all.isVisibleTo(shown)
     shown.show_all.click()
     assert len(cards(shown)) == 3 and not shown.show_all.isVisibleTo(shown)
+
+
+async def test_the_window_adds_itself_to_the_app_menu(window, tmp_path: Path, monkeypatch):
+    from kfm import app_menu
+
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "share"))
+    monkeypatch.setattr(app_menu, "_reload", lambda: None)
+    shown, _ = window({})
+    await until(lambda: shown.app_menu_button.isVisibleTo(shown))
+    shown.app_menu_button.click()
+    await until(lambda: not shown.app_menu_button.isVisibleTo(shown))
+    entry = (tmp_path / "share/applications/io.github.k5031.kfm.desktop").read_text()
+    assert "Name=KFM" in entry and "-m kfm.desktop" in entry and "Terminal=false" in entry
+    [icon] = (tmp_path / "share/icons/hicolor/scalable/apps").glob("io.github.k5031.kfm-*.svg")
+    assert f"Icon={icon.stem}" in entry
+    again, _ = window({})
+    await asyncio.sleep(0.2)
+    assert not again.app_menu_button.isVisibleTo(again)  # it is there already

@@ -93,6 +93,8 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
 - **Stop** ends the fleet's processes; **Resume** carries it on. Closing the window stops
   the fleet too: it does not run in the background.
 - **Open a fleet…** shows an earlier fleet with everything that happened in it.
+- **Add to App Menu**, at the bottom left on Linux, puts KFM in your app menu with its own
+  icon, so it starts without a terminal. The button is there until that is done.
 
 What happens in a fleet is also kept as `log.jsonl` in the fleet's folder, one line per
 event, whichever way the fleet was run.

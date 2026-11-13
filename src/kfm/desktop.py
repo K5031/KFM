@@ -19,7 +19,7 @@ from kayden.frontends.desktop import theme
 from kayden.frontends.desktop.loop import QtEventLoop
 from kayden.frontends.desktop.window import ElidedLabel, MarkdownView
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QCloseEvent, QColor
+from PySide6.QtGui import QCloseEvent, QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -42,7 +42,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kfm import log
+from kfm import app_menu, log
 from kfm.api import Harness, UnitError
 from kfm.config import CONFIG_FILE, HOME, FleetConfig, load
 from kfm.events import Answered, Approval, Changed, Delivered, FleetEvent, Notice, Said, Told
@@ -243,6 +243,7 @@ class FleetWindow(QMainWindow):
         self._timer = QTimer(self, interval=REFRESH_MS)
         self._timer.timeout.connect(self._refresh)
         self._refresh()
+        self._run(self._offer_app_menu())
 
     def _build(self) -> None:
         self.agents = QTreeWidget()
@@ -281,6 +282,10 @@ class FleetWindow(QMainWindow):
         heading.addWidget(self.show_all)
         side_layout.addLayout(heading)
         side_layout.addWidget(self.agents, 1)
+        self.app_menu_button = QPushButton("Add to App Menu", objectName="nav")
+        self.app_menu_button.clicked.connect(lambda: self._run(self._add_to_app_menu()))
+        self.app_menu_button.hide()
+        side_layout.addWidget(self.app_menu_button)
 
         self.title = ElidedLabel("No fleet")
         self.title.setProperty("role", "heading")
@@ -453,6 +458,19 @@ class FleetWindow(QMainWindow):
                 lambda _=False, folder=folder: self._run(self.open_fleet(folder)))
         menu.popup(self.open_button.mapToGlobal(self.open_button.rect().bottomLeft()))
 
+    async def _offer_app_menu(self) -> None:
+        """The button is there until the app menu starts this install."""
+        if app_menu.supported():
+            self.app_menu_button.setVisible(not await asyncio.to_thread(app_menu.is_current))
+
+    async def _add_to_app_menu(self) -> None:
+        try:
+            await asyncio.to_thread(app_menu.install)
+        except OSError as e:
+            self._say(f"KFM could not be added to the app menu: {e}", tone="error")
+            return
+        self.app_menu_button.hide()
+
     def _start_clicked(self) -> None:
         form = self.start_form
         task = form.task.toPlainText().strip()
@@ -602,6 +620,8 @@ class FleetWindow(QMainWindow):
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("KFM")
+    app.setDesktopFileName(app_menu.APP_ID)  # the app menu's entry: its icon and its name
+    app.setWindowIcon(QIcon(str(app_menu.ICON)))
     app.setQuitOnLastWindowClosed(False)  # the fleet is stopped first
     theme.apply(app)
     loop = QtEventLoop(app)

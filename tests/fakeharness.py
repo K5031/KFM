@@ -44,6 +44,7 @@ class FakeHarness(Harness):
         self.models: list[tuple[str, str | None]] = []  # (unit name, model), as opened
         self.approved: list[tuple[str, bool]] = []  # (request id, allow)
         self.files: list[tuple[str, list[str], bool]] = []  # (unit name, files, spoken)
+        self.instructed: list[tuple[str, str]] = []  # (unit name, its new instruction)
 
     @property
     def vocabulary(self) -> Vocabulary:
@@ -68,6 +69,9 @@ class FakeSession(Session):
         self.harness.standing[self.session] = True
         self._turn(instruction.text)
         return self.session
+
+    async def instruct(self, instruction: Instruction) -> None:
+        self.harness.instructed.append((self.spec.name, instruction.text))
 
     async def send(self, text: str, files: Sequence[str] = (), *,
                    spoken: bool = False) -> None:

@@ -139,12 +139,15 @@ class _Session(Session):
     async def begin(self, instruction: Instruction) -> str:
         info = await self._request("start")
         self._conversation = info["id"]
+        await self.instruct(instruction)
+        return info["id"]
+
+    async def instruct(self, instruction: Instruction) -> None:
         low, high = instruction.check_in_s
         await self._request("set_duty", duty={
             "instruction": instruction.text,
             "kind": "duty" if instruction.ongoing else "goal",
             "min_interval_s": low, "max_interval_s": high})
-        return info["id"]
 
     async def send(self, text: str, files: Sequence[str] = (), *,
                    spoken: bool = False) -> None:

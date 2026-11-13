@@ -127,6 +127,11 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
   agent runs on, by the model's id; leave it empty for the one its rank has in the
   settings. In a running fleet both happen at once (an agent starts again on its new
   model); in a stopped one they take effect when you start it.
+- **Task…** in an agent's right-click menu gives it another task. It keeps its
+  conversation, is told, and its supervisor is told. In a stopped fleet this works for
+  agents that have not run yet.
+- **Remove…** takes an agent out of the fleet, with every agent under it: they stop,
+  and what they kept is deleted. Its supervisor is told, so the work can be picked up.
 - **Rename** an agent, a fleet or a project by right-clicking it and choosing
   **Rename…**. Agents are not told: they know each other by number, and a renamed
   agent's reports carry its new name from then on.

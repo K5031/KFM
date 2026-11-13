@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-FORMAT = 5  # of fleet.json; a file of another format is refused
+FORMAT = 6  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
 # planned: placed by the person in a fleet that is not running; it starts with the fleet.
@@ -131,6 +131,14 @@ class Fleet:
         self.units[unit.id] = unit
         return unit
 
+    def remove(self, unit: Unit) -> list[Unit]:
+        """Take the unit and everything under it out of the fleet; returns them. Their
+        ids are not given again."""
+        gone = list(self.subtree(unit))
+        for each in gone:
+            del self.units[each.id]
+        return gone
+
     def by_token(self, token: str) -> Unit:
         for unit in self.units.values():
             if secrets.compare_digest(unit.token, token):
@@ -161,7 +169,7 @@ class Fleet:
 
     def save(self, folder: Path) -> None:
         data = {"format": FORMAT, "name": self.name, "top_rank": self.top_rank,
-                "max_units": self.max_units,
+                "max_units": self.max_units, "next": self._next,
                 "work": self.work, "settings": self.settings,
                 "manager_pid": self.manager_pid,
                 "units": [asdict(u) for u in self.units.values()]}
@@ -181,5 +189,5 @@ class Fleet:
         for record in data["units"]:
             unit = Unit(**record)
             fleet.units[unit.id] = unit
-            fleet._next = max(fleet._next, int(unit.id[1:]) + 1)
+        fleet._next = data["next"]
         return fleet

@@ -87,7 +87,7 @@ from kfm.events import (
     Told,
 )
 from kfm.fleet import Fleet, FleetError, Unit
-from kfm.manager import Manager, lay_out, place
+from kfm.manager import Manager, forget, lay_out, place
 from kfm.project import Project
 
 SIDEBAR = 280  # px
@@ -740,17 +740,18 @@ class AgentDialog(QDialog):
 
 
 class DeleteDialog(QDialog):
-    """Whether to delete a project or a fleet (`what`): what goes, and what stays."""
+    """Whether to delete a project or a fleet, or to remove an agent (`what`): what goes,
+    and what stays."""
 
-    def __init__(self, parent: QWidget, title: str, what: str) -> None:
+    def __init__(self, parent: QWidget, title: str, what: str, verb: str = "Delete") -> None:
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(380)
         rows = QVBoxLayout(self)
         rows.setSpacing(14)
-        self.question = label(f"Delete {what}? This cannot be undone. The folder the agents "
+        self.question = label(f"{verb} {what}? This cannot be undone. The folder the agents "
                               "worked in is kept.")
-        self.delete = QPushButton("Delete")
+        self.delete = QPushButton(verb)
         self.delete.setProperty("primary", True)
         self.delete.clicked.connect(self.accept)
         cancel = QPushButton("Cancel")
@@ -828,6 +829,34 @@ class SettingsDialog(QDialog):
             return
         self.saved.emit(made)
         self.accept()
+
+
+class TaskDialog(QDialog):
+    """An agent's task, to change."""
+
+    def __init__(self, parent: QWidget, unit: Unit) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"{unit.called}'s task")
+        self.setMinimumWidth(460)
+        rows = QVBoxLayout(self)
+        rows.setSpacing(10)
+        self.task = TaskBox()
+        self.task.setPlainText(unit.task)
+        self.task.submitted.connect(self.accept)
+        self.warning = label("", role="small", tone="error")
+        self.warning.hide()
+        self.save = QPushButton("Save")
+        self.save.setProperty("primary", True)
+        self.save.clicked.connect(self.accept)
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        foot = QHBoxLayout()
+        foot.addStretch(1)
+        foot.addWidget(cancel)
+        foot.addWidget(self.save)
+        rows.addWidget(self.task)
+        rows.addWidget(self.warning)
+        rows.addLayout(foot)
 
 
 class LineDialog(QDialog):
@@ -1039,6 +1068,34 @@ class FleetView(QWidget):
         elif self.fleet is not None and not self.running:
             await asyncio.to_thread(place, self.fleet, self.folder, supervisor, name, task,
                                     ongoing=ongoing, model=model)
+        self._enable()
+        self.changed.emit()
+
+    async def retask(self, unit: Unit, task: str) -> None:
+        """Another task for the agent. FleetError or UnitError when it cannot be."""
+        if self.manager is not None:
+            await self.manager.retask(unit, task)
+        elif self.fleet is not None and unit.session is None and task.strip():
+            unit.task = task.strip()
+            unit.state = "planned"  # one that waited for a task starts with the fleet now
+            await asyncio.to_thread(self.fleet.save, self.folder)
+        self.changed.emit()
+
+    async def remove(self, unit: Unit) -> None:
+        """Take the agent and everything under it out of the fleet."""
+        gone = {each.id for each in self.fleet.subtree(unit)} if self.fleet is not None else set()
+        if self.manager is not None:
+            await self.manager.remove(unit)
+        elif self.fleet is not None:
+            removed = self.fleet.remove(unit)
+            await asyncio.to_thread(self.fleet.save, self.folder)
+            await asyncio.to_thread(forget, self.folder, removed)
+        if self.shown in gone:
+            self.choose(None)
+        for entry in [e for e in self.entries if e.concerns and e.concerns <= gone]:
+            self.entries.remove(entry)  # what was only theirs goes with them
+            entry.setParent(None)
+            entry.deleteLater()
         self._enable()
         self.changed.emit()
 
@@ -1402,6 +1459,8 @@ class FleetWindow(QMainWindow):
         self.chart.start_asked.connect(self._start_asked)
         self.chart.delete_asked.connect(self._ask_delete_fleet)
         self.chart.rename_asked.connect(self._ask_rename)
+        self.chart.task_asked.connect(self._ask_task)
+        self.chart.remove_asked.connect(self._ask_remove)
         self.chart_scroll = QScrollArea()
         self.chart_scroll.setWidgetResizable(True)
         self.chart_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -1686,6 +1745,33 @@ class FleetWindow(QMainWindow):
         dialog.accepted.connect(lambda: self._run(rename()))
         dialog.open()
 
+    def _ask_task(self, key: str, unit_id: str) -> None:
+        view = self.views.get(Path(key))
+        if view is None or view.fleet is None or unit_id not in view.fleet.units:
+            return
+        unit = view.fleet.units[unit_id]
+        dialog = self.dialog = TaskDialog(self, unit)
+
+        async def change() -> None:
+            try:
+                await view.retask(unit, dialog.task.toPlainText())
+            except (FleetError, UnitError, OSError) as e:
+                view.say(str(e), tone="error")
+
+        dialog.accepted.connect(lambda: self._run(change()))
+        dialog.open()
+
+    def _ask_remove(self, key: str, unit_id: str) -> None:
+        view = self.views.get(Path(key))
+        if view is None or view.fleet is None or unit_id not in view.fleet.units:
+            return
+        unit = view.fleet.units[unit_id]
+        under = len(list(view.fleet.subtree(unit))) - 1
+        what = unit.called + (f" and the {under} under it" if under else "")
+        dialog = self.dialog = DeleteDialog(self, "Remove agent", what, "Remove")
+        dialog.accepted.connect(lambda: self._run(view.remove(unit)))
+        dialog.open()
+
     def ask_delete(self, item: QListWidgetItem) -> None:
         """Ask whether the listed project should go, and delete it on a yes."""
         folder = Path(item.data(FOLDER_ROLE))
@@ -1913,6 +1999,9 @@ class FleetWindow(QMainWindow):
         if fleet is None:
             return
         colors = theme.current()
+        for gone in [unit_id for unit_id in self._rows if unit_id not in fleet.units]:
+            row = self._rows.pop(gone)  # taken out of the fleet
+            (row.parent() or self.agents.invisibleRootItem()).removeChild(row)
         for unit in fleet.units.values():
             row = self._rows.get(unit.id)
             if row is None:

@@ -579,6 +579,41 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         await shown.shut()
 
 
+async def test_an_agents_task_is_changed_and_an_agent_is_removed_on_the_chart(
+        window, tmp_path: Path):
+    shown, harness = window({
+        "K5 u1": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]}],
+        "Scout": [{"do": [("say", "Mapping.")]}]})
+    view = await start(shown, tmp_path, "Tidy up", duty=True)
+    shown.back_button.click()
+    await until(lambda: chart(shown) == {"dev": ["K5", "Scout K4"]})
+    key = str(view.folder)
+    scout = shown.chart.nodes[(key, "u2")]
+    scout.task_action.trigger()
+    assert shown.dialog.task.toPlainText() == "Map the docs"
+    shown.dialog.task.setPlainText("Map the code")
+    shown.dialog.save.click()
+    await until(lambda: harness.instructed and "Map the code" in harness.instructed[0][1])
+    assert "Map the code" in scout.toolTip()
+
+    scout.remove_action.trigger()
+    assert "Scout" in shown.dialog.question.text()
+    shown.dialog.delete.click()
+    await until(lambda: chart(shown) == {"dev": ["K5"]})
+    assert list(view.fleet.units) == ["u1"]
+    shown.chart.heads[key].clicked.emit()  # its row in the agents list went with it
+    await until(lambda: agents(shown) == [(0, "K5", "working")])
+    shown.back_button.click()
+
+    await view.stop()  # in a stopped fleet: one that has run keeps its task until it runs
+    lead = shown.chart.nodes[(key, "u1")]
+    await until(lambda: not lead.task_action.isEnabled() and lead.remove_action.isEnabled())
+    lead.remove_action.trigger()
+    shown.dialog.delete.click()
+    await until(lambda: chart(shown) == {"dev": []} and key in shown.chart.firsts)
+    assert not Fleet.load(view.folder).units
+
+
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "me")
     (tmp_path / "me").mkdir()

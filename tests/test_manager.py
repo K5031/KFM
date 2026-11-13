@@ -270,6 +270,17 @@ async def test_a_resumed_fleet_finishes_what_was_under_way(fleet, tmp_path: Path
                                  ("Lead", None, "report", "Docs are tidy.")]
 
 
+async def test_a_kayden_unit_is_given_another_task(fleet, tmp_path: Path):
+    manager, events = await fleet({"Lead": [{"text": "On watch."},
+                                            {"when": "task was changed", "text": "Counting."}]})
+    lead = await manager.lead("Keep watch over the folder", ongoing=True, name="Lead")
+    await until(lambda: "On watch." in said(events, "Lead"))
+    session = lead.session
+    await manager.retask(lead, "Count the files")
+    await until(lambda: "Counting." in said(events, "Lead"))
+    assert lead.session == session and lead.state == "working"
+
+
 async def test_a_running_fleet_is_not_resumed_again(fleet, tmp_path: Path):
     manager, _ = await fleet({"Lead": [{"text": "On watch."}]})
     await manager.lead("Keep watch", ongoing=True, name="Lead")

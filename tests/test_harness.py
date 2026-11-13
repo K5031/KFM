@@ -339,6 +339,46 @@ async def test_files_go_with_a_message_to_the_agent_it_is_for(tmp_path: Path):
     await manager.aclose()
 
 
+async def test_an_agent_is_given_another_task_and_an_agent_is_removed(tmp_path: Path):
+    harness = FakeHarness({
+        "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]}],
+        "Scout": [{"do": [("tool", "delegate", {"name": "Helper", "task": "Count pages"})]},
+                  {"when": "task was changed", "do": [("say", "Mapping the code now.")]}],
+        "Helper": [{"do": [("say", "Counting.")]}]})
+    manager, events = await run(tmp_path, harness)
+    lead = await manager.lead("Tidy up", ongoing=True, name="Lead")
+    await until(lambda: harness.heard.get("Helper"))
+    scout, helper = manager.fleet.units["u2"], manager.fleet.units["u3"]
+
+    await manager.retask(scout, "Map the code")
+    await until(lambda: any("task was changed" in heard for heard in harness.heard["Scout"]))
+    [(name, instruction)] = harness.instructed  # its standing instruction, not only a message
+    assert name == "Scout" and "Your task: Map the code" in instruction
+    assert scout.task == "Map the code" and scout.session == "session-u2"  # same conversation
+    assert [(e.by, e.unit, e.text) for e in events if isinstance(e, Instructed)][-1] == (
+        None, scout, "Map the code")
+    await until(lambda: any("changed the task of Scout (K4, u2)" in heard and "Map the code" in heard
+                            for heard in harness.heard["Lead"]))
+    with pytest.raises(FleetError, match="empty"):
+        await manager.retask(scout, "  ")
+    idle = await manager.hire(lead, "", "")  # one with no task starts on the one it is given
+    await manager.retask(idle, "Check the links")
+    await until(lambda: any("Your task: Check the links" in heard
+                            for heard in harness.heard.get("K4 u4", [])))
+
+    (tmp_path / "fleet" / "units" / "u3").mkdir(parents=True, exist_ok=True)
+    await manager.remove(scout)  # with everything under it
+    assert list(manager.fleet.units) == ["u1", "u4"]
+    assert not (tmp_path / "fleet" / "units" / "u3").exists()
+    await until(lambda: any("removed Scout (K4, u2)" in heard for heard in harness.heard["Lead"]))
+    with pytest.raises(FleetError):
+        await manager.tell(helper, "still there?")
+    again = await manager.hire(lead, "Scout", "Map the docs again")
+    assert again.id == "u5"  # a number is not given twice
+    await manager.aclose()
+    assert list(Fleet.load(tmp_path / "fleet").units) == ["u1", "u4", "u5"]
+
+
 async def until(predicate, timeout: float = 10.0) -> None:
     async def poll() -> None:
         while not predicate():

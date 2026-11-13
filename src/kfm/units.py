@@ -36,6 +36,24 @@ def overheard(unit: Unit, text: str, files: Sequence[str]) -> str:
             "from yours. You need not do anything about this.]")
 
 
+RETASKED = ("[Your task was changed by the person the fleet works for. It is in your "
+            "instruction now: leave the task you had, and start on the new one.]")
+
+
+def retasked_note(unit: Unit) -> str:
+    """What a supervisor is told when the person gives one of its agents another task."""
+    return (f"[The person changed the task of {unit.label}. It is now: {unit.task}\nYou "
+            "need not do anything about this.]")
+
+
+def removed_note(unit: Unit, others: int) -> str:
+    """What a supervisor is told when the person takes one of its agents out."""
+    also = f" and the {others} under it" if others else ""
+    return (f"[The person removed {unit.label}{also} from the fleet. What it was doing is "
+            "not being done: take it up yourself or hand it to another agent, if it is "
+            "still needed.]")
+
+
 def hired_note(unit: Unit, words: Vocabulary) -> str:
     """What a supervisor is told when the person puts an agent under it."""
     message = f"{words.tool('message')}(agent=\"{unit.id}\", text=...)"

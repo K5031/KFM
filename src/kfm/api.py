@@ -156,6 +156,11 @@ class Session(abc.ABC):
         the session to open the unit on again."""
 
     @abc.abstractmethod
+    async def instruct(self, instruction: Instruction) -> None:
+        """Replace the standing instruction of the conversation `begin` started, which
+        carries on: the agent has another task from now, and takes no turn for it."""
+
+    @abc.abstractmethod
     async def send(self, text: str, files: Sequence[str] = (), *,
                    spoken: bool = False) -> None:
         """A message into the agent's conversation: it takes a turn on it, and an open

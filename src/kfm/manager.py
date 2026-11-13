@@ -8,6 +8,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import shutil
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -57,6 +58,12 @@ def place(fleet: Fleet, folder: Path, supervisor: Unit | None, name: str, task: 
     unit.model, unit.state = model or None, "planned"
     fleet.save(folder)
     return unit
+
+
+def forget(folder: Path, gone: Sequence[Unit]) -> None:
+    """Delete what units taken out of the fleet in `folder` kept. Blocking."""
+    for unit in gone:
+        shutil.rmtree(folder / "units" / unit.id, ignore_errors=True)
 
 
 class Manager:
@@ -204,6 +211,53 @@ class Manager:
             except UnitError as e:
                 await self._could_not_start(unit, e)
 
+    async def retask(self, unit: Unit, task: str) -> None:
+        """Another task for the unit, in the conversation it has: its standing instruction
+        is replaced and it is told. One that has no task yet starts on this one.
+        FleetError or UnitError when it cannot be."""
+        if not (task := task.strip()):
+            raise FleetError("A task cannot be empty.")
+        if self._over_budget:
+            raise FleetError("The fleet has reached its spending limit.")
+        supervisor = self.fleet.supervisor_of(unit)
+        unit.task = task
+        self._emit(Instructed(unit, None, "task", task))
+        if unit.session is None:
+            if unit.state == "idle":  # it was waiting for one
+                await self._start(unit)
+            await self._save()
+            return
+        session = await self._session(unit)
+        await session.instruct(Instruction(
+            units.brief(unit, supervisor, [], self._words), unit.ongoing,
+            self.config.check_in_s))
+        unit.report = unit.failure = unit.question = None
+        self._carries_on[unit.id] = True
+        self._answering.discard(unit.id)
+        self._set(unit, "working")
+        await session.send(units.RETASKED)
+        await self._save()
+        if supervisor is not None and supervisor.active:
+            self._spawn(self._tell_quietly(supervisor, units.retasked_note(unit)))
+
+    async def remove(self, unit: Unit) -> None:
+        """Take the unit and everything under it out of the fleet: their processes end
+        and what they kept is deleted. Its supervisor, if it is at work, is told."""
+        supervisor = self.fleet.supervisor_of(unit)
+        await self.stop(unit)
+        gone = self.fleet.remove(unit)
+        for each in gone:
+            for kept in (self._carries_on, self._last_said, self._opening):
+                kept.pop(each.id, None)
+            self._answering.discard(each.id)
+        await self._save()
+        await asyncio.to_thread(forget, self.folder, gone)
+        self._emit(Notice(f"You removed {unit.called}"
+                          + (f" and the {len(gone) - 1} under it." if len(gone) > 1 else ".")))
+        if supervisor is not None and supervisor.active:
+            self._spawn(self._tell_quietly(supervisor,
+                                           units.removed_note(unit, len(gone) - 1)))
+
     async def rename(self, name: str, unit: Unit | None = None) -> None:
         """Another name for the unit, or for the fleet. Nobody is told: agents know each
         other by id, and what reaches a supervisor from now on carries the new name."""
@@ -244,6 +298,8 @@ class Manager:
         starts on the message as its task (`task`: its words alone, when `text` wraps
         them). `files` and `spoken` are the session's (api.Session.send). FleetError or
         UnitError when it cannot be."""
+        if self.fleet.units.get(unit.id) is not unit:
+            raise FleetError(f"{unit.label} is not in the fleet.")
         if self._over_budget:
             raise FleetError("The fleet has reached its spending limit.")
         if unit.session is None:

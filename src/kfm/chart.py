@@ -99,6 +99,8 @@ class Node(_Box):
     add_asked = Signal()
     model_asked = Signal()
     rename_asked = Signal()
+    task_asked = Signal()
+    remove_asked = Signal()
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent, "node")
@@ -109,6 +111,11 @@ class Node(_Box):
         self.add_action.triggered.connect(lambda: self.add_asked.emit())
         self.model_action = self.menu.addAction("Model…")
         self.model_action.triggered.connect(lambda: self.model_asked.emit())
+        self.task_action = self.menu.addAction("Task…")
+        self.task_action.triggered.connect(lambda: self.task_asked.emit())
+        self.menu.addSeparator()
+        self.remove_action = self.menu.addAction("Remove…")
+        self.remove_action.triggered.connect(lambda: self.remove_asked.emit())
         self.name, self.rank = _text("strong"), _text("small")
         self.state, self.spent = _text("small"), _text("small")
         rows = QVBoxLayout(self)
@@ -127,6 +134,9 @@ class Node(_Box):
         self.add_action.setEnabled(editable and unit.rank > 1)
         self.model_action.setEnabled(editable)
         self.rename_action.setEnabled(editable)
+        self.remove_action.setEnabled(editable)
+        # One that has run is told of its new task, which a fleet that is stopped cannot do.
+        self.task_action.setEnabled(editable and (running or unit.session is None))
         room = NODE_W - 24 - 30  # beside the rank
         self.name.setText(QFontMetrics(self.name.font()).elidedText(
             unit.name or f"K{unit.rank}", Qt.TextElideMode.ElideRight, room))
@@ -178,7 +188,8 @@ class Chart(QWidget):
     """`opened`: a fleet's key and the unit clicked, or "" for the fleet as a whole.
     `add_asked`, `model_asked`: a fleet's key and the unit to add under ("": as its lead)
     or to change. `start_asked`, `delete_asked`: a fleet's key. `rename_asked`: a fleet's
-    key and the unit to rename, or "" for the fleet."""
+    key and the unit to rename, or "" for the fleet. `task_asked`, `remove_asked`: a
+    fleet's key and the unit."""
 
     opened = Signal(str, str)
     add_asked = Signal(str, str)
@@ -186,6 +197,8 @@ class Chart(QWidget):
     start_asked = Signal(str)
     delete_asked = Signal(str)
     rename_asked = Signal(str, str)
+    task_asked = Signal(str, str)
+    remove_asked = Signal(str, str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -316,6 +329,8 @@ class Chart(QWidget):
         node.add_asked.connect(lambda: self.add_asked.emit(key, unit_id))
         node.model_asked.connect(lambda: self.model_asked.emit(key, unit_id))
         node.rename_asked.connect(lambda: self.rename_asked.emit(key, unit_id))
+        node.task_asked.connect(lambda: self.task_asked.emit(key, unit_id))
+        node.remove_asked.connect(lambda: self.remove_asked.emit(key, unit_id))
         return node
 
     def paintEvent(self, event: QPaintEvent) -> None:

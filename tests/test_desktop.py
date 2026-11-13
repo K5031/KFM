@@ -216,8 +216,7 @@ async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QA
     await asyncio.wait_for(shown.closed.wait(), 5)
 
 
-async def test_the_start_screen_takes_enter_and_refuses_the_home_folder(
-        window, tmp_path: Path, monkeypatch):
+async def test_the_folder_is_chosen_for_each_fleet(window, tmp_path: Path, monkeypatch):
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
 
@@ -225,19 +224,28 @@ async def test_the_start_screen_takes_enter_and_refuses_the_home_folder(
     (tmp_path / "me").mkdir()
     shown, harness = window({"Lead": [{"do": [("report", "Done.")]}]})
     form = shown.start_form
-    assert form.folder == tmp_path / "me" / "kfm-work"  # not the home folder itself
+    assert form.folder is None and form.folder_button.text().strip() == "Choose a folder"
     form.task.setPlainText("Tidy up")
+    QTest.keyClick(form.task, Qt.Key.Key_Return)  # Enter starts, but not without a folder
+    await asyncio.sleep(0.1)
+    assert shown.fleet is None and form.warning.text() == "Choose a folder first."
     form.set_folder(tmp_path / "me")
     QTest.keyClick(form.task, Qt.Key.Key_Return)
     await asyncio.sleep(0.1)
     assert shown.fleet is None and "home folder" in form.warning.text()
-    assert form.warning.isVisibleTo(shown)
-    form.set_folder(tmp_path / "me" / "kfm-work")
-    assert not form.warning.isVisibleTo(shown)
+    form.set_folder(tmp_path / "gone")
+    QTest.keyClick(form.task, Qt.Key.Key_Return)
+    await asyncio.sleep(0.1)
+    assert shown.fleet is None and "no folder" in form.warning.text()
+    assert not (tmp_path / "gone").exists()  # nothing is made that nobody asked for
+    form.set_folder(tmp_path / "work")
+    assert not form.warning.isVisibleTo(shown) and form.folder_button.text().strip() == "work"
     QTest.keyClick(form.task, Qt.Key.Key_Return)
     await until(lambda: shown.manager is not None and shown.manager.finished.is_set())
-    assert (tmp_path / "me" / "kfm-work").is_dir()  # made for the fleet
     assert harness.heard["Lead"]
+    shown.new_button.click()
+    await until(lambda: shown.fleet is None)
+    assert form.folder is None  # the next fleet's folder is chosen again
 
 
 async def test_a_running_fleet_keeps_the_others_closed(window, tmp_path: Path):

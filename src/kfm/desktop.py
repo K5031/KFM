@@ -63,7 +63,6 @@ FORM = 760  # px, the start screen's width
 LOGO = 64  # px, on the start screen
 AGENT_ROWS = 10  # agents shown before their list scrolls
 AGENT_ROW_PX = 30
-DEFAULT_WORK = "kfm-work"  # in the home folder: where a first fleet works
 FOLDER_ROLE = Qt.ItemDataRole.UserRole  # a fleet row's folder
 QUIET_STATES = ("starting", "working", "waiting", "done")  # shown by the agents list alone
 COLUMN = 860  # px, the widest the timeline's entries get
@@ -258,7 +257,7 @@ class StartForm(QWidget):
             f"QFrame#budget {{ border: 1px solid {colors.line}; border-radius: 10px; }}"
             f"QFrame#budget QLineEdit {{ background: transparent; border: none; "
             f"padding: 0; }}")
-        self.folder = Path.home() / DEFAULT_WORK
+        self.folder: Path | None = None  # chosen for each fleet
         outer = QVBoxLayout(self)
         outer.setSpacing(0)
         outer.addStretch(3)
@@ -327,15 +326,18 @@ class StartForm(QWidget):
         outer.addStretch(5)
         self._kinds.buttonToggled.connect(lambda *_: self._describe())
         self._describe()
-        self.set_folder(self.folder)
+        self.set_folder(None)
 
     def sizeHint(self) -> QSize:
         return QSize(FORM, super().sizeHint().height())
 
-    def set_folder(self, folder: Path) -> None:
-        self.folder = Path(folder).expanduser()
-        self.folder_button.setText(f" {self.folder.name or self.folder}")
-        self.folder_button.setToolTip(f"The agents work in {self.folder}")
+    def set_folder(self, folder: Path | None) -> None:
+        """The folder the fleet will work in; None: not chosen yet."""
+        self.folder = Path(folder).expanduser() if folder is not None else None
+        chosen = self.folder
+        self.folder_button.setText(f" {chosen.name or chosen}" if chosen else " Choose a folder")
+        self.folder_button.setToolTip(f"The agents work in {chosen}" if chosen
+                                      else "The folder the agents work in")
         self.warn("")
 
     def warn(self, text: str) -> None:
@@ -348,7 +350,8 @@ class StartForm(QWidget):
             "Ends when the lead reports.")
 
     def _choose(self) -> None:
-        dialog = QFileDialog(self, "The folder the fleet works in", str(self.folder.parent))
+        start = self.folder.parent if self.folder is not None else Path.home()
+        dialog = QFileDialog(self, "The folder the fleet works in", str(start))
         dialog.setFileMode(QFileDialog.FileMode.Directory)
         dialog.fileSelected.connect(lambda chosen: self.set_folder(Path(chosen)))
         dialog.open()
@@ -363,7 +366,6 @@ class FleetRow:
     started: str  # its folder's name: the date and time it was started
     agents: int
     spent_usd: float
-    work: str
 
 
 # ── The window ────────────────────────────────────────────────────────────
@@ -386,7 +388,6 @@ class FleetWindow(QMainWindow):
         self._approvals: dict[str, ApprovalCard] = {}
         self._shown: str | None = None  # the agent whose entries are shown; None: all
         self._stopping = False  # its processes are ending
-        self._folder_set = False  # the start screen's folder has been taken from a fleet
         self._tasks: set[asyncio.Task[None]] = set()
         self.setWindowTitle("KFM")
         # No title bar: the bar on top is where the window is grabbed, and has its controls.
@@ -576,9 +577,7 @@ class FleetWindow(QMainWindow):
             while folder.exists():  # a second fleet within the same second
                 await asyncio.sleep(1)
                 folder = self.home / "fleets" / time.strftime("%Y%m%d-%H%M%S")
-            work = work.expanduser().resolve()
-            await asyncio.to_thread(work.mkdir, parents=True, exist_ok=True)
-            manager = Manager(config, folder, work, harness=self._harness,
+            manager = Manager(config, folder, work.expanduser().resolve(), harness=self._harness,
                               on_event=self._on_event)
         except (ValueError, OSError) as e:
             self.start_form.warn(f"The fleet could not start: {e}")
@@ -586,6 +585,7 @@ class FleetWindow(QMainWindow):
         self._clear()
         self.manager, self.fleet, self.folder = manager, manager.fleet, folder
         self.start_form.task.clear()
+        self.start_form.set_folder(None)
         await manager.start()
         self._timer.start()
         self._refresh()
@@ -612,6 +612,7 @@ class FleetWindow(QMainWindow):
         await self.stop()
         self._clear()
         self.fleet = self.folder = None
+        self.start_form.set_folder(None)
         await self.list_fleets()
         self.start_form.task.setFocus()
 
@@ -684,25 +685,22 @@ class FleetWindow(QMainWindow):
         found = []
         for record in sorted((self.home / "fleets").glob(f"*/{RECORD}"), reverse=True):
             try:
-                data = json.loads(record.read_text())
-                units = data["units"]
+                units = json.loads(record.read_text())["units"]
                 task = next(u["task"] for u in units if u["supervisor"] is None)
                 spent = sum(u["spent_usd"] for u in units)
             except (ValueError, KeyError, TypeError, StopIteration, OSError):
                 continue
-            found.append(FleetRow(record.parent, task, record.parent.name, len(units), spent,
-                                  data.get("work", "")))
+            found.append(FleetRow(record.parent, task, record.parent.name, len(units), spent))
         return found
 
     async def list_fleets(self) -> None:
-        """Fill the sidebar's list of fleets, and the start screen's folder from the
-        newest one."""
+        """Fill the sidebar's list of fleets."""
         rows = await asyncio.to_thread(self.earlier_fleets)
         fleet, folder = self.fleet, self.folder
         if fleet is not None and folder is not None and fleet.lead is not None:
             # The open fleet as it is now: its record may not be written yet.
             shown = FleetRow(folder, fleet.lead.task, folder.name, len(fleet.units),
-                             fleet.spent_usd, fleet.work)
+                             fleet.spent_usd)
             rows = sorted([shown, *(row for row in rows if row.folder != folder)],
                           key=lambda row: row.started, reverse=True)
         self.fleets.clear()
@@ -716,9 +714,6 @@ class FleetWindow(QMainWindow):
             self.fleets.addItem(item)
             if row.folder == self.folder:
                 self.fleets.setCurrentItem(item)
-        if rows and rows[0].work and not self._folder_set:
-            self.start_form.set_folder(Path(rows[0].work))
-        self._folder_set = True
         self._refresh()
 
     def _fleet_chosen(self, item: QListWidgetItem) -> None:
@@ -745,10 +740,16 @@ class FleetWindow(QMainWindow):
         if not task:
             form.task.setFocus()
             return
-        work = form.folder.expanduser().resolve()
+        if form.folder is None:
+            form.warn("Choose a folder first.")
+            return
+        work = form.folder.resolve()
         if work == Path.home().resolve():
             form.warn("Not your home folder: agents can change anything in the folder "
                       "they work in.")
+            return
+        if not work.is_dir():
+            form.warn(f"There is no folder {work}.")
             return
         self._run(self.start_fleet(task, ongoing=form.duty.isChecked(), work=work,
                                    budget=form.budget.value()))

@@ -86,8 +86,8 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
 - **Start a fleet** on the first screen: write what it should do and press Enter. Under
   the text you choose **Task** (ends when the lead reports it done) or **Duty** (standing
   work that never ends), the folder the agents work in, and the most the fleet may spend.
-  The folder starts as the last fleet's, or `kfm-work` in your home folder; your home
-  folder itself is refused, since agents work freely inside the folder they are given.
+  You choose the folder for each fleet: none is suggested, and your home folder itself
+  is refused, since agents work freely inside the folder they are given.
 
   ![The start screen](images/start-light.png)
 

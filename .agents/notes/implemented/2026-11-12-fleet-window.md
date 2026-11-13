@@ -37,8 +37,11 @@ event loop, its theme, its Markdown view.
   and Stop or Resume. The window has no title bar, as Kayden's has none: the bar is where
   it is grabbed and holds minimize, maximize and close, and its edges resize it
   (Kayden's `DragArea` and `WindowEdges`).
-- **Starting a fleet** is the window's empty state: the task, goal or duty, the folder to
-  work in, the limit. **Open a fleet…** lists earlier ones.
+- **Starting a fleet** is the window's empty state, built like a chat's first screen:
+  one box for what the fleet should do, with Task or Duty, the folder and the limit along
+  its lower edge. A form with a label for each field was built first; it sat small in an
+  empty window and read as a settings page.
+- **Earlier fleets** are listed in the sidebar under the agents; clicking one opens it.
 - The window runs the fleet: closing it stops the fleet, which is resumed from the window
   or with `kfm resume`.
 

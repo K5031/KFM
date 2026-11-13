@@ -30,9 +30,11 @@ Design: [Agent Note](notes/implemented/2026-11-12-fleet-window.md).
 | Timeline | Lines only for states nothing else shows (failed, stopped, idle); starting, working, waiting and done are in the agents list |
 | Agents | A tree by supervisor: name and rank, state (accent while at work, warning while waiting, green when done, red when failed), spending; refreshed every second while the fleet runs |
 | Status | running, stopping (until its processes have ended), stopped, or finished (the lead has reported and nothing is at work) with what was spent of the limit |
-| New fleet | In `<home>/fleets/<date-time>/`, with the settings of `<home>/fleet.toml` and the limit from the form |
-| One agent's entries | Choosing an agent in the list shows only the entries it sent or received (the person's messages count as the lead's; fleet notices always show); **Show all**, beside the list's heading while one is chosen, brings the rest back |
-| Opening a fleet | The button lists every fleet under `<home>/fleets`, newest first, by start and task; Resume is offered when something was at work |
+| Start screen | The window's empty state: the logo, one box for the task (Kayden's `MessageBox`: Enter starts, Shift+Enter a new line) and along its lower edge Task or Duty (Task by default), the folder, the limit ("Up to $", 10 unless the settings say otherwise) and the start button; a line under it says what the chosen kind means |
+| Work folder | The newest fleet's, else `~/kfm-work`, made when the fleet starts; the home folder itself is refused with a line under the box, as agents work freely in the folder they are given |
+| New fleet | In `<home>/fleets/<date-time>/` (the next second's when that one exists), with the settings of `<home>/fleet.toml` and the limit from the start screen |
+| Fleets list | In the sidebar under the open fleet's agents: every fleet under `<home>/fleets`, newest first, drawn by Kayden's `RowDelegate` with its task, agents and spending, and the time it started (today) or the day. The open fleet is listed from what the window knows, since its record may not be written yet. Clicking one opens it; while a fleet runs the list is disabled, with "Stop this fleet to open another." Resume is offered when something was at work |
+| Column | One column of at most 860 px in the middle of the window; the message box below it is as wide |
 | App menu | `app_menu.py`, as Kayden's: `io.github.k5031.kfm.desktop` and the icon (the owner's logo, 512 x 512 with clear corners and the same margin around its tile as Kayden's icon, in `hicolor/512x512/apps`) under the user's XDG data directory; the entry runs this install's Python with `-m kfm.desktop`; the icon's file name carries a hash of its content |
 
 ## What agents are told

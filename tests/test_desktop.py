@@ -14,6 +14,7 @@ from typing import Any
 import kayden.frontends.desktop  # noqa: F401 - before any Qt import
 import pytest
 from kayden.frontends.desktop import theme
+from kayden.frontends.desktop.window import PREVIEW_ROLE
 from PySide6.QtWidgets import QApplication
 
 from kfm.config import FleetConfig
@@ -68,7 +69,7 @@ def start(window: FleetWindow, tmp_path: Path, task: str, *, duty: bool = False)
     form = window.start_form
     form.task.setPlainText(task)
     form.duty.setChecked(duty)
-    form.folder.setText(str(tmp_path / "work"))
+    form.set_folder(tmp_path / "work")
     form.budget.setValue(3.0)
     form.start.click()
 
@@ -94,11 +95,18 @@ def cards(window: FleetWindow) -> list[tuple[str, str]]:
 
 async def test_a_fleet_is_started_and_followed_in_the_window(window, tmp_path: Path):
     shown, _ = window(TEAM)
-    assert shown.start_form.isVisibleTo(shown) and not shown.input.isEnabled()
+    form = shown.start_form
+    assert form.isVisibleTo(shown) and not shown.composer.isVisibleTo(shown)
+    assert not shown.title.isVisibleTo(shown)  # nothing to name yet
+    assert not shown.agents_section.isVisibleTo(shown)
+    assert "ends" in form.hint.text() and not form.duty.isChecked()  # a task, by default
+    form.duty.setChecked(True)
+    assert "never ends" in form.hint.text() and not form.task_kind.isChecked()
+    form.task_kind.setChecked(True)
     start(shown, tmp_path, "Tidy up")
     await until(lambda: shown.manager is not None and shown.manager.finished.is_set())
     await until(lambda: len(cards(shown)) == 3)
-    assert not shown.start_form.isVisibleTo(shown)
+    assert not shown.start_form.isVisibleTo(shown) and shown.agents_section.isVisibleTo(shown)
     assert agents(shown) == [(0, "Lead  K5", "done"), (1, "Scout  K4", "done")]
     assert cards(shown) == [("Scout → Lead · question", "Which folder?"),
                             ("Scout → Lead · report", "Tidied docs/"),
@@ -146,8 +154,12 @@ async def test_a_stopped_fleet_is_opened_with_its_history(window, tmp_path: Path
     await first.shut()
 
     again, _ = window({})
-    assert [folder] == [f for f, _ in again.earlier_fleets()]
-    await again.open_fleet(folder)
+    await until(lambda: again.fleets.count() == 1)  # the sidebar lists earlier fleets
+    row = again.fleets.item(0)
+    assert row.text() == "Tidy up" and "2 agents" in row.data(PREVIEW_ROLE)
+    assert [f.folder for f in again.earlier_fleets()] == [folder]
+    again.fleets.itemClicked.emit(row)
+    await until(lambda: again.fleet is not None)
     assert [header for header, _ in cards(again)] == [
         "Scout → Lead · question", "Scout → Lead · report", "Lead → you · report"]
     assert agents(again) == [(0, "Lead  K5", "done"), (1, "Scout  K4", "done")]
@@ -202,3 +214,42 @@ async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QA
     assert not shown.isMaximized()
     shown.window_buttons["close"].click()
     await asyncio.wait_for(shown.closed.wait(), 5)
+
+
+async def test_the_start_screen_takes_enter_and_refuses_the_home_folder(
+        window, tmp_path: Path, monkeypatch):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "me")
+    (tmp_path / "me").mkdir()
+    shown, harness = window({"Lead": [{"do": [("report", "Done.")]}]})
+    form = shown.start_form
+    assert form.folder == tmp_path / "me" / "kfm-work"  # not the home folder itself
+    form.task.setPlainText("Tidy up")
+    form.set_folder(tmp_path / "me")
+    QTest.keyClick(form.task, Qt.Key.Key_Return)
+    await asyncio.sleep(0.1)
+    assert shown.fleet is None and "home folder" in form.warning.text()
+    assert form.warning.isVisibleTo(shown)
+    form.set_folder(tmp_path / "me" / "kfm-work")
+    assert not form.warning.isVisibleTo(shown)
+    QTest.keyClick(form.task, Qt.Key.Key_Return)
+    await until(lambda: shown.manager is not None and shown.manager.finished.is_set())
+    assert (tmp_path / "me" / "kfm-work").is_dir()  # made for the fleet
+    assert harness.heard["Lead"]
+
+
+async def test_a_running_fleet_keeps_the_others_closed(window, tmp_path: Path):
+    first, _ = window({"Lead": [{"do": [("report", "Done.")]}]})
+    start(first, tmp_path, "One")
+    await until(lambda: first.manager is not None and first.manager.finished.is_set())
+    await first.shut()
+    shown, _ = window({"Lead": [{"do": [("say", "On watch.")]}]})
+    await until(lambda: shown.fleets.count() == 1)
+    start(shown, tmp_path, "Two", duty=True)
+    await until(lambda: shown.fleets.count() == 2)
+    assert not shown.fleets.isEnabled() and shown.fleets_hint.isVisibleTo(shown)
+    assert shown.fleets.currentItem().text() == "Two"  # the open one is marked
+    shown.stop_button.click()
+    await until(lambda: shown.fleets.isEnabled())

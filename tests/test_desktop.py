@@ -7,6 +7,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import asyncio
+import getpass
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,7 @@ from kayden.frontends.desktop.window import PREVIEW_ROLE
 from PySide6.QtWidgets import QApplication
 
 from kfm import project
-from kfm.config import FleetConfig
+from kfm.config import FleetConfig, load
 from kfm.desktop import (
     FLEETS_ROLE,
     ApprovalCard,
@@ -536,6 +537,34 @@ async def test_files_are_attached_to_a_message(window, tmp_path: Path):
     assert view.attach_button.toolTip() == "Add files"
 
 
+async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp: QApplication):
+    shown = FleetWindow(tmp_path / "home", harness=FakeHarness({}))  # settings from its home
+    shown.show()
+    try:
+        assert shown.profile_button.text().strip() == getpass.getuser()
+        assert [a.text() for a in shown.profile_button.menu().actions() if a.text()][1:] == [
+            "Settings", "Add to App Menu", "Quit"]
+        shown.gear_button.click()
+        dialog = shown.dialog
+        assert dialog.isVisible() and dialog.budget.value() == 10.0
+        dialog.models["K5"].setText("big-1")
+        dialog.budget.setValue(25.0)
+        dialog.agents.setValue(0)  # no fleet has no agents
+        dialog.save.click()
+        assert dialog.isVisible() and "above zero" in dialog.warning.text()
+        dialog.agents.setValue(6)
+        dialog.save.click()
+        await until(lambda: not dialog.isVisible())
+        saved = load(tmp_path / "home" / "fleet.toml")
+        assert (saved.models, saved.budget_usd, saved.max_units) == ({"K5": "big-1"}, 25.0, 6)
+        await until(lambda: shown.start_form.budget.value() == 25.0)  # what a new fleet gets
+        shown.gear_button.click()
+        assert shown.dialog.models["K5"].text() == "big-1"
+        shown.dialog.reject()
+    finally:
+        await shown.shut()
+
+
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "me")
     (tmp_path / "me").mkdir()
@@ -564,16 +593,16 @@ async def test_the_window_adds_itself_to_the_app_menu(window, tmp_path: Path, mo
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "share"))
     monkeypatch.setattr(app_menu, "_reload", lambda: None)
     shown, _ = window({})
-    await until(lambda: shown.app_menu_button.isVisibleTo(shown))
-    shown.app_menu_button.click()
-    await until(lambda: not shown.app_menu_button.isVisibleTo(shown))
+    await until(lambda: shown.app_menu_action.isVisible())  # in the profile's menu
+    shown.app_menu_action.trigger()
+    await until(lambda: not shown.app_menu_action.isVisible())
     entry = (tmp_path / "share/applications/io.github.k5031.kfm.desktop").read_text()
     assert "Name=KFM" in entry and "-m kfm.desktop" in entry and "Terminal=false" in entry
     [icon] = (tmp_path / "share/icons/hicolor/512x512/apps").glob("io.github.k5031.kfm-*.png")
     assert f"Icon={icon.stem}" in entry
     again, _ = window({})
     await asyncio.sleep(0.2)
-    assert not again.app_menu_button.isVisibleTo(again)  # it is there already
+    assert not again.app_menu_action.isVisible()  # it is there already
 
 
 async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QApplication):

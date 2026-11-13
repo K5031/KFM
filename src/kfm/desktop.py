@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import getpass
 import sys
 import time
 from collections.abc import Coroutine, Sequence
@@ -36,7 +37,9 @@ from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QDialog,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -48,6 +51,8 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
+    QSpinBox,
     QStackedWidget,
     QToolButton,
     QTreeWidget,
@@ -60,7 +65,7 @@ from kfm import app_menu, draft, harnesses, log, project
 from kfm import fleet as fleet_record
 from kfm.api import Harness, UnitError
 from kfm.chart import Chart, ChartFleet
-from kfm.config import CONFIG_FILE, HOME, FleetConfig, load
+from kfm.config import CONFIG_FILE, HOME, FleetConfig, load, save
 from kfm.events import (
     Answered,
     Approval,
@@ -750,6 +755,72 @@ class DeleteDialog(QDialog):
         rows.addLayout(foot)
 
 
+class SettingsDialog(QDialog):
+    """What new fleets get: the model of each rank and the limits. `saved` carries the
+    settings once they are written."""
+
+    saved = Signal(object)
+
+    def __init__(self, parent: QWidget, path: Path, config: FleetConfig) -> None:
+        super().__init__(parent)
+        self._path = path
+        self.setWindowTitle("Settings")
+        self.setMinimumWidth(420)
+        rows = QVBoxLayout(self)
+        rows.setSpacing(12)
+        form = QFormLayout()
+        form.setSpacing(8)
+        self.models: dict[str, QLineEdit] = {}
+        for rank in range(config.top_rank, 0, -1):
+            field = self.models[f"K{rank}"] = QLineEdit(config.models.get(f"K{rank}", ""))
+            field.setPlaceholderText("The agent program's own")
+            form.addRow(f"K{rank} model", field)
+        self.budget = self._money(config.budget_usd)
+        self.each = self._money(config.unit_budget_usd)
+        self.agents = QSpinBox()
+        self.agents.setRange(0, 999)
+        self.agents.setValue(config.max_units)
+        form.addRow("A fleet may spend", self.budget)
+        form.addRow("An agent may spend", self.each)
+        form.addRow("Agents in a fleet, at most", self.agents)
+        self.warning = label("", role="small", tone="error")
+        self.warning.hide()
+        self.save = QPushButton("Save")
+        self.save.setProperty("primary", True)
+        self.save.clicked.connect(self._save)
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        foot = QHBoxLayout()
+        foot.addStretch(1)
+        foot.addWidget(cancel)
+        foot.addWidget(self.save)
+        rows.addLayout(form)
+        rows.addWidget(self.warning)
+        rows.addLayout(foot)
+
+    @staticmethod
+    def _money(value: float) -> QDoubleSpinBox:
+        field = QDoubleSpinBox()
+        field.setRange(0.0, 100_000.0)
+        field.setDecimals(2)
+        field.setPrefix("$ ")
+        field.setValue(value)
+        return field
+
+    def _save(self) -> None:
+        try:
+            made = save(self._path, budget_usd=self.budget.value(),
+                        unit_budget_usd=self.each.value(), max_units=self.agents.value(),
+                        models={rank: field.text().strip()
+                                for rank, field in self.models.items()})
+        except (ValueError, OSError) as e:
+            self.warning.setText(str(e))
+            self.warning.show()
+            return
+        self.saved.emit(made)
+        self.accept()
+
+
 class LineDialog(QDialog):
     """One line to change: a name, a model."""
 
@@ -1207,10 +1278,38 @@ class FleetWindow(QMainWindow):
         self.projects_label = label("Projects", role="small", tone="muted")
         side_layout.addWidget(self.projects_label)
         side_layout.addWidget(self.projects, 1)
-        self.app_menu_button = QPushButton("Add to App Menu", objectName="nav")
-        self.app_menu_button.clicked.connect(lambda: self._run(self._add_to_app_menu()))
-        self.app_menu_button.hide()
-        side_layout.addWidget(self.app_menu_button)
+        # The corner at the bottom, as in Kayden: who you are, with the app's menu, and
+        # the settings.
+        user = getpass.getuser()
+        self.profile_button = QToolButton(objectName="profile", text=f" {user}")
+        self.profile_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.profile_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.profile_button.setIcon(theme.avatar(user))
+        self.profile_button.setIconSize(QSize(22, 22))
+        self.profile_button.setAccessibleName("Profile and settings")
+        self.profile_button.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                          QSizePolicy.Policy.Fixed)
+        self.gear_button = QToolButton(objectName="gear")
+        self.gear_button.setToolTip("Settings")
+        self.gear_button.setAccessibleName("Settings")
+        self.gear_button.setIcon(theme.icon("gear", colors.muted, 18))
+        self.gear_button.setIconSize(QSize(18, 18))
+        self.gear_button.clicked.connect(self.open_settings)
+        menu = QMenu(self)
+        menu.addAction(user).setEnabled(False)
+        menu.addSeparator()
+        menu.addAction("Settings").triggered.connect(self.open_settings)
+        self.app_menu_action = menu.addAction("Add to App Menu")
+        self.app_menu_action.triggered.connect(lambda: self._run(self._add_to_app_menu()))
+        self.app_menu_action.setVisible(False)
+        menu.addSeparator()
+        menu.addAction("Quit").triggered.connect(self.close)
+        self.profile_button.setMenu(menu)
+        corner = QHBoxLayout()
+        corner.setContentsMargins(0, 6, 0, 0)
+        corner.addWidget(self.profile_button, 1)
+        corner.addWidget(self.gear_button)
+        side_layout.addLayout(corner)
 
         self.back_button = QToolButton(objectName="titleControl")
         self.back_button.setText("←")
@@ -1614,14 +1713,29 @@ class FleetWindow(QMainWindow):
     async def _offer_app_menu(self) -> None:
         """The button is there until the app menu starts this install."""
         if app_menu.supported():
-            self.app_menu_button.setVisible(not await asyncio.to_thread(app_menu.is_current))
+            self.app_menu_action.setVisible(not await asyncio.to_thread(app_menu.is_current))
 
     async def _add_to_app_menu(self) -> None:
         try:
             await asyncio.to_thread(app_menu.install)
         except OSError:
             return
-        self.app_menu_button.hide()
+        self.app_menu_action.setVisible(False)
+
+    def open_settings(self) -> None:
+        """What new fleets get, from the settings file in the app's home."""
+        path = self.home / CONFIG_FILE
+        try:
+            current = load(path)
+        except (ValueError, OSError):
+            current = FleetConfig()  # a file that cannot be read is written anew
+        dialog = self.dialog = SettingsDialog(self, path, current)
+        dialog.saved.connect(self._settings_saved)
+        dialog.open()
+
+    def _settings_saved(self, made: FleetConfig) -> None:
+        if self._config is None:
+            self.start_form.budget.setValue(made.budget_usd)
 
     def _create_clicked(self) -> None:
         form = self.project_form

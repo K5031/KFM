@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
+import tomli_w
+
 HOME = Path.home() / ".kfm"
 CONFIG_FILE = "fleet.toml"
 
@@ -42,6 +44,19 @@ def load(path: Path, **overrides: Any) -> FleetConfig:
     None. ValueError names a setting that does not exist or does not fit."""
     data: dict[str, Any] = tomllib.loads(path.read_text()) if path.exists() else {}
     return _config(data, str(path), overrides)
+
+
+def save(path: Path, **changes: Any) -> FleetConfig:
+    """Write `changes` into the fleet.toml at `path`, beside what it already says, and
+    return the settings it then holds. In `models` an empty id takes the rank's entry
+    out. ValueError, and nothing written, for a setting that does not fit. Blocking."""
+    data: dict[str, Any] = tomllib.loads(path.read_text()) if path.exists() else {}
+    models = {**data.get("models", {}), **changes.pop("models", {})}
+    data.update(changes, models={rank: model for rank, model in models.items() if model})
+    config = _config(dict(data), str(path), {})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(tomli_w.dumps(data))
+    return config
 
 
 def record(config: FleetConfig) -> dict[str, Any]:

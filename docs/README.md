@@ -163,8 +163,12 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
   right.
 - **Stop** ends the open fleet's processes; **Resume** carries it on. Closing the window
   stops every fleet: none runs in the background.
-- **Add to App Menu**, at the bottom left on Linux, puts KFM in your app menu with its own
-  icon, so it starts without a terminal. The button is there until that is done.
+- **Your name, at the bottom left**, opens the app's menu: Settings, Quit and, on Linux
+  until it is done, **Add to App Menu**, which puts KFM in your app menu with its own
+  icon so it starts without a terminal.
+- **The gear** beside it opens **Settings**: the model of each rank, what a fleet and an
+  agent may spend, and how many agents a fleet may have. They apply to fleets made
+  afterwards; a fleet keeps what it was made with.
 
 What happens in a fleet is also kept as `log.jsonl` in the fleet's folder, one line per
 event, whichever way the fleet was run.
@@ -184,7 +188,8 @@ event, whichever way the fleet was run.
 
 ## Settings
 
-`~/.kfm/fleet.toml`, all optional:
+`~/.kfm/fleet.toml`, all optional. The window's Settings write the models and the limits
+into it and leave the rest as it is:
 
 ```toml
 top_rank = 5

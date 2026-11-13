@@ -245,6 +245,26 @@ async def test_an_agent_with_no_task_takes_its_first_message_as_its_task(tmp_pat
     await manager.aclose()
 
 
+async def test_a_renamed_agent_is_known_by_its_new_name(tmp_path: Path):
+    harness = FakeHarness({
+        "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]}],
+        "Scout": [{"do": [("say", "Mapping.")]},
+                  {"when": "go on", "do": [("report", "Mapped.")]}]})
+    manager, events = await run(tmp_path, harness)
+    await manager.lead("Tidy up", ongoing=True)
+    await until(lambda: "u2" in manager.fleet.units)
+    scout = manager.fleet.units["u2"]
+    await manager.rename("Mapper", scout)
+    await manager.rename("docs")
+    await manager.tell(scout, "go on")
+    await until(lambda: delivered(events) == [("Mapper", "Lead", "report", "Mapped.")])
+    await until(lambda: any("[Report from Mapper (K4, u2)]" in heard
+                            for heard in harness.heard["Lead"]))
+    await manager.aclose()
+    saved = Fleet.load(tmp_path / "fleet")
+    assert saved.name == "docs" and saved.units["u2"].name == "Mapper"
+
+
 async def until(predicate, timeout: float = 10.0) -> None:
     async def poll() -> None:
         while not predicate():

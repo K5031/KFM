@@ -47,6 +47,14 @@ def load(folder: Path) -> Project:
     return Project(folder, data["name"], Path(data["work"]))
 
 
+def rename(project: Project, name: str) -> Project:
+    """The project under another name. Blocking."""
+    renamed = Project(project.folder, name.strip(), project.work)
+    (project.folder / PROJECT).write_text(json.dumps(
+        {"format": FORMAT, "name": renamed.name, "work": str(project.work)}, indent=2))
+    return renamed
+
+
 def delete(folder: Path) -> None:
     """Remove a project's folder: its record and its fleets' records and logs. The folder
     its fleets worked in is not part of it. Blocking."""

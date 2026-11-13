@@ -17,6 +17,7 @@ from kayden.frontends.desktop import theme
 from kayden.frontends.desktop.window import PREVIEW_ROLE
 from PySide6.QtWidgets import QApplication
 
+from kfm import project
 from kfm.config import FleetConfig
 from kfm.desktop import (
     FLEETS_ROLE,
@@ -26,6 +27,7 @@ from kfm.desktop import (
     FleetWindow,
     YouEntry,
 )
+from kfm.fleet import Fleet
 from tests.fakeharness import FakeHarness
 
 TEAM = {
@@ -446,6 +448,40 @@ async def test_a_fleet_is_deleted_from_the_chart(window, tmp_path: Path):
     assert list(shown.views.values()) == [second] and second.running and not first.running
     await until(lambda: shown.projects.item(0).data(FLEETS_ROLE) == 1)
     await second.stop()
+
+
+async def test_an_agent_a_fleet_and_a_project_are_renamed(window, tmp_path: Path):
+    shown, _ = window(TEAM)
+    view = await start(shown, tmp_path, "Tidy up", name="dev")
+    shown.back_button.click()
+    await until(lambda: chart(shown) == {"dev": ["Lead K5", "Scout K4"]})
+    key = str(view.folder)
+
+    def rename(action, to: str) -> None:
+        action.trigger()
+        shown.dialog.line.setText(to)
+        shown.dialog.accept()
+
+    rename(shown.chart.nodes[(key, "u2")].rename_action, "Tidier")  # while it runs
+    await until(lambda: chart(shown) == {"dev": ["Lead K5", "Tidier K4"]})
+    rename(shown.chart.heads[key].rename_action, "docs")
+    await until(lambda: chart(shown) == {"docs": ["Lead K5", "Tidier K4"]})
+    rename(shown.chart.heads[key].rename_action, "  ")  # no name: as it was
+    await asyncio.sleep(0.05)
+    assert view.name == "docs"
+    await view.stop()
+    rename(shown.chart.nodes[(key, "u1")].rename_action, "Chief")  # and while it does not
+    await until(lambda: chart(shown) == {"docs": ["Chief K5", "Tidier K4"]})
+    saved = Fleet.load(view.folder)
+    assert (saved.name, [u.name for u in saved.units.values()]) == ("docs", ["Chief", "Tidier"])
+
+    shown.ask_rename(shown.projects.item(0))  # what a right-click on it offers
+    assert shown.dialog.line.text() == "Acme"
+    shown.dialog.line.setText("Globex")
+    shown.dialog.accept()
+    await until(lambda: shown.projects.item(0).text() == "Globex")
+    assert shown.title.text() == "Globex" and shown.project.name == "Globex"
+    assert project.load(shown.project.folder).name == "Globex"
 
 
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):

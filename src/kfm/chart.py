@@ -98,10 +98,13 @@ class Node(_Box):
 
     add_asked = Signal()
     model_asked = Signal()
+    rename_asked = Signal()
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent, "node")
         self.menu = QMenu(self)
+        self.rename_action = self.menu.addAction("Rename…")
+        self.rename_action.triggered.connect(lambda: self.rename_asked.emit())
         self.add_action = self.menu.addAction("Add agent…")
         self.add_action.triggered.connect(lambda: self.add_asked.emit())
         self.model_action = self.menu.addAction("Model…")
@@ -123,6 +126,7 @@ class Node(_Box):
     def show_unit(self, unit: Unit, editable: bool, running: bool) -> None:
         self.add_action.setEnabled(editable and unit.rank > 1)
         self.model_action.setEnabled(editable)
+        self.rename_action.setEnabled(editable)
         room = NODE_W - 24 - 30  # beside the rank
         self.name.setText(QFontMetrics(self.name.font()).elidedText(
             unit.name, Qt.TextElideMode.ElideRight, room))
@@ -140,14 +144,17 @@ class Node(_Box):
 
 class Head(_Box):
     """A fleet's name over its tree, how it stands, and Start while it can be started. A
-    right-click offers to delete it."""
+    right-click offers to rename or delete it."""
 
     delete_asked = Signal()
+    rename_asked = Signal()
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent, "fleetHead")
         self.name, self.status = _text("title"), _text("small")
         self.menu = QMenu(self)
+        self.rename_action = self.menu.addAction("Rename…")
+        self.rename_action.triggered.connect(lambda: self.rename_asked.emit())
         self.delete_action = self.menu.addAction("Delete…")
         self.delete_action.triggered.connect(lambda: self.delete_asked.emit())
         self.start = QPushButton("Start")
@@ -170,13 +177,15 @@ class Head(_Box):
 class Chart(QWidget):
     """`opened`: a fleet's key and the unit clicked, or "" for the fleet as a whole.
     `add_asked`, `model_asked`: a fleet's key and the unit to add under ("": as its lead)
-    or to change. `start_asked`, `delete_asked`: a fleet's key."""
+    or to change. `start_asked`, `delete_asked`: a fleet's key. `rename_asked`: a fleet's
+    key and the unit to rename, or "" for the fleet."""
 
     opened = Signal(str, str)
     add_asked = Signal(str, str)
     model_asked = Signal(str, str)
     start_asked = Signal(str)
     delete_asked = Signal(str)
+    rename_asked = Signal(str, str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -291,6 +300,7 @@ class Chart(QWidget):
         head.clicked.connect(lambda: self.opened.emit(key, ""))
         head.start.clicked.connect(lambda: self.start_asked.emit(key))
         head.delete_asked.connect(lambda: self.delete_asked.emit(key))
+        head.rename_asked.connect(lambda: self.rename_asked.emit(key, ""))
         return head
 
     def _first(self, key: str) -> QPushButton:
@@ -305,6 +315,7 @@ class Chart(QWidget):
         node.clicked.connect(lambda: self.opened.emit(key, unit_id))
         node.add_asked.connect(lambda: self.add_asked.emit(key, unit_id))
         node.model_asked.connect(lambda: self.model_asked.emit(key, unit_id))
+        node.rename_asked.connect(lambda: self.rename_asked.emit(key, unit_id))
         return node
 
     def paintEvent(self, event: QPaintEvent) -> None:

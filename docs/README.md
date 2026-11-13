@@ -126,6 +126,9 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
   agent runs on, by the model's id; leave it empty for the one its rank has in the
   settings. In a running fleet both happen at once (an agent starts again on its new
   model); in a stopped one they take effect when you start it.
+- **Rename** an agent, a fleet or a project by right-clicking it and choosing
+  **Rename…**. Agents are not told: they know each other by number, and a renamed
+  agent's reports carry its new name from then on.
 - **Delete a fleet** by right-clicking its name on the chart. It is stopped and its
   record and log are removed, after you confirm; the folder it worked in is kept.
 - **Several fleets run at once.** Each has its own limit, and is stopped and resumed by

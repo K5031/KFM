@@ -709,17 +709,17 @@ class DeleteDialog(QDialog):
         rows.addLayout(foot)
 
 
-class ModelDialog(QDialog):
-    """The model an agent runs on; empty: its rank's."""
+class LineDialog(QDialog):
+    """One line to change: a name, a model."""
 
-    def __init__(self, parent: QWidget, unit: Unit) -> None:
+    def __init__(self, parent: QWidget, title: str, text: str, placeholder: str = "") -> None:
         super().__init__(parent)
-        self.setWindowTitle(f"{unit.name}'s model")
+        self.setWindowTitle(title)
         self.setMinimumWidth(380)
         rows = QVBoxLayout(self)
-        self.model = QLineEdit(unit.model or "")
-        self.model.setPlaceholderText(f"K{unit.rank}'s, if empty")
-        self.model.returnPressed.connect(self.accept)
+        self.line = QLineEdit(text)
+        self.line.setPlaceholderText(placeholder)
+        self.line.returnPressed.connect(self.accept)
         save = QPushButton("Save")
         save.setProperty("primary", True)
         save.clicked.connect(self.accept)
@@ -729,8 +729,17 @@ class ModelDialog(QDialog):
         foot.addStretch(1)
         foot.addWidget(cancel)
         foot.addWidget(save)
-        rows.addWidget(self.model)
+        rows.addWidget(self.line)
         rows.addLayout(foot)
+
+
+class ModelDialog(LineDialog):
+    """The model an agent runs on; empty: its rank's."""
+
+    def __init__(self, parent: QWidget, unit: Unit) -> None:
+        super().__init__(parent, f"{unit.name}'s model", unit.model or "",
+                         f"K{unit.rank}'s, if empty")
+        self.model = self.line
 
 
 # ── A fleet ───────────────────────────────────────────────────────────────
@@ -884,6 +893,18 @@ class FleetView(QWidget):
             await asyncio.to_thread(place, self.fleet, self.folder, supervisor, name, task,
                                     ongoing=ongoing, model=model)
         self._enable()
+        self.changed.emit()
+
+    async def rename(self, name: str, unit: Unit | None = None) -> None:
+        """Another name for the agent, or for the fleet."""
+        if self.manager is not None:
+            await self.manager.rename(name, unit)
+        elif self.fleet is not None:
+            if unit is not None:
+                unit.name = name
+            else:
+                self.fleet.name = name
+            await asyncio.to_thread(self.fleet.save, self.folder)
         self.changed.emit()
 
     async def set_model(self, unit: Unit, model: str) -> None:
@@ -1157,6 +1178,7 @@ class FleetWindow(QMainWindow):
         self.chart.model_asked.connect(self._choose_model)
         self.chart.start_asked.connect(self._start_asked)
         self.chart.delete_asked.connect(self._ask_delete_fleet)
+        self.chart.rename_asked.connect(self._ask_rename)
         self.chart_scroll = QScrollArea()
         self.chart_scroll.setWidgetResizable(True)
         self.chart_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -1402,8 +1424,44 @@ class FleetWindow(QMainWindow):
         if (item := self.projects.itemAt(at)) is None:
             return
         menu = QMenu(self)
+        menu.addAction("Rename…").triggered.connect(lambda: self.ask_rename(item))
         menu.addAction("Delete…").triggered.connect(lambda: self.ask_delete(item))
         menu.popup(self.projects.viewport().mapToGlobal(at))
+
+    def ask_rename(self, item: QListWidgetItem) -> None:
+        """Ask for the listed project's new name; an empty one changes nothing."""
+        folder = Path(item.data(FOLDER_ROLE))
+        dialog = self.dialog = LineDialog(self, "Rename project", item.text())
+
+        async def rename() -> None:
+            if not (name := dialog.line.text().strip()):
+                return
+            with contextlib.suppress(ValueError, KeyError, OSError):
+                renamed = await asyncio.to_thread(
+                    lambda: project.rename(project.load(folder), name))
+                if self.project is not None and self.project.folder == folder:
+                    self.project = renamed
+            await self.list_projects()
+
+        dialog.accepted.connect(lambda: self._run(rename()))
+        dialog.open()
+
+    def _ask_rename(self, key: str, unit_id: str) -> None:
+        """Ask for a new name for the fleet's agent, or for the fleet ("")."""
+        view = self.views.get(Path(key))
+        if view is None or view.fleet is None:
+            return
+        unit = view.fleet.units.get(unit_id)
+        dialog = self.dialog = LineDialog(
+            self, "Rename agent" if unit is not None else "Rename fleet",
+            unit.name if unit is not None else view.name)
+
+        async def rename() -> None:
+            if name := dialog.line.text().strip():
+                await view.rename(name, unit)
+
+        dialog.accepted.connect(lambda: self._run(rename()))
+        dialog.open()
 
     def ask_delete(self, item: QListWidgetItem) -> None:
         """Ask whether the listed project should go, and delete it on a yes."""

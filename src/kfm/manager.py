@@ -188,6 +188,15 @@ class Manager:
             except UnitError as e:
                 await self._could_not_start(unit, e)
 
+    async def rename(self, name: str, unit: Unit | None = None) -> None:
+        """Another name for the unit, or for the fleet. Nobody is told: agents know each
+        other by id, and what reaches a supervisor from now on carries the new name."""
+        if unit is not None:
+            unit.name = name
+        else:
+            self.fleet.name = name
+        await self._save()
+
     async def approve(self, unit: Unit, request_id: str, allow: bool) -> None:
         if (session := self._sessions.get(unit.id)) is not None:
             await session.approve(request_id, allow)

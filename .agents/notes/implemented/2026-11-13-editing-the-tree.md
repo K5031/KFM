@@ -73,8 +73,8 @@ knowledge, and the unit contract has no way to ask.
 - A supervisor may never give a waiting agent a task: it then stays idle, at no cost.
 - A fleet built by hand has no task of its own: what it does is what its lead's task
   says. Nothing checks that the agents' tasks fit together.
-- An agent placed in a stopped fleet cannot be taken out again, and its name and task
-  cannot be changed.
+- An agent cannot be taken out again, and its task cannot be changed. Its name can; the
+  agent is not told, so its own conversation still has the first one.
 - A model id that the harness does not know fails the agent when it starts; the chart
   shows it failed.
 - The menu is reached by right-click only; nothing on an agent's box shows it is there.

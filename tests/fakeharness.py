@@ -41,6 +41,7 @@ class FakeHarness(Harness):
         self.heard: dict[str, list[str]] = {}  # every turn's text, by unit name
         self.standing: dict[str, bool] = {}  # by session: whether its instruction stands
         self.opened: list[tuple[str, str | None]] = []  # (unit name, session)
+        self.models: list[tuple[str, str | None]] = []  # (unit name, model), as opened
         self.approved: list[tuple[str, bool]] = []  # (request id, allow)
 
     @property
@@ -50,6 +51,7 @@ class FakeHarness(Harness):
     async def open(self, spec: UnitSpec, on_event: Callable[[UnitEvent], None],
                    session: str | None = None) -> Session:
         self.opened.append((spec.name, session))
+        self.models.append((spec.name, spec.model))
         return FakeSession(self, spec, on_event, session)
 
 

@@ -33,6 +33,7 @@ from PySide6.QtGui import QCloseEvent, QColor, QDoubleValidator, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -628,6 +629,71 @@ class DraftPage(QWidget):
         self.discard.setText("Cancel" if self.busy else "Discard")
 
 
+class AgentDialog(QDialog):
+    """An agent the person puts under another: its name, its task, and a model of its own
+    if it should not run on its rank's. `add_asked` when the person wants it made."""
+
+    add_asked = Signal()
+
+    def __init__(self, parent: QWidget, supervisor: Unit) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"Add agent under {supervisor.name}")
+        self.setMinimumWidth(460)
+        rows = QVBoxLayout(self)
+        rows.setSpacing(10)
+        self.name = QLineEdit()
+        self.name.setPlaceholderText("Name")
+        self.task = MessageBox()
+        self.task.setPlaceholderText("Its task")
+        self.kind = KindSwitch()
+        self.kind.task_kind.setChecked(True)
+        self.model = QLineEdit()
+        self.model.setPlaceholderText(f"Model (K{supervisor.rank - 1}'s, if empty)")
+        self.warning = label("", role="small", tone="error")
+        self.warning.hide()
+        self.add = QPushButton("Add")
+        self.add.setProperty("primary", True)
+        self.add.clicked.connect(self.add_asked)
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        foot = QHBoxLayout()
+        foot.addWidget(self.kind)
+        foot.addStretch(1)
+        foot.addWidget(cancel)
+        foot.addWidget(self.add)
+        for row in (self.name, self.task, self.model, self.warning):
+            rows.addWidget(row)
+        rows.addLayout(foot)
+
+    def warn(self, text: str) -> None:
+        self.warning.setText(text)
+        self.warning.setVisible(bool(text))
+
+
+class ModelDialog(QDialog):
+    """The model an agent runs on; empty: its rank's."""
+
+    def __init__(self, parent: QWidget, unit: Unit) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"{unit.name}'s model")
+        self.setMinimumWidth(380)
+        rows = QVBoxLayout(self)
+        self.model = QLineEdit(unit.model or "")
+        self.model.setPlaceholderText(f"K{unit.rank}'s, if empty")
+        self.model.returnPressed.connect(self.accept)
+        save = QPushButton("Save")
+        save.setProperty("primary", True)
+        save.clicked.connect(self.accept)
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        foot = QHBoxLayout()
+        foot.addStretch(1)
+        foot.addWidget(cancel)
+        foot.addWidget(save)
+        rows.addWidget(self.model)
+        rows.addLayout(foot)
+
+
 # ── A fleet ───────────────────────────────────────────────────────────────
 
 
@@ -865,6 +931,7 @@ class FleetWindow(QMainWindow):
         self.views: dict[Path, FleetView] = {}  # every fleet read so far, by its folder
         self.view: FleetView | None = None  # the fleet opened; None: the chart
         self.adding = False  # the form for a new fleet is shown
+        self.dialog: QDialog | None = None  # the one open about an agent
         self.drafts: dict[Path, DraftPage] = {}  # by project folder, until started
         self.closed = asyncio.Event()
         self._rows: dict[str, QTreeWidgetItem] = {}
@@ -992,6 +1059,8 @@ class FleetWindow(QMainWindow):
         self.chart = Chart()
         self.chart.opened.connect(self._chart_clicked)
         self.chart.add_button.clicked.connect(self.add_fleet)
+        self.chart.add_asked.connect(self._add_agent)
+        self.chart.model_asked.connect(self._choose_model)
         self.chart_scroll = QScrollArea()
         self.chart_scroll.setWidgetResizable(True)
         self.chart_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -1276,6 +1345,40 @@ class FleetWindow(QMainWindow):
         if (view := self.views.get(Path(key))) is not None:
             self.open_fleet(view, unit_id or None)
 
+    def _add_agent(self, key: str, unit_id: str) -> None:
+        """Ask for an agent to put under the unit, and make it."""
+        view = self.views.get(Path(key))
+        if view is None or view.manager is None:
+            return
+        manager, supervisor = view.manager, view.manager.fleet.units[unit_id]
+        dialog = self.dialog = AgentDialog(self, supervisor)
+
+        async def add() -> None:
+            name, task = dialog.name.text().strip(), dialog.task.toPlainText().strip()
+            if not name or not task:
+                return dialog.warn("It needs a name and a task.")
+            try:
+                await manager.hire(supervisor, name, task,
+                                   ongoing=dialog.kind.duty.isChecked(),
+                                   model=dialog.model.text().strip() or None)
+            except (FleetError, UnitError) as e:
+                return dialog.warn(str(e))
+            dialog.accept()
+            self._refresh()
+
+        dialog.add_asked.connect(lambda: self._run(add()))
+        dialog.open()
+
+    def _choose_model(self, key: str, unit_id: str) -> None:
+        view = self.views.get(Path(key))
+        if view is None or view.manager is None:
+            return
+        manager, unit = view.manager, view.manager.fleet.units[unit_id]
+        dialog = self.dialog = ModelDialog(self, unit)
+        dialog.accepted.connect(
+            lambda: self._run(manager.set_model(unit, dialog.model.text().strip())))
+        dialog.open()
+
     def _agent_chosen(self, item: QTreeWidgetItem | None, _: object = None) -> None:
         if self.view is not None:
             self.view.choose(item.data(0, UNIT_ROLE) if item is not None else None)
@@ -1320,7 +1423,7 @@ class FleetWindow(QMainWindow):
             self.status.setText(f"{running} running · ${spent:.2f}")
             if on_chart:
                 self.chart.show_fleets([ChartFleet(str(shown.folder), shown.name,
-                                                   shown.status, shown.fleet)
+                                                   shown.status, shown.fleet, shown.running)
                                         for shown in fleets])
             return
         self.title.setText(view.name)

@@ -123,6 +123,32 @@ class Manager:
         await self.tell(lead, text)
         self._emit(Told(text))
 
+    async def hire(self, supervisor: Unit, name: str, task: str, *, ongoing: bool = False,
+                   model: str | None = None) -> Unit:
+        """The person puts an agent under `supervisor`, on a model of its own if one is
+        named; the supervisor is told it has it. FleetError when the hierarchy or the
+        fleet's limits do not allow it."""
+        if supervisor.id not in self.fleet.units:
+            raise FleetError("The fleet has not started.")
+        unit = await self.delegate(supervisor, name, task, ongoing=ongoing, model=model)
+        self._emit(Notice(f"You added {unit.label} under {supervisor.name}."))
+        self._spawn(self._tell_quietly(supervisor, units.hired_note(unit, self._words)))
+        return unit
+
+    async def set_model(self, unit: Unit, model: str | None) -> None:
+        """The model the unit runs on from now; None or "": its rank's or team's. A unit
+        at work is started again on it, in its own conversation."""
+        unit.model = model or None
+        await self._save()
+        if unit.id not in self._sessions:
+            return  # its process starts on it the next time
+        await self._close(unit)
+        if unit.active and not self._over_budget:
+            try:
+                await (await self._session(unit)).send(units.MODEL_CHANGED)
+            except UnitError as e:
+                await self._could_not_start(unit, e)
+
     async def approve(self, unit: Unit, request_id: str, allow: bool) -> None:
         if (session := self._sessions.get(unit.id)) is not None:
             await session.approve(request_id, allow)
@@ -132,12 +158,13 @@ class Manager:
 
     async def delegate(self, supervisor: Unit, name: str, task: str, *,
                        team: str | None = None, ongoing: bool = False,
-                       budget_usd: float | None = None) -> Unit:
+                       budget_usd: float | None = None, model: str | None = None) -> Unit:
         if self._over_budget:
             raise FleetError("The fleet has reached its spending limit.")
         budget = min(budget_usd or self.config.unit_budget_usd, self.config.unit_budget_usd)
         unit = self.fleet.add(name, task, supervisor, team=team, ongoing=ongoing,
                               budget_usd=budget)
+        unit.model = model or None
         await self._start(unit)
         return unit
 
@@ -227,7 +254,8 @@ class Manager:
     async def _open(self, unit: Unit, *, resume: bool) -> Session:
         spec = UnitSpec(
             unit.id, unit.name, unit.rank, self.folder / "units" / unit.id, self.work,
-            self.config.model_for(unit.rank, unit.team), self.config.permissions,
+            unit.model or self.config.model_for(unit.rank, unit.team),
+            self.config.permissions,
             unit.budget_usd, f"{self._tools.url}?unit={unit.token}")
         session = await self._harness.open(spec, lambda event: self._event(unit, event),
                                            unit.session if resume else None)

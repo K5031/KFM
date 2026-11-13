@@ -8,8 +8,24 @@ from dataclasses import dataclass
 
 from kayden.frontends.desktop import theme
 from PySide6.QtCore import QPointF, QRect, Qt, Signal
-from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPaintEvent, QPen
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtGui import (
+    QColor,
+    QContextMenuEvent,
+    QFontMetrics,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
+)
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from kfm.fleet import Fleet, Unit
 
@@ -26,6 +42,7 @@ class ChartFleet:
     name: str
     status: str
     fleet: Fleet | None  # None until its record is read
+    running: bool = False  # its agents can be added to and changed
 
 
 def slots(fleet: Fleet) -> tuple[dict[str, tuple[float, int]], float]:
@@ -68,10 +85,19 @@ class _Box(QFrame):
 
 
 class Node(_Box):
-    """An agent: its name and rank, its state and what it has spent."""
+    """An agent: its name and rank, its state and what it has spent. A right-click offers
+    what the person can do to it while its fleet runs."""
+
+    add_asked = Signal()
+    model_asked = Signal()
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent, "node")
+        self.menu = QMenu(self)
+        self.add_action = self.menu.addAction("Add agent…")
+        self.add_action.triggered.connect(lambda: self.add_asked.emit())
+        self.model_action = self.menu.addAction("Model…")
+        self.model_action.triggered.connect(lambda: self.model_asked.emit())
         self.name, self.rank = _text("strong"), _text("small")
         self.state, self.spent = _text("small"), _text("small")
         rows = QVBoxLayout(self)
@@ -83,7 +109,12 @@ class Node(_Box):
             row.addWidget(right)
             rows.addLayout(row)
 
-    def show_unit(self, unit: Unit) -> None:
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        self.menu.popup(event.globalPos())
+
+    def show_unit(self, unit: Unit, running: bool) -> None:
+        self.add_action.setEnabled(running and unit.rank > 1)
+        self.model_action.setEnabled(running)
         room = NODE_W - 24 - 30  # beside the rank
         self.name.setText(QFontMetrics(self.name.font()).elidedText(
             unit.name, Qt.TextElideMode.ElideRight, room))
@@ -95,7 +126,7 @@ class Node(_Box):
                 "done": colors.ok}.get(unit.state, colors.muted)
         self.state.setStyleSheet(f"color: {tone};")
         self.spent.setText(f"${unit.spent_usd:.2f}")
-        self.setToolTip(unit.task)
+        self.setToolTip(f"{unit.task}\n{unit.model}" if unit.model else unit.task)
 
 
 class Head(_Box):
@@ -112,9 +143,12 @@ class Head(_Box):
 
 
 class Chart(QWidget):
-    """`opened`: a fleet's key and the unit clicked, or "" for the fleet as a whole."""
+    """`opened`: a fleet's key and the unit clicked, or "" for the fleet as a whole.
+    `add_asked`, `model_asked`: a fleet's key and the unit to add under or to change."""
 
     opened = Signal(str, str)
+    add_asked = Signal(str, str)
+    model_asked = Signal(str, str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -151,7 +185,7 @@ class Chart(QWidget):
             for unit_id, (column, row) in at.items():
                 key = (shown.key, unit_id)
                 node = nodes[key] = self.nodes.pop(key, None) or self._node(*key)
-                node.show_unit(shown.fleet.units[unit_id])  # type: ignore[union-attr]
+                node.show_unit(shown.fleet.units[unit_id], shown.running)  # type: ignore[union-attr]
                 placed[unit_id] = QRect(x + round(column * (NODE_W + GAP_X)),
                                         top + row * (NODE_H + GAP_Y), NODE_W, NODE_H)
                 node.setGeometry(placed[unit_id])
@@ -180,6 +214,8 @@ class Chart(QWidget):
     def _node(self, key: str, unit_id: str) -> Node:
         node = Node(self)
         node.clicked.connect(lambda: self.opened.emit(key, unit_id))
+        node.add_asked.connect(lambda: self.add_asked.emit(key, unit_id))
+        node.model_asked.connect(lambda: self.model_asked.emit(key, unit_id))
         return node
 
     def paintEvent(self, event: QPaintEvent) -> None:

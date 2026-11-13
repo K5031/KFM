@@ -294,6 +294,39 @@ async def test_a_draft_that_fails_or_is_discarded_leaves_the_project(window, tmp
     assert not shown.drafts and shown.project.name == "Studio"
 
 
+async def test_the_person_adds_an_agent_and_sets_a_model_on_the_chart(window, tmp_path: Path):
+    shown, harness = window({"Lead": [{"do": [("say", "On watch.")]}],
+                             "Tester": [{"do": [("say", "Testing.")]}]})
+    view = await start(shown, tmp_path, "Keep it healthy", name="dev", duty=True)
+    shown.back_button.click()
+    await until(lambda: chart(shown) == {"dev": ["Lead K5"]})
+    [lead] = shown.chart.nodes.values()
+    assert lead.add_action.isEnabled() and lead.model_action.isEnabled()
+    lead.add_action.trigger()
+    dialog = shown.dialog
+    assert dialog.isVisible() and "under Lead" in dialog.windowTitle()
+    dialog.add.click()
+    await asyncio.sleep(0.05)
+    assert dialog.isVisible() and "name and a task" in dialog.warning.text()
+    dialog.name.setText("Tester")
+    dialog.task.setPlainText("Run the tests")
+    dialog.model.setText("small-1")
+    dialog.add.click()
+    await until(lambda: chart(shown) == {"dev": ["Lead K5", "Tester K4"]})
+    assert not dialog.isVisible() and ("Tester", "small-1") in harness.models
+    assert not view.fleet.units["u2"].ongoing  # a task, unless Duty is chosen
+    tester = shown.chart.nodes[(str(view.folder), "u2")]
+    assert "small-1" in tester.toolTip()
+
+    lead.model_action.trigger()
+    shown.dialog.model.setText("big-1")
+    shown.dialog.accept()
+    await until(lambda: ("Lead", "big-1") in harness.models)
+    await view.stop()
+    await until(lambda: not lead.add_action.isEnabled())  # only while the fleet runs
+    assert not lead.model_action.isEnabled()
+
+
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "me")
     (tmp_path / "me").mkdir()

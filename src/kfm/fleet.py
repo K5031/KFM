@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-FORMAT = 4  # of fleet.json; a file of another format is refused
+FORMAT = 5  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
 # starting: its process is coming up.  working: on its task, between check-ins included.
@@ -34,6 +34,7 @@ class Unit:
     team: str | None = None
     ongoing: bool = False  # standing work that never ends, instead of a goal
     budget_usd: float = 0.0  # the most this unit may spend
+    model: str | None = None  # the person's choice for it; None: its rank's or team's
     token: str = field(default_factory=lambda: secrets.token_urlsafe(16))  # for the fleet tools
     state: str = "starting"
     session: str | None = None  # what its harness opens it on again (api.Session.begin)

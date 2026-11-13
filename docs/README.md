@@ -107,6 +107,11 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
 
   ![A new fleet](images/start-light.png)
 
+- **Right-click an agent** on the chart, while its fleet runs, to shape the team
+  yourself. **Add agent** puts a new agent under it with a name, a task and, if you
+  like, a model of its own; its supervisor is told. **Model** changes the model the
+  agent runs on, by the model's id; it starts again on it at once. Leave the model
+  empty for the one its rank has in the settings.
 - **Several fleets run at once.** Each has its own limit, and is stopped and resumed by
   itself. Fleets do not talk to each other: each lead reports to you.
 - **Open a fleet** by clicking its name on the chart, or an agent to see only what

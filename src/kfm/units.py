@@ -14,6 +14,18 @@ RESUMED = (
     "If you were waiting for an answer that has not arrived, ask again.]")
 
 
+MODEL_CHANGED = (
+    "[Your model was changed, which started you again. Anything you had running in the "
+    "background ended: start it again if you still need it, then carry on with your work.]")
+
+
+def hired_note(unit: Unit, words: Vocabulary) -> str:
+    """What a supervisor is told when the person puts an agent under it."""
+    return (f"[The person added {unit.label} under you. Its task: {unit.task}\nIt has "
+            "started on that. Its reports and questions come to you; answer with "
+            f"{words.tool('message')}(agent=\"{unit.id}\", text=...).]")
+
+
 def answer_note(supervisor: Unit | None, words: Vocabulary) -> str:
     """What a unit is told with a message that reaches it after its goal ended."""
     reader = supervisor.name if supervisor is not None else "the person"

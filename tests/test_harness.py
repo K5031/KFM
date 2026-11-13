@@ -12,7 +12,7 @@ import pytest
 from kfm import harnesses, log
 from kfm.config import FleetConfig
 from kfm.events import Delivered, FleetEvent, Told
-from kfm.fleet import Fleet
+from kfm.fleet import Fleet, FleetError
 from kfm.harnesses.kayden import KaydenHarness
 from kfm.manager import Manager
 from tests.fakeharness import FakeHarness
@@ -135,3 +135,41 @@ def test_a_harness_is_found_by_its_name_or_its_import_path(tmp_path: Path):
         harnesses.load("nope", {})
     with pytest.raises(ValueError, match="could not be loaded"):
         harnesses.load("kayden", {"wrong": 1})
+
+
+async def test_the_person_adds_an_agent_and_sets_models(tmp_path: Path):
+    harness = FakeHarness({
+        "Lead": [{"do": [("say", "On watch.")]}],
+        "Tester": [{"do": [("say", "Testing.")]},
+                   {"when": "model was changed", "do": [("say", "Carrying on.")]}]})
+    manager, _ = await run(tmp_path, harness)
+    lead = await manager.lead("Keep the project healthy", ongoing=True)
+    tester = await manager.hire(lead, "Tester", "Run the tests", ongoing=True, model="small-1")
+    assert (tester.supervisor, tester.rank, tester.model) == (lead.id, 4, "small-1")
+    assert harness.models == [("Lead", None), ("Tester", "small-1")]
+    await until(lambda: len(harness.heard.get("Lead", [])) == 2)
+    told = harness.heard["Lead"][1]  # its supervisor knows it has it
+    assert "Tester (K4, u2)" in told and "Run the tests" in told and "fleet.message" in told
+    assert "Your task: Run the tests" in harness.heard["Tester"][0]
+    await until(lambda: tester.state == "working" and len(harness.heard["Tester"]) == 1)
+
+    await manager.set_model(tester, "big-1")  # at once: its process starts again
+    await until(lambda: ("Tester", "big-1") in harness.models)
+    assert harness.opened[-1] == ("Tester", "session-u2")  # on its own conversation
+    await until(lambda: any("model was changed" in heard for heard in harness.heard["Tester"]))
+    await manager.set_model(lead, "")  # none of its own: its rank's again
+    await until(lambda: harness.models[-1] == ("Lead", None))
+    await manager.aclose()
+
+    assert Fleet.load(tmp_path / "fleet").units["u2"].model == "big-1"
+    with pytest.raises(FleetError, match="has not started"):
+        other = Manager(FleetConfig(), tmp_path / "other", tmp_path / "work", harness=harness)
+        await other.hire(lead, "X", "y")
+
+
+async def until(predicate, timeout: float = 10.0) -> None:
+    async def poll() -> None:
+        while not predicate():
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(poll(), timeout)

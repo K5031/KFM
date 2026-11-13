@@ -3,7 +3,7 @@
 Status: implemented — a project described in words is drafted by one agent as named fleets, which the person changes and starts
 
 Follows [Projects](2026-11-13-projects.md). The other way to shape a project:
-[editing the tree](../proposed/2026-11-13-editing-the-tree.md).
+[editing the tree](2026-11-13-editing-the-tree.md).
 
 ## Problem
 

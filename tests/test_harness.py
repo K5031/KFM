@@ -267,6 +267,31 @@ async def test_a_renamed_agent_is_known_by_its_new_name(tmp_path: Path):
     assert saved.name == "docs" and saved.units["u2"].name == "Mapper"
 
 
+async def test_the_person_messages_one_agent_and_its_supervisor_is_told(tmp_path: Path):
+    harness = FakeHarness({
+        "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]},
+                 {"when": "The person told Scout", "do": [("say", "Noted.")]}],
+        "Scout": [{"do": [("say", "Mapping.")]},
+                  {"when": "Skip the drafts", "do": [("say", "Skipping them.")]}]})
+    manager, events = await run(tmp_path, harness)
+    lead = await manager.lead("Tidy up", ongoing=True, name="Lead")
+    await until(lambda: harness.heard.get("Scout"))
+    scout = manager.fleet.units["u2"]
+    await manager.say("Skip the drafts", scout)
+    await until(lambda: len(harness.heard["Scout"]) == 2)
+    heard = harness.heard["Scout"][1]  # it knows who spoke, and that it outranks its supervisor
+    assert "Skip the drafts" in heard and "the person" in heard and "supervisor" in heard
+    await until(lambda: any("The person told Scout (K4, u2)" in told and "Skip the drafts" in told
+                            for told in harness.heard["Lead"]))
+    await manager.say("Thanks")  # with nobody named: the lead
+    await until(lambda: "Thanks" in harness.heard["Lead"][-1])
+    assert [(e.text, e.to) for e in events if isinstance(e, Told)] == [
+        ("Skip the drafts", scout), ("Thanks", lead)]
+    await manager.aclose()
+    kept = log.read(tmp_path / "fleet", Fleet.load(tmp_path / "fleet"))
+    assert [e.to.id for _, e in kept if isinstance(e, Told)] == ["u2", "u1"]
+
+
 async def until(predicate, timeout: float = 10.0) -> None:
     async def poll() -> None:
         while not predicate():

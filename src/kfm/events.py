@@ -53,7 +53,10 @@ class Answered:
 
 @dataclass(frozen=True, slots=True)
 class Told:
-    text: str  # what the person said to the lead
+    """What the person said to a unit."""
+
+    text: str
+    to: Unit | None = None
 
 
 @dataclass(frozen=True, slots=True)

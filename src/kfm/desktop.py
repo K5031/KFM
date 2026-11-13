@@ -195,11 +195,11 @@ class ApprovalCard(QFrame):
 
 
 class YouEntry(QWidget):
-    """What the person said to the lead: a bubble on the right."""
+    """What the person said to an agent: a bubble on the right."""
 
-    def __init__(self, text: str, lead: str | None) -> None:
+    def __init__(self, text: str, to: str | None) -> None:
         super().__init__()
-        self.concerns = {lead} if lead else set()
+        self.concerns = {to} if to else set()
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 4, 0, 4)
         row.addStretch(1)
@@ -936,6 +936,14 @@ class FleetView(QWidget):
         self.shown = unit_id
         for entry in self.entries:
             entry.setVisible(self._concerns(entry))
+        to = self._chosen()
+        self.input.setPlaceholderText(
+            f"Message {to.called}" if to is not None and to.supervisor is not None
+            else "Message the lead")
+
+    def _chosen(self) -> Unit | None:
+        """The agent whose entries are shown, which is the one a message goes to."""
+        return self.fleet.units.get(self.shown or "") if self.fleet is not None else None
 
     def say(self, text: str, tone: str) -> None:
         self._add(Line(text, set(), tone))
@@ -961,7 +969,7 @@ class FleetView(QWidget):
             self.input.setPlainText(text)
             return
         try:
-            await self.manager.say(text)
+            await self.manager.say(text, self._chosen())
         except (FleetError, UnitError) as e:
             self.say(str(e), tone="error")
 
@@ -999,9 +1007,9 @@ class FleetView(QWidget):
             case Answered(request_id=request_id, allow=allow):
                 if (card := self._approvals.pop(request_id, None)) is not None:
                     card.answered(allow)
-            case Told(text=text):
-                lead = self.fleet.lead if self.fleet is not None else None
-                self._add(YouEntry(text, lead.id if lead is not None else None))
+            case Told(text=text, to=to):
+                to = to or (self.fleet.lead if self.fleet is not None else None)
+                self._add(YouEntry(text, to.id if to is not None else None))
             case Notice(text=text):
                 self.say(text, tone="warning")
 

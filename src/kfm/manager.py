@@ -154,12 +154,20 @@ class Manager:
         await self._start(unit)
         return unit
 
-    async def say(self, text: str) -> None:
-        """The person's message, to the lead."""
-        if (lead := self.fleet.lead) is None:
+    async def say(self, text: str, unit: Unit | None = None) -> None:
+        """The person's message, to the lead or to `unit`. A unit under a supervisor is
+        told who speaks, and its supervisor, if it is at work, what was said."""
+        unit = unit or self.fleet.lead
+        if unit is None:
             raise FleetError("The fleet has no lead.")
-        await self.tell(lead, text)
-        self._emit(Told(text))
+        supervisor = self.fleet.supervisor_of(unit)
+        if supervisor is None:
+            await self.tell(unit, text)
+        else:
+            await self.tell(unit, units.from_person(text), task=text)
+            if supervisor.active:  # one that has ended is not woken for it
+                self._spawn(self._tell_quietly(supervisor, units.overheard(unit, text)))
+        self._emit(Told(text, unit))
 
     async def hire(self, supervisor: Unit, name: str, task: str, *, ongoing: bool = False,
                    model: str | None = None) -> Unit:

@@ -19,6 +19,18 @@ MODEL_CHANGED = (
     "background ended: start it again if you still need it, then carry on with your work.]")
 
 
+def from_person(text: str) -> str:
+    """The person's message, for a unit that has a supervisor."""
+    return ("[Message from the person the fleet works for. Where it differs from what your "
+            f"supervisor told you, the person's word stands; your supervisor is told of it.] {text}")
+
+
+def overheard(unit: Unit, text: str) -> str:
+    """What a supervisor is told when the person speaks to one of its agents."""
+    return (f"[The person told {unit.label}: {text}\nThe person's word stands where it differs "
+            "from yours. You need not do anything about this.]")
+
+
 def hired_note(unit: Unit, words: Vocabulary) -> str:
     """What a supervisor is told when the person puts an agent under it."""
     message = f"{words.tool('message')}(agent=\"{unit.id}\", text=...)"

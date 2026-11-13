@@ -485,6 +485,29 @@ async def test_an_agent_a_fleet_and_a_project_are_renamed(window, tmp_path: Path
     assert project.load(shown.project.folder).name == "Globex"
 
 
+async def test_the_chosen_agent_is_the_one_messaged(window, tmp_path: Path):
+    shown, harness = window({
+        "K5 u1": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]}],
+        "Scout": [{"do": [("say", "Mapping.")]},
+                  {"when": "Skip the drafts", "do": [("say", "Skipping them.")]}]})
+    view = await start(shown, tmp_path, "Tidy up", duty=True)
+    await until(lambda: len(agents(shown)) == 2)
+    assert view.input.placeholderText() == "Message the lead"
+    shown.agents.setCurrentItem(shown.agents.topLevelItem(0).child(0))
+    assert view.input.placeholderText() == "Message Scout"
+    view.input.setPlainText("Skip the drafts")
+    view.send_button.click()
+    await until(lambda: any("Skip the drafts" in heard for heard in harness.heard["Scout"]))
+    await until(lambda: [e.text.text() for e in view.entries
+                         if isinstance(e, YouEntry) and e.isVisibleTo(shown)]
+                == ["Skip the drafts"])
+    shown.show_all.click()
+    assert view.input.placeholderText() == "Message the lead"
+    shown.agents.setCurrentItem(shown.agents.topLevelItem(0))  # the lead: nothing to add
+    assert view.input.placeholderText() == "Message the lead"
+    assert not [e for e in view.entries if isinstance(e, YouEntry) and e.isVisibleTo(shown)]
+
+
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "me")
     (tmp_path / "me").mkdir()

@@ -70,7 +70,7 @@ AGENT_ROW_PX = 30
 FOLDER_ROLE = Qt.ItemDataRole.UserRole  # a project row's folder
 QUIET_STATES = ("starting", "working", "waiting", "done")  # shown by the agents list alone
 BAR = 48  # px, the bar on top
-COLUMN = 860  # px, the widest the timeline's entries get
+COLUMN = 720  # px, the widest the timeline's entries get
 REFRESH_MS = 1000  # spending and states, while a fleet runs
 TITLE_CHARS = 90
 UNIT_ROLE = Qt.ItemDataRole.UserRole  # a tree row's unit id
@@ -127,12 +127,16 @@ class SaidEntry(QWidget):
         super().__init__()
         self.concerns = {unit.id}
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 4, 0, 4)
-        layout.setSpacing(2)
-        self.header = label(f"{unit.name}  K{unit.rank}", role="small", tone="muted")
+        layout.setContentsMargins(15, 4, 15, 4)  # in line with a card's text
+        layout.setSpacing(3)
+        self.header = QHBoxLayout()
+        self.header.setSpacing(6)
+        self.header.addWidget(label(unit.name, role="strong", wrap=False))
+        self.header.addWidget(label(f"K{unit.rank}", role="small", tone="muted", wrap=False))
+        self.header.addStretch(1)
         self.body = MarkdownView()
         self.body.setMarkdown(text)
-        layout.addWidget(self.header)
+        layout.addLayout(self.header)
         layout.addWidget(self.body)
 
 
@@ -1007,6 +1011,9 @@ class FleetWindow(QMainWindow):
         self.agents.setRootIsDecorated(False)
         self.agents.setIndentation(16)
         self.agents.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.agents.header().setStretchLastSection(False)  # the name has the room
+        self.agents.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.agents.setColumnWidth(2, 0)
         for column in (1, 2):
             self.agents.header().setSectionResizeMode(
                 column, QHeaderView.ResizeMode.ResizeToContents)
@@ -1025,6 +1032,11 @@ class FleetWindow(QMainWindow):
             f"QTreeWidget::item {{ padding: 5px 2px; }}"
             f"QTreeWidget::item:selected {{ background: {colors.select}; "
             f"color: {colors.text}; }}"
+            f"QTreeWidget::item:selected:first {{ border-top-left-radius: 8px; "
+            f"border-bottom-left-radius: 8px; }}"
+            f"QTreeWidget::item:selected:last {{ border-top-right-radius: 8px; "
+            f"border-bottom-right-radius: 8px; }}"
+            f"QTreeWidget::branch:selected {{ background: transparent; }}"
             f"QListWidget {{ background: transparent; border: none; }}")
         side_layout = QVBoxLayout(side)
         side_layout.setContentsMargins(10, 12, 10, 12)

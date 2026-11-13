@@ -31,5 +31,19 @@ Design: [Agent Note](notes/implemented/2026-11-12-fleet-window.md).
 | Agents | A tree by supervisor: name and rank, state (accent while at work, warning while waiting, green when done, red when failed), spending; refreshed every second while the fleet runs |
 | Status | running, stopping (until its processes have ended), stopped, or finished (the lead has reported and nothing is at work) with what was spent of the limit |
 | New fleet | In `<home>/fleets/<date-time>/`, with the settings of `<home>/fleet.toml` and the limit from the form |
+| One agent's entries | Choosing an agent in the list shows only the entries it sent or received (the person's messages count as the lead's; fleet notices always show); **Show all**, beside the list's heading while one is chosen, brings the rest back |
 | Opening a fleet | The button lists every fleet under `<home>/fleets`, newest first, by start and task; Resume is offered when something was at work |
 | App menu | `app_menu.py`, as Kayden's: `io.github.k5031.kfm.desktop` and the icon (the owner's logo, 512 x 512 with clear corners and the same margin around its tile as Kayden's icon, in `hicolor/512x512/apps`) under the user's XDG data directory; the entry runs this install's Python with `-m kfm.desktop`; the icon's file name carries a hash of its content |
+
+## What agents are told
+
+The owner's rule (2026-11-12): nothing is hardcoded for a case; it is brittle and does not
+generalize.
+
+| Choice | Decision |
+|---|---|
+| Order | What an agent should do is reached for in this order: the model's own judgment; structure, so the right behaviour falls out of how the fleet works; one general principle, stated once; never a rule for a specific case or a patch for one observed mistake |
+| The brief | Situation only, the same for any kind of fleet: who the agent is and its rank, its task, who gave it and that nobody watches, how to finish and how to ask, whether it can hand work down, that everyone shares one folder. What a unit is told when the fleet resumes, and when a message reaches it after its goal ended, are facts it cannot know otherwise |
+| Not added | "Report where the results are, do not paste them" and "pass on what you know": the lead did the second unasked, and the first cost cents in runs of two minutes. Nothing is added on a hunch |
+| Known soft spot | "Say in each task which files it owns" stands in for a mechanism that is missing: nothing stops two agents editing one file |
+

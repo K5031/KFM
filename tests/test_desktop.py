@@ -157,7 +157,8 @@ async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: P
     shown, harness = window({"Lead": [
         {"do": [("approval", "r1", "write_file", "{'path': '/etc/motd'}"), ("say", "Wrote it.")]},
         {"when": "hello", "do": [("say", "Hi there.")]},
-        {"when": "started again", "do": [("say", "Back on watch.")]}]})
+        {"when": "started again", "do": [("say", "Back on watch.")]},
+        {"when": "still there", "do": [("say", "Yes.")]}]})
     view = await start(shown, tmp_path, "Keep watch", duty=True)
     await until(lambda: any(isinstance(e, ApprovalCard) for e in view.entries))
     [card] = [e for e in view.entries if isinstance(e, ApprovalCard)]
@@ -175,10 +176,17 @@ async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: P
 
     shown.stop_button.click()
     await until(lambda: "stopped" in shown.status.text())
-    assert shown.resume_button.isVisibleTo(shown) and not view.input.isEnabled()
+    assert shown.resume_button.isVisibleTo(shown)
     shown.resume_button.click()
     await until(lambda: ("Lead", "session-u1") in harness.opened)
     await until(lambda: "running" in shown.status.text() and view.input.isEnabled())
+
+    shown.stop_button.click()  # a message to a stopped fleet starts it again
+    await until(lambda: "stopped" in shown.status.text() and view.input.isEnabled())
+    view.input.setPlainText("still there?")
+    view.send_button.click()
+    await until(lambda: any("still there?" in heard for heard in harness.heard["Lead"]))
+    assert view.running and "running" in shown.status.text()
 
 
 async def test_the_window_opens_on_the_chart_of_the_newest_project(window, tmp_path: Path):

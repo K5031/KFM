@@ -141,7 +141,8 @@ class DeliveryCard(QFrame):
 
     def __init__(self, event: Delivered) -> None:
         super().__init__()
-        self.setObjectName("tool")
+        self.setObjectName("delivery")
+        self.setProperty("you", event.to is None)  # it is the person's to read or answer
         self.concerns = {event.unit.id} | ({event.to.id} if event.to is not None else set())
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
@@ -759,6 +760,11 @@ class FleetView(QWidget):
         layout.setContentsMargins(20, 0, 20, 14)
         layout.addWidget(self.scroll, 1)
         layout.addLayout(composer)
+        colors = theme.current()
+        page.setStyleSheet(
+            f"QFrame#delivery {{ background: {colors.card}; border: 1px solid transparent; "
+            f"border-radius: 12px; }}"
+            f"QFrame#delivery[you=\"true\"] {{ border-color: {colors.accent}; }}")
         self._enable()
 
     @property
@@ -816,6 +822,7 @@ class FleetView(QWidget):
         self.fleet = fleet
         for _, event in history:
             self._show(event)
+        self._enable()
 
     async def resume(self) -> None:
         if self.running or self.fleet is None:
@@ -863,6 +870,7 @@ class FleetView(QWidget):
             await manager.aclose()
         finally:
             self.stopping = False
+            self._enable()
             self.changed.emit()
 
     def choose(self, unit_id: str | None) -> None:
@@ -875,18 +883,28 @@ class FleetView(QWidget):
         self._add(Line(text, set(), tone))
 
     def _enable(self) -> None:
-        self.input.setEnabled(self.running)
-        self.send_button.setEnabled(self.running)
+        """A message can be sent to a fleet that runs, and to a stopped one whose lead has
+        run: it starts the fleet again."""
+        lead = self.fleet.lead if self.fleet is not None else None
+        can = self.running or (not self.stopping and lead is not None
+                               and lead.session is not None)
+        self.input.setEnabled(can)
+        self.send_button.setEnabled(can)
 
     def _send_clicked(self) -> None:
         text = self.input.toPlainText().strip()
-        if text and self.manager is not None:
+        if text:
             self.input.clear()
-            self._run(self._tell(self.manager, text))
+            self._run(self._tell(text))
 
-    async def _tell(self, manager: Manager, text: str) -> None:
+    async def _tell(self, text: str) -> None:
+        if self.manager is None:
+            await self.resume()
+        if self.manager is None:  # it could not start, and has said why
+            self.input.setPlainText(text)
+            return
         try:
-            await manager.say(text)
+            await self.manager.say(text)
         except (FleetError, UnitError) as e:
             self.say(str(e), tone="error")
 
@@ -1063,9 +1081,10 @@ class FleetWindow(QMainWindow):
         self._bar_gap = QWidget()  # keeps the controls at the right while nothing is named
         bar.addWidget(self._bar_gap, 1)
         bar.addWidget(self.status)
+        bar.addSpacing(8)
         bar.addWidget(self.stop_button)
         bar.addWidget(self.resume_button)
-        bar.addSpacing(8)
+        bar.addSpacing(16)
         self.window_buttons: dict[str, QToolButton] = {}
         for name, tip, command in (("minimize", "Minimize", self.showMinimized),
                                    ("maximize", "Maximize", self._toggle_maximized),
@@ -1511,9 +1530,11 @@ class FleetWindow(QMainWindow):
             row.setText(0, f"{unit.name}  K{unit.rank}")
             row.setText(1, unit.state)
             row.setText(2, f"${unit.spent_usd:.2f}")
+            # What an agent was doing when its fleet stopped is not what it does now.
             tone = {"working": colors.accent, "starting": colors.accent,
-                    "waiting": colors.warning, "failed": colors.error,
-                    "done": colors.ok}.get(unit.state, colors.muted)
+                    "waiting": colors.warning}.get(unit.state, colors.muted)
+            tone = {"failed": colors.error, "done": colors.ok}.get(
+                unit.state, tone if view.running else colors.muted)
             row.setForeground(1, QColor(tone))
             row.setForeground(2, QColor(colors.muted))
             row.setToolTip(0, unit.task)

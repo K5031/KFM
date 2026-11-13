@@ -268,14 +268,9 @@ class StartForm(QWidget):
         heading = label("What should your fleet do?", wrap=False)
         heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         heading.setStyleSheet("font-size: 22px; font-weight: 600;")
-        about = label("A lead plans the work, hands parts of it to agents below it, checks "
-                      "what comes back and reports to you.", tone="muted")
-        about.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         outer.addWidget(logo)
         outer.addSpacing(14)
         outer.addWidget(heading)
-        outer.addSpacing(6)
-        outer.addWidget(about)
         outer.addSpacing(22)
 
         box = QFrame(objectName="composer")
@@ -283,7 +278,7 @@ class StartForm(QWidget):
         inside.setContentsMargins(16, 14, 12, 12)
         inside.setSpacing(12)
         self.task = TaskBox()
-        self.task.setPlaceholderText("Describe a task, or a role for the fleet to hold")
+        self.task.setPlaceholderText("A task, or a role to hold")
         self.task.submitted.connect(self.submitted)
         inside.addWidget(self.task)
         row = QHBoxLayout()
@@ -349,9 +344,8 @@ class StartForm(QWidget):
 
     def _describe(self) -> None:
         self.hint.setText(
-            "A duty never ends: the fleet finds its own work until you stop it."
-            if self.duty.isChecked() else
-            "A task ends when the lead reports it done.")
+            "Runs until you stop it." if self.duty.isChecked() else
+            "Ends when the lead reports.")
 
     def _choose(self) -> None:
         dialog = QFileDialog(self, "The folder the fleet works in", str(self.folder.parent))
@@ -753,8 +747,8 @@ class FleetWindow(QMainWindow):
             return
         work = form.folder.expanduser().resolve()
         if work == Path.home().resolve():
-            form.warn("Choose a folder made for the fleet: in your home folder its agents "
-                      "could change anything of yours.")
+            form.warn("Not your home folder: agents can change anything in the folder "
+                      "they work in.")
             return
         self._run(self.start_fleet(task, ongoing=form.duty.isChecked(), work=work,
                                    budget=form.budget.value()))

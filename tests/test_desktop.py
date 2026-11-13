@@ -99,9 +99,9 @@ async def test_a_fleet_is_started_and_followed_in_the_window(window, tmp_path: P
     assert form.isVisibleTo(shown) and not shown.composer.isVisibleTo(shown)
     assert not shown.title.isVisibleTo(shown)  # nothing to name yet
     assert not shown.agents_section.isVisibleTo(shown)
-    assert "ends" in form.hint.text() and not form.duty.isChecked()  # a task, by default
+    assert "Ends" in form.hint.text() and not form.duty.isChecked()  # a task, by default
     form.duty.setChecked(True)
-    assert "never ends" in form.hint.text() and not form.task_kind.isChecked()
+    assert "until you stop" in form.hint.text() and not form.task_kind.isChecked()
     form.task_kind.setChecked(True)
     start(shown, tmp_path, "Tidy up")
     await until(lambda: shown.manager is not None and shown.manager.finished.is_set())

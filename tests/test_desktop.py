@@ -16,6 +16,8 @@ import kayden.frontends.desktop  # noqa: F401 - before any Qt import
 import pytest
 from kayden.frontends.desktop import theme
 from kayden.frontends.desktop.window import PREVIEW_ROLE
+from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
+from PySide6.QtGui import QDropEvent, QImage
 from PySide6.QtWidgets import QApplication
 
 from kfm import project
@@ -535,6 +537,18 @@ async def test_files_are_attached_to_a_message(window, tmp_path: Path):
     await until(lambda: [e.files for e in view.entries if isinstance(e, YouEntry)]
                 == [[], ["note.txt"]])
     assert view.attach_button.toolTip() == "Add files"
+
+    picture = QImage(4, 4, QImage.Format.Format_RGB32)  # a picture copied, then pasted
+    picture.fill(0)
+    view.input.pasted.emit(picture)
+    [pasted] = view.attachments.paths()
+    assert Path(pasted).name == "pasted-1.png" and not QImage(pasted).isNull()
+    view.attachments.clear()
+    dropped = QMimeData()  # a file dropped anywhere on the fleet's page
+    dropped.setUrls([QUrl.fromLocalFile(str(note))])
+    view.dropEvent(QDropEvent(QPointF(5, 5), Qt.DropAction.CopyAction, dropped,
+                              Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier))
+    assert view.attachments.paths() == [str(note)]
 
 
 async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp: QApplication):

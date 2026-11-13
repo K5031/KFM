@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import getpass
 import sys
+import tempfile
 import time
 from collections.abc import Coroutine, Sequence
 from dataclasses import replace
@@ -31,8 +32,16 @@ from kayden.frontends.desktop.window import (
     RowDelegate,
     WindowEdges,
 )
-from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QCloseEvent, QColor, QDoubleValidator, QIcon
+from PySide6.QtCore import QEvent, QMimeData, QPoint, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QCloseEvent,
+    QColor,
+    QDoubleValidator,
+    QDragEnterEvent,
+    QDropEvent,
+    QIcon,
+    QImage,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -854,6 +863,12 @@ class ModelDialog(LineDialog):
         self.model = self.line
 
 
+def _dropped_files(source: QMimeData) -> list[str]:
+    """The files among what was dropped."""
+    return [url.toLocalFile() for url in source.urls()
+            if url.isLocalFile() and Path(url.toLocalFile()).is_file()]
+
+
 # ── A fleet ───────────────────────────────────────────────────────────────
 
 
@@ -905,6 +920,9 @@ class FleetView(QWidget):
         # Kayden's message box: what is attached, then add files, the text and send.
         self.attachments = AttachmentStrip()
         self.input.attached.connect(self.attachments.add)
+        self.input.pasted.connect(self._paste_image)
+        self._pasted: Path | None = None  # the folder pasted pictures are saved in
+        self.setAcceptDrops(True)  # files dropped anywhere on the page are attached
         self.attach_button = QToolButton(objectName="send")
         self.attach_button.setFixedSize(32, 32)
         self.attach_button.setIcon(theme.icon("plus", theme.current().muted, 16))
@@ -1092,6 +1110,23 @@ class FleetView(QWidget):
         can = not self.stopping and (self.running or lead is not None)
         for part in (self.input, self.send_button, self.attach_button):
             part.setEnabled(can)
+
+    def _paste_image(self, image: QImage) -> None:
+        """A picture pasted from the clipboard: saved as a file, then attached like one."""
+        if self._pasted is None:
+            self._pasted = Path(tempfile.mkdtemp(prefix="kfm-pasted-"))
+        path = self._pasted / f"pasted-{len(list(self._pasted.iterdir())) + 1}.png"
+        if image.save(str(path), "PNG"):
+            self.attachments.add([str(path)])
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        if self.input.isEnabled() and _dropped_files(event.mimeData()):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        if files := _dropped_files(event.mimeData()):
+            self.attachments.add(files)
+            event.acceptProposedAction()
 
     def _choose_files(self) -> None:
         """Add files picks files to go with the message, as dropping them does."""

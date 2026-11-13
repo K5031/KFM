@@ -8,7 +8,7 @@ import asyncio
 import contextlib
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from kfm import api, harnesses, log, units
@@ -157,20 +157,24 @@ class Manager:
         await self._start(unit)
         return unit
 
-    async def say(self, text: str, unit: Unit | None = None) -> None:
-        """The person's message, to the lead or to `unit`. A unit under a supervisor is
-        told who speaks, and its supervisor, if it is at work, what was said."""
+    async def say(self, text: str, unit: Unit | None = None, *, files: Sequence[str] = (),
+                  spoken: bool = False) -> None:
+        """The person's message, to the lead or to `unit`, with the files attached to it;
+        `spoken` in a voice conversation. A unit under a supervisor is told who speaks,
+        and its supervisor, if it is at work, what was said."""
         unit = unit or self.fleet.lead
         if unit is None:
             raise FleetError("The fleet has no lead.")
         supervisor = self.fleet.supervisor_of(unit)
         if supervisor is None:
-            await self.tell(unit, text)
+            await self.tell(unit, text, files=files, spoken=spoken)
         else:
-            await self.tell(unit, units.from_person(text), task=text)
+            await self.tell(unit, units.from_person(text), task=text, files=files,
+                            spoken=spoken)
             if supervisor.active:  # one that has ended is not woken for it
-                self._spawn(self._tell_quietly(supervisor, units.overheard(unit, text)))
-        self._emit(Told(text, unit))
+                self._spawn(self._tell_quietly(supervisor,
+                                               units.overheard(unit, text, files)))
+        self._emit(Told(text, unit, tuple(files)))
 
     async def hire(self, supervisor: Unit, name: str, task: str, *, ongoing: bool = False,
                    model: str | None = None) -> Unit:
@@ -233,18 +237,22 @@ class Manager:
             self._set(unit, "idle")  # until it is told what to do
         return unit
 
-    async def tell(self, unit: Unit, text: str, *, task: str | None = None) -> None:
+    async def tell(self, unit: Unit, text: str, *, task: str | None = None,
+                   files: Sequence[str] = (), spoken: bool = False) -> None:
         """Put a message into the unit's conversation, starting it again if it is not
         running: it then works on what the message says. A unit that has no task yet
         starts on the message as its task (`task`: its words alone, when `text` wraps
-        them). FleetError or UnitError when it cannot be."""
+        them). `files` and `spoken` are the session's (api.Session.send). FleetError or
+        UnitError when it cannot be."""
         if self._over_budget:
             raise FleetError("The fleet has reached its spending limit.")
         if unit.session is None:
             if unit.task or unit.state != "idle":
                 raise FleetError(f"{unit.label} never started.")
-            unit.task = task or text
+            unit.task = task or text or "See the files you are given."
             await self._start(unit)
+            if files and (session := self._sessions.get(unit.id)) is not None:
+                await session.send("", files)  # a task has no files of its own
             return
         session = await self._session(unit)
         unit.question = None  # this is its answer
@@ -257,7 +265,7 @@ class Manager:
                 self._last_said.pop(unit.id, None)
                 note = units.answer_note(self.fleet.supervisor_of(unit), self._words)
                 text = f"{text}\n\n{note}"
-        await session.send(text)
+        await session.send(text, files, spoken=spoken)
 
     async def message(self, supervisor: Unit, unit: Unit, text: str) -> None:
         """A supervisor's message to one of its agents."""

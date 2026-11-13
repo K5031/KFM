@@ -317,6 +317,28 @@ async def test_what_goes_down_the_chain_is_shown_too(tmp_path: Path):
         (None, "u1"), ("u1", "u2"), ("u1", "u2"), (None, "u3")]
 
 
+async def test_files_go_with_a_message_to_the_agent_it_is_for(tmp_path: Path):
+    harness = FakeHarness({
+        "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]}],
+        "Scout": [{"do": [("say", "Mapping.")]}]})
+    manager, events = await run(tmp_path, harness)
+    await manager.lead("Tidy up", ongoing=True, name="Lead")
+    await until(lambda: harness.heard.get("Scout"))
+    scout = manager.fleet.units["u2"]
+    await manager.say("Start from this", files=["/tmp/brief.pdf"])
+    await manager.say("And this", scout, files=["/tmp/map.png"], spoken=True)
+    assert harness.files == [("Lead", ["/tmp/brief.pdf"], False),
+                             ("Scout", ["/tmp/map.png"], True)]
+    await until(lambda: any("map.png" in heard for heard in harness.heard["Lead"]))  # told of it
+    assert [(e.text, e.files) for e in events if isinstance(e, Told)] == [
+        ("Start from this", ("/tmp/brief.pdf",)), ("And this", ("/tmp/map.png",))]
+    # A first message that is an agent's task brings its files after the task.
+    idle = await manager.hire(scout, "", "")
+    await manager.say("Check the links", idle, files=["/tmp/links.txt"])
+    await until(lambda: harness.files[-1] == ("K3 u3", ["/tmp/links.txt"], False))
+    await manager.aclose()
+
+
 async def until(predicate, timeout: float = 10.0) -> None:
     async def poll() -> None:
         while not predicate():

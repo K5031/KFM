@@ -4,6 +4,9 @@ harness's (api.Vocabulary)."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from pathlib import Path
+
 from kfm.api import Vocabulary
 from kfm.fleet import Unit
 
@@ -25,8 +28,10 @@ def from_person(text: str) -> str:
             f"supervisor told you, the person's word stands; your supervisor is told of it.] {text}")
 
 
-def overheard(unit: Unit, text: str) -> str:
+def overheard(unit: Unit, text: str, files: Sequence[str]) -> str:
     """What a supervisor is told when the person speaks to one of its agents."""
+    if files:
+        text = f"{text}\n(With files: {', '.join(Path(file).name for file in files)}.)"
     return (f"[The person told {unit.label}: {text}\nThe person's word stands where it differs "
             "from yours. You need not do anything about this.]")
 

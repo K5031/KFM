@@ -519,6 +519,23 @@ async def test_the_chosen_agent_is_the_one_messaged(window, tmp_path: Path):
             if isinstance(e, YouEntry) and e.isVisibleTo(shown)] == ["Tidy up"]
 
 
+async def test_files_are_attached_to_a_message(window, tmp_path: Path):
+    shown, harness = window({"K5 u1": [{"do": [("say", "On watch.")]}]})
+    view = await start(shown, tmp_path, "Keep watch", duty=True)
+    await until(lambda: harness.heard.get("K5 u1"))
+    note = tmp_path / "note.txt"
+    note.write_text("read me")
+    assert not view.attachments.isVisibleTo(shown)
+    view.input.attached.emit([str(note)])  # dropped or pasted into the box
+    assert view.attachments.isVisibleTo(shown) and view.attachments.paths() == [str(note)]
+    view.send_button.click()  # files alone are a message
+    await until(lambda: harness.files == [("K5 u1", [str(note)], False)])
+    assert view.attachments.paths() == [] and not view.attachments.isVisibleTo(shown)
+    await until(lambda: [e.files for e in view.entries if isinstance(e, YouEntry)]
+                == [[], ["note.txt"]])
+    assert view.attach_button.toolTip() == "Add files"
+
+
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "me")
     (tmp_path / "me").mkdir()

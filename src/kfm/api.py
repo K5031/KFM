@@ -37,7 +37,7 @@ person.
 from __future__ import annotations
 
 import abc
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -156,9 +156,12 @@ class Session(abc.ABC):
         the session to open the unit on again."""
 
     @abc.abstractmethod
-    async def send(self, text: str) -> None:
+    async def send(self, text: str, files: Sequence[str] = (), *,
+                   spoken: bool = False) -> None:
         """A message into the agent's conversation: it takes a turn on it, and an open
-        question is answered."""
+        question is answered. `files`: paths of files that go with it, which the agent
+        reads as it can; `text` may be empty then. `spoken`: the person said it aloud
+        and hears the reply read."""
 
     @abc.abstractmethod
     async def approve(self, request_id: str, allow: bool) -> None:

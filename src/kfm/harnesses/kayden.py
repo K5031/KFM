@@ -146,8 +146,9 @@ class _Session(Session):
             "min_interval_s": low, "max_interval_s": high})
         return info["id"]
 
-    async def send(self, text: str) -> None:
-        await self._request("send", text=text)
+    async def send(self, text: str, files: Sequence[str] = (), *,
+                   spoken: bool = False) -> None:
+        await self._request("send", text=text, files=list(files), spoken=spoken)
 
     async def approve(self, request_id: str, allow: bool) -> None:
         await self._request("resolve_permission", request_id=request_id,

@@ -151,6 +151,9 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
   what its own agents sent it, in order. Unlike a chat, others speak in it too, it works
   whether you write or not, and its reports go to its supervisor. With no agent chosen
   the page is the whole fleet's feed.
+- **Attach files** to a message with the plus beside the box, or drop or paste them into
+  it. They go to the agent the message is for, which reads what it can (pictures, PDFs,
+  text and office files); files alone are a message too.
 - **Message one agent** by choosing it in the agents list first: the box then says whom
   it goes to. The agent is told the message is yours and that it stands over what its
   supervisor said; its supervisor is told what you said. With no agent chosen, or the

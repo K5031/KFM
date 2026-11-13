@@ -44,6 +44,8 @@ def read(folder: Path, fleet: Fleet) -> list[tuple[float, events.FleetEvent]]:
                 for name in ("unit", "to", "by"):
                     if data.get(name) is not None:
                         data[name] = fleet.units[data[name]]
+                if "files" in data:
+                    data["files"] = tuple(data["files"])
                 found.append((at, kind(**data)))
             except (ValueError, KeyError, TypeError):
                 continue

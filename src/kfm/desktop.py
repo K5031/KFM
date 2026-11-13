@@ -9,7 +9,7 @@ import asyncio
 import contextlib
 import sys
 import time
-from collections.abc import Coroutine
+from collections.abc import Coroutine, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -21,6 +21,7 @@ from kayden.frontends.desktop.window import (
     DATE_ROLE,
     PREVIEW_ROLE,
     WINDOW_BUTTON,
+    AttachmentStrip,
     DragArea,
     ElidedLabel,
     MarkdownView,
@@ -229,16 +230,23 @@ class ApprovalCard(QFrame):
 class YouEntry(QWidget):
     """What the person said to an agent: a bubble on the right."""
 
-    def __init__(self, text: str, to: str | None) -> None:
+    def __init__(self, text: str, to: str | None, files: Sequence[str] = ()) -> None:
         super().__init__()
         self.concerns = {to} if to else set()
+        self.files = [Path(file).name for file in files]
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 4, 0, 4)
         row.addStretch(1)
         bubble = QFrame(objectName="user")
         inside = QVBoxLayout(bubble)
         inside.setContentsMargins(12, 8, 12, 8)
+        inside.setSpacing(4)
+        for file, name in zip(files, self.files, strict=True):
+            chip = label(name, role="small", tone="muted", wrap=False)
+            chip.setToolTip(file)
+            inside.addWidget(chip)
         self.text = label(text)
+        self.text.setVisible(bool(text))
         inside.addWidget(self.text)
         row.addWidget(bubble)
 
@@ -823,12 +831,29 @@ class FleetView(QWidget):
         self.send_button.setToolTip("Send")
         self.send_button.setAccessibleName("Send to the lead")
         self.send_button.clicked.connect(self._send_clicked)
+        # Kayden's message box: what is attached, then add files, the text and send.
+        self.attachments = AttachmentStrip()
+        self.input.attached.connect(self.attachments.add)
+        self.attach_button = QToolButton(objectName="send")
+        self.attach_button.setFixedSize(32, 32)
+        self.attach_button.setIcon(theme.icon("plus", theme.current().muted, 16))
+        self.attach_button.setIconSize(QSize(16, 16))
+        self.attach_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.attach_button.setToolTip("Add files")
+        self.attach_button.setAccessibleName("Add files")
+        self.attach_button.clicked.connect(self._choose_files)
         box = QFrame(objectName="composer")
         box.setMaximumWidth(COLUMN)
-        inside = QHBoxLayout(box)
-        inside.setContentsMargins(16, 10, 10, 10)
+        stacked = QVBoxLayout(box)
+        stacked.setContentsMargins(8, 8, 8, 8)
+        stacked.setSpacing(6)
+        stacked.addWidget(self.attachments)
+        inside = QHBoxLayout()
+        inside.setSpacing(6)
+        inside.addWidget(self.attach_button, 0, Qt.AlignmentFlag.AlignBottom)
         inside.addWidget(self.input, 1)
         inside.addWidget(self.send_button, 0, Qt.AlignmentFlag.AlignBottom)
+        stacked.addLayout(inside)
         composer = QHBoxLayout()
         composer.setContentsMargins(0, 0, 0, 0)
         composer.addStretch(1)
@@ -994,23 +1019,33 @@ class FleetView(QWidget):
         starts a fleet that is not running."""
         lead = self.fleet.lead if self.fleet is not None else None
         can = not self.stopping and (self.running or lead is not None)
-        self.input.setEnabled(can)
-        self.send_button.setEnabled(can)
+        for part in (self.input, self.send_button, self.attach_button):
+            part.setEnabled(can)
+
+    def _choose_files(self) -> None:
+        """Add files picks files to go with the message, as dropping them does."""
+        start = self.fleet.work if self.fleet is not None and self.fleet.work else str(Path.home())
+        self.file_dialog = QFileDialog(self, "Add files", start)
+        self.file_dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
+        self.file_dialog.filesSelected.connect(self.attachments.add)
+        self.file_dialog.open()
 
     def _send_clicked(self) -> None:
-        text = self.input.toPlainText().strip()
-        if text:
+        text, files = self.input.toPlainText().strip(), self.attachments.paths()
+        if text or files:
             self.input.clear()
-            self._run(self._tell(text))
+            self.attachments.clear()
+            self._run(self._tell(text, files))
 
-    async def _tell(self, text: str) -> None:
+    async def _tell(self, text: str, files: list[str]) -> None:
         if self.manager is None:
             await self.resume()
         if self.manager is None:  # it could not start, and has said why
             self.input.setPlainText(text)
+            self.attachments.add(files)
             return
         try:
-            await self.manager.say(text, self.chosen)
+            await self.manager.say(text, self.chosen, files=files)
         except (FleetError, UnitError) as e:
             self.say(str(e), tone="error")
 
@@ -1051,9 +1086,9 @@ class FleetView(QWidget):
             case Answered(request_id=request_id, allow=allow):
                 if (card := self._approvals.pop(request_id, None)) is not None:
                     card.answered(allow)
-            case Told(text=text, to=to):
+            case Told(text=text, to=to, files=files):
                 to = to or (self.fleet.lead if self.fleet is not None else None)
-                self._add(YouEntry(text, to.id if to is not None else None))
+                self._add(YouEntry(text, to.id if to is not None else None, files))
             case Notice(text=text):
                 self.say(text, tone="warning")
 

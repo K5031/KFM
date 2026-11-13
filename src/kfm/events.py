@@ -68,6 +68,7 @@ class Told:
 
     text: str
     to: Unit | None = None
+    files: tuple[str, ...] = ()  # paths of what went with it
 
 
 @dataclass(frozen=True, slots=True)

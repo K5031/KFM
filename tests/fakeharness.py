@@ -11,7 +11,7 @@ waits for the answer."""
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from mcp import Client
@@ -43,6 +43,7 @@ class FakeHarness(Harness):
         self.opened: list[tuple[str, str | None]] = []  # (unit name, session)
         self.models: list[tuple[str, str | None]] = []  # (unit name, model), as opened
         self.approved: list[tuple[str, bool]] = []  # (request id, allow)
+        self.files: list[tuple[str, list[str], bool]] = []  # (unit name, files, spoken)
 
     @property
     def vocabulary(self) -> Vocabulary:
@@ -68,7 +69,10 @@ class FakeSession(Session):
         self._turn(instruction.text)
         return self.session
 
-    async def send(self, text: str) -> None:
+    async def send(self, text: str, files: Sequence[str] = (), *,
+                   spoken: bool = False) -> None:
+        if files or spoken:
+            self.harness.files.append((self.spec.name, list(files), spoken))
         self._turn(text)
 
     async def approve(self, request_id: str, allow: bool) -> None:

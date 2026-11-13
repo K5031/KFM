@@ -1477,8 +1477,11 @@ class FleetWindow(QMainWindow):
             if on_chart:
                 self.chart.show_fleets([ChartFleet(str(shown.folder), shown.name,
                                                    shown.status, shown.fleet,
+                                                   running=shown.running,
                                                    editable=not shown.stopping,
-                                                   startable=shown.can_resume)
+                                                   start="" if not shown.can_resume
+                                                   else "Resume" if shown.started
+                                                   else "Start")
                                         for shown in fleets])
             return
         self.title.setText(view.name)

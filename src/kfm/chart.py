@@ -1,4 +1,4 @@
-"""A project's chart: its fleets side by side, each drawn as the tree of who supervises
+"""A project's chart: its fleets side by side, each a card with the tree of who supervises
 whom, a row for each rank."""
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from PySide6.QtGui import (
     QPainter,
     QPaintEvent,
     QPen,
+    QResizeEvent,
 )
 from PySide6.QtWidgets import (
     QFrame,
@@ -32,8 +33,13 @@ from kfm.fleet import Fleet, Unit
 NODE_W, NODE_H = 168, 56  # px, an agent
 GAP_X, GAP_Y = 16, 36  # between agents side by side, and between ranks
 HEAD_H = 46  # a fleet's name and state
-FLEET_GAP = 56  # between fleets
+HEAD_GAP = 22  # under it, before the tree
+PAD = 20  # inside a fleet's card
+INNER_MIN = 250  # the least a card holds across: its name, its state and Start
+FLEET_GAP = 20  # between fleets
+ADD_W = 168  # the place for another fleet
 MARGIN = 28
+RADIUS = 14
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,8 +48,9 @@ class ChartFleet:
     name: str
     status: str
     fleet: Fleet | None  # None until its record is read
+    running: bool = False
     editable: bool = False  # agents can be added to it and changed
-    startable: bool = False  # it is not running and has agents that would start
+    start: str = ""  # what its button says while it can be started: "Start", "Resume"
 
 
 def slots(fleet: Fleet) -> tuple[dict[str, tuple[float, int]], float]:
@@ -113,7 +120,7 @@ class Node(_Box):
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         self.menu.popup(event.globalPos())
 
-    def show_unit(self, unit: Unit, editable: bool) -> None:
+    def show_unit(self, unit: Unit, editable: bool, running: bool) -> None:
         self.add_action.setEnabled(editable and unit.rank > 1)
         self.model_action.setEnabled(editable)
         room = NODE_W - 24 - 30  # beside the rank
@@ -122,9 +129,10 @@ class Node(_Box):
         self.rank.setText(f"K{unit.rank}")
         self.state.setText(unit.state)
         colors = theme.current()
+        # What an agent was doing when its fleet stopped is not what it does now.
         tone = {"working": colors.accent, "starting": colors.accent,
-                "waiting": colors.warning, "failed": colors.error,
-                "done": colors.ok}.get(unit.state, colors.muted)
+                "waiting": colors.warning}.get(unit.state, colors.muted) if running else colors.muted
+        tone = {"failed": colors.error, "done": colors.ok}.get(unit.state, tone)
         self.state.setStyleSheet(f"color: {tone};")
         self.spent.setText(f"${unit.spent_usd:.2f}")
         self.setToolTip(f"{unit.task}\n{unit.model}" if unit.model else unit.task)
@@ -144,7 +152,8 @@ class Head(_Box):
         rows.addWidget(self.name)
         rows.addWidget(self.status)
         across = QHBoxLayout(self)
-        across.setContentsMargins(2, 0, 2, 4)
+        across.setContentsMargins(0, 0, 0, 0)
+        across.setSpacing(12)
         across.addLayout(rows, 1)
         across.addWidget(self.start, 0, Qt.AlignmentFlag.AlignVCenter)
 
@@ -169,63 +178,103 @@ class Chart(QWidget):
             f"QFrame#node:hover {{ border-color: {colors.accent}; }}"
             f"QFrame#fleetHead {{ border: none; }}"
             f"QPushButton#firstAgent {{ background: transparent; color: {colors.muted}; "
-            f"border: 1px dashed {colors.line}; border-radius: 10px; }}"
-            f"QPushButton#firstAgent:hover {{ border-color: {colors.accent}; }}")
+            f"border: 1px dashed {colors.track}; border-radius: 10px; }}"
+            f"QPushButton#firstAgent:hover {{ border-color: {colors.accent}; "
+            f"color: {colors.text}; }}")
         self.nodes: dict[tuple[str, str], Node] = {}
         self.heads: dict[str, Head] = {}
         self.firsts: dict[str, QPushButton] = {}  # where a fleet with no agent gets its lead
         self._lines: list[tuple[QPointF, QPointF]] = []  # a supervisor's foot, an agent's top
-        self.add_button = QPushButton(" Add fleet", self, objectName="nav")
-        self.add_button.setIcon(theme.icon("plus", colors.text, 16))
-        self.add_button.adjustSize()
+        self._cards: list[QRect] = []
+        self._shown: list[ChartFleet] = []
+        self.add_button = QPushButton(" Add fleet", self, objectName="firstAgent")
+        self.add_button.setIcon(theme.icon("plus", colors.muted, 16))
+        self.add_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def show_fleets(self, fleets: Sequence[ChartFleet]) -> None:
-        """Draw `fleets` from left to right; boxes of what is gone are removed."""
-        x, lowest = MARGIN, 0
+        """Draw `fleets` from left to right, in the middle, on as many lines as they need;
+        boxes of what is gone are removed."""
+        self._shown = list(fleets)
+        placed = [slots(shown.fleet) if shown.fleet is not None else ({}, 1.0)
+                  for shown in fleets]
+        inners = [max(round(columns * NODE_W + (columns - 1) * GAP_X), INNER_MIN)
+                  for _, columns in placed]
+        # Cards fill a line and then start the next; the place for another fleet is last.
+        widths = [inner + 2 * PAD for inner in inners] + [ADD_W]
+        room = max(self.width() - 2 * MARGIN, max(widths))
+        lines: list[list[int]] = [[]]
+        used = 0
+        for i, width in enumerate(widths):
+            if lines[-1] and used + width > room:
+                lines.append([])
+                used = 0
+            lines[-1].append(i)
+            used += width + FLEET_GAP
+        widest = max(sum(widths[i] + FLEET_GAP for i in line) - FLEET_GAP for line in lines)
+        start = max(MARGIN, (self.width() - widest) // 2)
         nodes: dict[tuple[str, str], Node] = {}
         heads: dict[str, Head] = {}
         firsts: dict[str, QPushButton] = {}
-        self._lines = []
-        top = MARGIN + HEAD_H + GAP_Y // 2
-        for shown in fleets:
-            at, columns = slots(shown.fleet) if shown.fleet is not None else ({}, 1.0)
-            width = round(columns * NODE_W + (columns - 1) * GAP_X)
-            head = heads[shown.key] = self.heads.pop(shown.key, None) or self._head(shown.key)
-            head.name.setText(shown.name)
-            head.status.setText(shown.status)
-            head.start.setVisible(shown.startable)
-            head.setGeometry(x, MARGIN, width, HEAD_H)
-            head.show()
-            if shown.fleet is not None and not shown.fleet.units and shown.editable:
-                first = firsts[shown.key] = (self.firsts.pop(shown.key, None)
-                                             or self._first(shown.key))
-                first.setGeometry(x, top, NODE_W, NODE_H)
-                first.show()
-                lowest = max(lowest, 1)
-            placed: dict[str, QRect] = {}
-            for unit_id, (column, row) in at.items():
-                key = (shown.key, unit_id)
-                node = nodes[key] = self.nodes.pop(key, None) or self._node(*key)
-                node.show_unit(shown.fleet.units[unit_id], shown.editable)  # type: ignore[union-attr]
-                placed[unit_id] = QRect(x + round(column * (NODE_W + GAP_X)),
-                                        top + row * (NODE_H + GAP_Y), NODE_W, NODE_H)
-                node.setGeometry(placed[unit_id])
-                node.show()
-                lowest = max(lowest, row + 1)
-            for unit_id, rect in placed.items():
-                above = placed.get(shown.fleet.units[unit_id].supervisor or "")  # type: ignore[union-attr]
-                if above is not None:
-                    self._lines.append((QPointF(above.center().x(), above.bottom() + 1),
-                                        QPointF(rect.center().x(), rect.top())))
-            x += width + FLEET_GAP
+        self._lines, self._cards = [], []
+        y = MARGIN
+        for line in lines:
+            ranks = max((row + 1 for i in line if i < len(fleets)
+                         for _, row in placed[i][0].values()), default=1)
+            height = PAD + HEAD_H + HEAD_GAP + ranks * NODE_H + (ranks - 1) * GAP_Y + PAD
+            x = start
+            for i in line:
+                if i == len(fleets):
+                    self.add_button.setGeometry(x, y, ADD_W, height)
+                else:
+                    self._place(fleets[i], placed[i][0], placed[i][1], inners[i],
+                                QRect(x, y, widths[i], height), nodes, heads, firsts)
+                x += widths[i] + FLEET_GAP
+            y += height + FLEET_GAP
         for gone in (*self.nodes.values(), *self.heads.values(), *self.firsts.values()):
             gone.setParent(None)
             gone.deleteLater()
         self.nodes, self.heads, self.firsts = nodes, heads, firsts
-        self.add_button.move(x, MARGIN + (HEAD_H - self.add_button.height()) // 2)
-        self.setMinimumSize(x + self.add_button.width() + MARGIN,
-                            top + lowest * (NODE_H + GAP_Y) + MARGIN)
+        self.setMinimumSize(max(widths) + 2 * MARGIN, y - FLEET_GAP + MARGIN)
         self.update()
+
+    def _place(self, shown: ChartFleet, at: dict[str, tuple[float, int]], columns: float,
+               inner: int, card: QRect, nodes: dict[tuple[str, str], Node],
+               heads: dict[str, Head], firsts: dict[str, QPushButton]) -> None:
+        """One fleet in its card: its head, then its tree in the middle."""
+        self._cards.append(card)
+        x, top = card.x(), card.y() + PAD + HEAD_H + HEAD_GAP
+        head = heads[shown.key] = self.heads.pop(shown.key, None) or self._head(shown.key)
+        head.name.setText(shown.name)
+        head.status.setText(shown.status)
+        head.start.setText(shown.start)
+        head.start.setVisible(bool(shown.start))
+        head.setGeometry(x + PAD, card.y() + PAD, inner, HEAD_H)
+        head.show()
+        width = round(columns * NODE_W + (columns - 1) * GAP_X)
+        left = x + PAD + (inner - width) // 2
+        if shown.fleet is not None and not shown.fleet.units and shown.editable:
+            first = firsts[shown.key] = (self.firsts.pop(shown.key, None)
+                                         or self._first(shown.key))
+            first.setGeometry(left, top, NODE_W, NODE_H)
+            first.show()
+        boxes: dict[str, QRect] = {}
+        for unit_id, (column, row) in at.items():
+            key = (shown.key, unit_id)
+            node = nodes[key] = self.nodes.pop(key, None) or self._node(*key)
+            node.show_unit(shown.fleet.units[unit_id],  # type: ignore[union-attr]
+                           shown.editable, shown.running)
+            boxes[unit_id] = QRect(left + round(column * (NODE_W + GAP_X)),
+                                   top + row * (NODE_H + GAP_Y), NODE_W, NODE_H)
+            node.setGeometry(boxes[unit_id])
+            node.show()
+        for unit_id, rect in boxes.items():
+            above = boxes.get(shown.fleet.units[unit_id].supervisor or "")  # type: ignore[union-attr]
+            if above is not None:
+                self._lines.append((QPointF(above.center().x(), above.bottom() + 1),
+                                    QPointF(rect.center().x(), rect.top())))
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        self.show_fleets(self._shown)
 
     def _head(self, key: str) -> Head:
         head = Head(self)
@@ -250,7 +299,13 @@ class Chart(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor(theme.current().line), 1.5))
+        colors = theme.current()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(colors.card))
+        for card in self._cards:
+            painter.drawRoundedRect(card, RADIUS, RADIUS)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(colors.track), 1.5))
         for foot, head in self._lines:  # down, across at half height, down
             middle = (foot.y() + head.y()) / 2
             painter.drawPolyline([foot, QPointF(foot.x(), middle),

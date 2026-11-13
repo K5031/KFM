@@ -4,7 +4,7 @@ Status: proposed — what KFM lacks to hold a role over a long horizon, and the 
 
 ## Problem
 
-The owner's measure for KFM (2026-11-12): it is not another task doer, which a single
+The user's measure for KFM (2026-11-12): it is not another task doer, which a single
 coding agent does more cheaply. It is meant to take on roles and duties over long
 horizons, in effect to do the work of a human team ("be the marketing team").
 

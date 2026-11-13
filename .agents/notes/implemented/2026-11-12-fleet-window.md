@@ -12,7 +12,7 @@ doing and what it has spent were in `kfm status`, a second command. Nothing show
 report in full, and when the terminal closed the lines were gone: of what passed between
 the agents, the fleet's record kept each agent's last report.
 
-The owner wants a proper frontend, as Kayden has one.
+The user wants a proper frontend, as Kayden has one.
 
 ## Decision
 
@@ -50,7 +50,7 @@ event loop, its theme, its Markdown view.
 
 - **A terminal interface** (Textual, as Kayden's). No new dependency for people on a
   server, but a tree of agents beside a timeline of long reports is what a terminal shows
-  worst, and the owner uses Kayden's window.
+  worst, and the user uses Kayden's window.
 - **A web page served by the manager.** Reachable from anywhere, and a fleet could run
   without a window. A second stack (HTTP, a page, its own look) where Kayden's desktop
   code already gives the loop, the theme and the widgets.

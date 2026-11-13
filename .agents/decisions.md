@@ -35,11 +35,11 @@ Design: [Agent Note](notes/implemented/2026-11-12-fleet-window.md).
 | New fleet | In `<home>/fleets/<date-time>/` (the next second's when that one exists), with the settings of `<home>/fleet.toml` and the limit from the start screen |
 | Fleets list | In the sidebar under the open fleet's agents: every fleet under `<home>/fleets`, newest first, drawn by Kayden's `RowDelegate` with its task, agents and spending, and the time it started (today) or the day. The open fleet is listed from what the window knows, since its record may not be written yet. Clicking one opens it; while a fleet runs the list is disabled, with "Stop this fleet to open another." Resume is offered when something was at work |
 | Column | One column of at most 860 px in the middle of the window; the message box below it is as wide |
-| App menu | `app_menu.py`, as Kayden's: `io.github.k5031.kfm.desktop` and the icon (the owner's logo, 512 x 512 with clear corners and the same margin around its tile as Kayden's icon, in `hicolor/512x512/apps`) under the user's XDG data directory; the entry runs this install's Python with `-m kfm.desktop`; the icon's file name carries a hash of its content |
+| App menu | `app_menu.py`, as Kayden's: `io.github.k5031.kfm.desktop` and the icon (the user's logo, 512 x 512 with clear corners and the same margin around its tile as Kayden's icon, in `hicolor/512x512/apps`) under the user's XDG data directory; the entry runs this install's Python with `-m kfm.desktop`; the icon's file name carries a hash of its content |
 
 ## What agents are told
 
-The owner's rule (2026-11-12): nothing is hardcoded for a case; it is brittle and does not
+The user's rule (2026-11-12): nothing is hardcoded for a case; it is brittle and does not
 generalize.
 
 | Choice | Decision |

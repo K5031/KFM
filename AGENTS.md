@@ -24,7 +24,7 @@ Python 3.14 (`requires-python >= 3.12`), asyncio, uv, pytest + pytest-asyncio, r
   supervisors) live here, never in Kayden. If KFM needs something from Kayden, it is a
   general Kayden feature or it does not exist.
 - The manager bridges all communication: units never talk to each other directly.
-- No speculative abstractions, no features the owner has not asked for, no unrequested
+- No speculative abstractions, no features the user has not asked for, no unrequested
   refactoring.
 - No migration or compatibility code. A fleet folder of another format is refused.
 - Prefer established libraries over custom mechanisms.

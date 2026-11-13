@@ -5,7 +5,7 @@ Status: implemented — what a fleet needs from the agent program its units run 
 ## Problem
 
 A unit was a Kayden, and the manager spoke Kayden: its events, its requests, its
-configuration files, the names of its tools. The owner wants KFM able to run its fleet on
+configuration files, the names of its tools. The user wants KFM able to run its fleet on
 another agent program, one built with KFM in mind, and wants that boundary drawn now,
 while the manager is small, so that it never has to be cut through a grown one.
 
@@ -43,7 +43,7 @@ head what they cannot express.
 ## Alternatives considered
 
 - **Write the contract down and build nothing until a second unit exists.** Proposed
-  first: an interface drawn from one example fits that example. The owner chose to build
+  first: an interface drawn from one example fits that example. The user chose to build
   early: redrawing the boundary later means an overhaul of whatever has grown across it.
   The second harness in the tests stands in for the second example.
 - **The protocol as the contract**: any program that speaks Kayden's headless channel is

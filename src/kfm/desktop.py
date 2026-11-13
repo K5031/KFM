@@ -649,7 +649,7 @@ class AgentDialog(QDialog):
         rows = QVBoxLayout(self)
         rows.setSpacing(10)
         self.name = QLineEdit()
-        self.name.setPlaceholderText("Name")
+        self.name.setPlaceholderText("Name, if it has one")
         self.task = TaskBox()
         self.task.setPlaceholderText(
             "Its task. Empty: its supervisor gives it one" if supervisor is not None
@@ -1440,8 +1440,6 @@ class FleetWindow(QMainWindow):
 
         async def add() -> None:
             name, task = dialog.name.text().strip(), dialog.task.toPlainText().strip()
-            if not name:
-                return dialog.warn("It needs a name.")
             try:
                 await view.add_agent(supervisor, name, task,
                                      ongoing=dialog.kind.duty.isChecked(),

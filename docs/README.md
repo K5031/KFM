@@ -109,8 +109,9 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
   ![A new fleet](images/start-light.png)
 
 - **Build a fleet yourself** by leaving "what it does" empty. The fleet appears on the
-  chart with no agents and runs nothing. **Add agent** makes its lead: a name and, if
-  you like, a task and a model of its own. An agent with no task does not start: it
+  chart with no agents and runs nothing. **Add agent** makes its lead; a name, a task
+  and a model of its own are all optional. An agent with no name is called by its number
+  ("Agent 2"). An agent with no task does not start: it
   takes the first message it gets as its task (its supervisor's, or yours for the lead),
   so you can set up who is on the team and leave the work to be handed out. Right-click an agent to add agents under it.
   **Start**, beside the fleet's name, starts them all, each on the task you gave it; a

@@ -232,10 +232,11 @@ async def test_an_agent_with_no_task_takes_its_first_message_as_its_task(tmp_pat
     fleet = lay_out(FleetConfig(), folder, tmp_path / "work", "content")
     chief = place(fleet, folder, None, "Chief", "")
     place(fleet, folder, chief, "Writer", "")
+    assert place(fleet, folder, chief, " ", "").name == "Agent 3"  # named by its number
     manager = Manager.resumed(folder, harness=harness)
     await manager.start()
     assert not harness.models
-    assert [u.state for u in manager.fleet.units.values()] == ["idle", "idle"]
+    assert [u.state for u in manager.fleet.units.values()] == ["idle", "idle", "idle"]
     await manager.say("Run content")
     await until(lambda: harness.heard.get("Chief"))
     brief = harness.heard["Chief"][0]

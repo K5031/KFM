@@ -320,9 +320,6 @@ async def test_the_person_adds_an_agent_and_sets_a_model_on_the_chart(window, tm
     lead.add_action.trigger()
     dialog = shown.dialog
     assert dialog.isVisible() and "under Lead" in dialog.windowTitle()
-    dialog.add.click()
-    await asyncio.sleep(0.05)
-    assert dialog.isVisible() and "needs a name" in dialog.warning.text()
     dialog.name.setText("Tester")
     dialog.task.setPlainText("Run the tests")
     dialog.model.setText("small-1")
@@ -396,6 +393,11 @@ async def test_a_fleet_is_built_by_hand_and_then_started(window, tmp_path: Path)
     head.start.click()
     await until(lambda: ("Editor", None) in harness.models)
     await view.stop()
+    await until(lambda: head.start.isVisibleTo(shown))
+    chief.add_action.trigger()  # nothing said about it: it is named by its number
+    shown.dialog.add.click()
+    await until(lambda: (key, "u4") in shown.chart.nodes)
+    assert shown.chart.nodes[(key, "u4")].name.text() == "Agent 4"
 
 
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):

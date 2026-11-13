@@ -179,7 +179,7 @@ async def test_the_window_adds_itself_to_the_app_menu(window, tmp_path: Path, mo
     await until(lambda: not shown.app_menu_button.isVisibleTo(shown))
     entry = (tmp_path / "share/applications/io.github.k5031.kfm.desktop").read_text()
     assert "Name=KFM" in entry and "-m kfm.desktop" in entry and "Terminal=false" in entry
-    [icon] = (tmp_path / "share/icons/hicolor/scalable/apps").glob("io.github.k5031.kfm-*.svg")
+    [icon] = (tmp_path / "share/icons/hicolor/512x512/apps").glob("io.github.k5031.kfm-*.png")
     assert f"Icon={icon.stem}" in entry
     again, _ = window({})
     await asyncio.sleep(0.2)

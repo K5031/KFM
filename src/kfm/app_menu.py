@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 APP_ID = "io.github.k5031.kfm"  # also the window's desktop file name, so they match
-ICON = Path(__file__).parent / "icons" / "kfm.svg"
+ICON = Path(__file__).parent / "icons" / "kfm.png"  # 512 x 512
 ICON_NAME = f"{APP_ID}-{hashlib.sha256(ICON.read_bytes()).hexdigest()[:8]}"
 _RESERVED = set(" \t\n\"'\\><~|&;$*?#()`")
 
@@ -34,7 +34,7 @@ def _entry_path() -> Path:
 
 
 def _icon_path() -> Path:
-    return _data_home() / "icons/hicolor/scalable/apps" / f"{ICON_NAME}.svg"
+    return _data_home() / "icons/hicolor/512x512/apps" / f"{ICON_NAME}.png"
 
 
 def _quoted(argument: str) -> str:
@@ -72,7 +72,7 @@ def install() -> None:
     """Blocking."""
     for path in (_entry_path(), _icon_path()):
         path.parent.mkdir(parents=True, exist_ok=True)
-    for old in _icon_path().parent.glob(f"{APP_ID}*.svg"):
+    for old in _icon_path().parent.glob(f"{APP_ID}*.png"):
         if old != _icon_path():
             old.unlink()
     shutil.copyfile(ICON, _icon_path())

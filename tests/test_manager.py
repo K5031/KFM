@@ -79,7 +79,7 @@ async def test_a_task_is_delegated_and_the_reports_travel_up(fleet, tmp_path: Pa
         "Lead": [call("mcp__fleet__delegate", name="Scout", task="Count the files"),
                  finish("Scout counted 3 files.", when="[Report from Scout (K4, u2)] 3")],
         "Scout": [finish("3 files")]})
-    lead = await manager.lead("Find out how many files there are")
+    lead = await manager.lead("Find out how many files there are", name="Lead")
     await asyncio.wait_for(manager.finished.wait(), 30)
     scout = manager.fleet.units["u2"]
     assert (lead.rank, scout.rank, scout.supervisor) == (5, 4, "u1")
@@ -103,7 +103,7 @@ async def test_a_question_goes_to_the_supervisor_and_its_answer_back(fleet):
                  finish("Docs are tidy.", when="[Report from Scout")],
         "Scout": [call("ask_for_help", question="Which folder?"),
                   finish("Tidied docs/", when="your supervisor] Use docs/")]})
-    await manager.lead("Tidy up")
+    await manager.lead("Tidy up", name="Lead")
     await asyncio.wait_for(manager.finished.wait(), 30)
     assert delivered(events) == [("Scout", "Lead", "question", "Which folder?"),
                                  ("Scout", "Lead", "report", "Tidied docs/"),
@@ -119,7 +119,7 @@ async def test_a_finished_agent_that_is_told_more_answers_with_one_report(fleet)
                                               text="Count again")},
                  finish("Confirmed: 3.", when="] Still 3")],
         "Scout": [finish("3 files"), {"when": "Count again", "text": "Still 3 files."}]})
-    await manager.lead("Find out how many files there are")
+    await manager.lead("Find out how many files there are", name="Lead")
     await asyncio.wait_for(manager.finished.wait(), 30)
     assert delivered(events) == [("Scout", "Lead", "report", "3 files"),
                                  ("Scout", "Lead", "report", "Still 3 files."),
@@ -136,7 +136,7 @@ async def test_finishing_a_goal_that_has_ended_is_not_a_report(fleet):
         "Scout": [finish("3 files"),
                   {"when": "Count again", **call("finish_goal", report="Again 3")},
                   {"text": "Counted twice: 3."}]})
-    await manager.lead("Find out how many files there are")
+    await manager.lead("Find out how many files there are", name="Lead")
     await asyncio.wait_for(manager.finished.wait(), 30)
     assert [d for d in delivered(events) if d[0] == "Scout"] == [
         ("Scout", "Lead", "report", "3 files"),
@@ -147,7 +147,7 @@ async def test_the_lowest_rank_is_told_it_cannot_delegate(fleet):
     manager, events = await fleet({
         "Lead": [call("mcp__fleet__delegate", name="Helper", task="Help"),
                  {"report_last_result": True}]}, top_rank=1)
-    await manager.lead("Do it")
+    await manager.lead("Do it", name="Lead")
     await asyncio.wait_for(manager.finished.wait(), 30)
     assert len(manager.fleet.units) == 1
     assert "lowest rank" in delivered(events)[0][3]
@@ -157,7 +157,7 @@ async def test_the_lead_asks_the_person_and_carries_on_with_the_answer(fleet):
     manager, events = await fleet({
         "Lead": [call("ask_for_help", question="Blue or green?"),
                  finish("Painted it green.", when="green")]})
-    lead = await manager.lead("Paint it")
+    lead = await manager.lead("Paint it", name="Lead")
     await until(lambda: lead.state == "waiting")
     assert delivered(events) == [("Lead", None, "question", "Blue or green?")]
     await manager.say("green")
@@ -170,7 +170,7 @@ async def test_the_person_approves_what_permissions_do_not_cover(fleet, tmp_path
     manager, events = await fleet({
         "Lead": [call("write_file", path=str(outside), content="hello"),
                  {"report_last_result": True}]})
-    await manager.lead("Leave a note outside")
+    await manager.lead("Leave a note outside", name="Lead")
     await until(lambda: any(isinstance(e, Approval) for e in events))
     approval = next(e for e in events if isinstance(e, Approval))
     assert approval.tool == "write_file" and str(outside) in approval.arguments
@@ -186,7 +186,7 @@ async def test_stopping_an_agent_stops_those_under_it(fleet):
                       ongoing=True)],
         "Mid": [call("mcp__fleet__delegate", name="Low", task="Keep watch", ongoing=True)]},
         top_rank=3)
-    lead = await manager.lead("Run things", ongoing=True)
+    lead = await manager.lead("Run things", ongoing=True, name="Lead")
     await until(lambda: len(manager.fleet.units) == 3
                 and manager.fleet.units["u3"].state == "working")
     mid, low = manager.fleet.units["u2"], manager.fleet.units["u3"]
@@ -198,7 +198,7 @@ async def test_stopping_an_agent_stops_those_under_it(fleet):
 
 async def test_the_fleets_spending_limit_stops_everyone_until_it_is_given_more(fleet):
     manager, events = await fleet({}, budget_usd=0.0003, check_in_s=(0.05, 0.05))
-    lead = await manager.lead("Keep going", ongoing=True)
+    lead = await manager.lead("Keep going", ongoing=True, name="Lead")
     await asyncio.wait_for(manager.finished.wait(), 30)
     await until(lambda: not manager._sessions)  # every process has ended
     assert any(isinstance(e, Notice) and "spending limit" in e.text for e in events)
@@ -215,7 +215,7 @@ async def test_the_fleets_spending_limit_stops_everyone_until_it_is_given_more(f
 
 async def test_a_unit_that_cannot_start_has_failed(fleet, tmp_path: Path):
     manager, _ = await fleet({}, harness_options={"command": ["false"]})
-    lead = await manager.lead("Do it")
+    lead = await manager.lead("Do it", name="Lead")
     assert lead.state == "failed" and lead.failure
 
 
@@ -228,7 +228,7 @@ def said(events: list[FleetEvent], name: str) -> list[str]:
 
 async def test_a_stopped_fleet_carries_on_where_it_was(fleet, tmp_path: Path):
     manager, events = await fleet({"Lead": [{"text": "On watch."}]})
-    lead = await manager.lead("Keep watch over the folder", ongoing=True)
+    lead = await manager.lead("Keep watch over the folder", ongoing=True, name="Lead")
     await until(lambda: "On watch." in said(events, "Lead"))
     await until(lambda: Fleet.load(tmp_path / "fleet").spent_usd > 0)  # while it runs
     session = lead.session
@@ -253,7 +253,7 @@ async def test_a_resumed_fleet_finishes_what_was_under_way(fleet, tmp_path: Path
     manager, events = await fleet({
         "Lead": [call("mcp__fleet__delegate", name="Scout", task="Tidy the docs")],
         "Scout": [call("ask_for_help", question="Which folder?")]})
-    await manager.lead("Tidy up")
+    await manager.lead("Tidy up", name="Lead")
     await until(lambda: ("Scout", "Lead", "question", "Which folder?") in delivered(events))
     await manager.aclose()
     assert Fleet.load(tmp_path / "fleet").units["u2"].state == "waiting"
@@ -272,6 +272,6 @@ async def test_a_resumed_fleet_finishes_what_was_under_way(fleet, tmp_path: Path
 
 async def test_a_running_fleet_is_not_resumed_again(fleet, tmp_path: Path):
     manager, _ = await fleet({"Lead": [{"text": "On watch."}]})
-    await manager.lead("Keep watch", ongoing=True)
+    await manager.lead("Keep watch", ongoing=True, name="Lead")
     with pytest.raises(FleetError, match="is running"):
         await fleet({}, resume=True)

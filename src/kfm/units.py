@@ -32,7 +32,7 @@ def hired_note(unit: Unit, words: Vocabulary) -> str:
 
 def answer_note(supervisor: Unit | None, words: Vocabulary) -> str:
     """What a unit is told with a message that reaches it after its goal ended."""
-    reader = supervisor.name if supervisor is not None else "the person"
+    reader = "the person" if supervisor is None else supervisor.name or "your supervisor"
     return ("(Your task had ended, so there is no goal to finish now. Deal with this, then "
             f"end your turn: what you write last goes to {reader} as your report, so make it "
             f"complete, and do not also send it with {words.tool('report')}.)")
@@ -42,7 +42,8 @@ def brief(unit: Unit, supervisor: Unit | None, placed: list[Unit], words: Vocabu
     """The unit's standing instruction: who it is in the fleet, its task, and how the fleet
     works from where it stands. `placed`: the agents the person put under it, which start
     when it does."""
-    lines = [(f"You are {unit.name}, a K{unit.rank} agent in a fleet of AI agents that works "
+    who = f"{unit.name}, a" if unit.name else "a"
+    lines = [(f"You are {who} K{unit.rank} agent in a fleet of AI agents that works "
               "without human supervision. A higher rank supervises the one below it.")]
     if unit.team:
         lines.append(f"Your team: {unit.team}.")
@@ -52,7 +53,9 @@ def brief(unit: Unit, supervisor: Unit | None, placed: list[Unit], words: Vocabu
                      "They are not watching: decide what you can, and ask them only what "
                      "only they can decide.")
     else:
-        lines.append(f"- Your supervisor is {supervisor.name} (K{supervisor.rank}). It gave "
+        above = (f"{supervisor.name} (K{supervisor.rank})" if supervisor.name
+                 else f"a K{supervisor.rank} agent")
+        lines.append(f"- Your supervisor is {above}. It gave "
                      "you this task, sees nothing of your conversation, and gets what you "
                      "report.")
     if unit.ongoing:

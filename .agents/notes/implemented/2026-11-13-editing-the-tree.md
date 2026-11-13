@@ -29,6 +29,10 @@ When the fleet starts, every planned agent's process is brought up first, and th
 is given its task from the top down. A supervisor that starts with its agents finds them
 listed in its brief; a supervisor that was there before is told with a message.
 
+**A name is optional, and by default there is none.** An agent is then known by its
+rank, and by rank and id where agents have to be told apart. The lead a task starts has
+no name; a lead may name the agents it hires.
+
 **A task is optional.** An agent with none has no process and spends nothing (state
 `idle`); the first message it gets is its task, and it starts on it (`Manager.tell`).
 Its supervisor is told it has no task yet and how to give it one; for a lead, the
@@ -69,6 +73,7 @@ knowledge, and the unit contract has no way to ask.
 
 - Setting the model of an agent at work interrupts its turn; what it ran in the
   background ends, as on a resume.
+- A chart of nameless agents shows ranks only: which K4 does what is seen by opening it.
 - A lead that hires and a person who places agents can build two teams for one job.
 - A supervisor may never give a waiting agent a task: it then stays idle, at no cost.
 - A fleet built by hand has no task of its own: what it does is what its lead's task

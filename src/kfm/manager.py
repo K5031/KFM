@@ -147,9 +147,9 @@ class Manager:
 
     # ── What the person does ─────────────────────────────────────────────
 
-    async def lead(self, task: str, *, ongoing: bool = False) -> Unit:
+    async def lead(self, task: str, *, ongoing: bool = False, name: str = "") -> Unit:
         """Start the fleet: its lead, on the person's task."""
-        unit = self.fleet.add("Lead", task, None, ongoing=ongoing,
+        unit = self.fleet.add(name, task, None, ongoing=ongoing,
                               budget_usd=self.config.unit_budget_usd)
         await self._start(unit)
         return unit
@@ -169,7 +169,7 @@ class Manager:
         if supervisor.id not in self.fleet.units:
             raise FleetError("The fleet has not started.")
         unit = await self.delegate(supervisor, name, task, ongoing=ongoing, model=model)
-        self._emit(Notice(f"You added {unit.label} under {supervisor.name}."))
+        self._emit(Notice(f"You added {unit.called} under {supervisor.called}."))
         if supervisor.session is not None:  # one that has not begun reads it in its brief
             self._spawn(self._tell_quietly(supervisor, units.hired_note(unit, self._words)))
         return unit
@@ -327,7 +327,7 @@ class Manager:
 
     async def _open(self, unit: Unit, *, resume: bool) -> Session:
         spec = UnitSpec(
-            unit.id, unit.name, unit.rank, self.folder / "units" / unit.id, self.work,
+            unit.id, unit.called, unit.rank, self.folder / "units" / unit.id, self.work,
             unit.model or self.config.model_for(unit.rank, unit.team),
             self.config.permissions,
             unit.budget_usd, f"{self._tools.url}?unit={unit.token}")

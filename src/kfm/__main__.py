@@ -125,7 +125,7 @@ class Console:
             case Said(unit=unit, text=text):
                 print(f"[{_tag(unit)}] {text if unit.supervisor is None else _clip(text)}")
             case Delivered(unit=unit, to=to, kind=kind, text=text):
-                target = to.name if to is not None else "you"
+                target = to.called if to is not None else "you"
                 print(f"[{_tag(unit)} → {target}] {kind}: {text}")
             case Approval(unit=unit, tool=tool, arguments=arguments):
                 self.approvals.append(event)
@@ -184,7 +184,7 @@ def _status(folder: Path | None) -> int:
 
 
 def _tag(unit: Unit) -> str:
-    return f"{unit.name} K{unit.rank} {unit.id}"
+    return f"{unit.name} K{unit.rank} {unit.id}" if unit.name else unit.called
 
 
 def _clip(text: str, chars: int = LINE_CHARS) -> str:

@@ -31,7 +31,7 @@ from kfm.fleet import Fleet
 from tests.fakeharness import FakeHarness
 
 TEAM = {
-    "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Tidy the docs"})]},
+    "K5 u1": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Tidy the docs"})]},
              {"when": "[Question from Scout",
               "do": [("tool", "message", {"agent": "u2", "text": "Use docs/"})]},
              {"when": "[Report from Scout",
@@ -118,7 +118,7 @@ def cards(view: FleetView) -> list[tuple[str, str]]:
 def chart(window: FleetWindow) -> dict[str, list[str]]:
     """Each fleet on the chart, with its agents as "name rank"."""
     shown = window.chart
-    return {head.name.text(): sorted(f"{node.name.text()} {node.rank.text()}"
+    return {head.name.text(): sorted(f"{node.name.text()} {node.rank.text()}".strip()
                                      for (fleet, _), node in shown.nodes.items() if fleet == key)
             for key, head in shown.heads.items()}
 
@@ -151,10 +151,10 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
     await until(lambda: view.manager is not None and view.manager.finished.is_set())
     await until(lambda: len(cards(view)) == 3)
     assert view.isVisibleTo(shown) and shown.agents_section.isVisibleTo(shown)
-    assert agents(shown) == [(0, "Lead  K5", "done"), (1, "Scout  K4", "done")]
-    assert cards(view) == [("Scout → Lead · question", "Which folder?"),
-                           ("Scout → Lead · report", "Tidied docs/"),
-                           ("Lead → you · report", "Docs are tidy.")]
+    assert agents(shown) == [(0, "K5", "done"), (1, "Scout  K4", "done")]
+    assert cards(view) == [("Scout → K5 u1 · question", "Which folder?"),
+                           ("Scout → K5 u1 · report", "Tidied docs/"),
+                           ("K5 u1 → you · report", "Docs are tidy.")]
     assert shown.title.text() == "dev"
     await until(lambda: "finished" in shown.status.text())
     assert "of $3.00" in shown.status.text()
@@ -163,7 +163,7 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
 
 
 async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: Path):
-    shown, harness = window({"Lead": [
+    shown, harness = window({"K5 u1": [
         {"do": [("approval", "r1", "write_file", "{'path': '/etc/motd'}"), ("say", "Wrote it.")]},
         {"when": "hello", "do": [("say", "Hi there.")]},
         {"when": "started again", "do": [("say", "Back on watch.")]},
@@ -178,7 +178,7 @@ async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: P
 
     view.input.setPlainText("hello")
     view.send_button.click()
-    await until(lambda: any("hello" in heard for heard in harness.heard["Lead"]))
+    await until(lambda: any("hello" in heard for heard in harness.heard["K5 u1"]))
     assert view.input.toPlainText() == ""
     await until(lambda: [e.text.text() for e in view.entries if isinstance(e, YouEntry)]
                 == ["hello"])
@@ -187,14 +187,14 @@ async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: P
     await until(lambda: "stopped" in shown.status.text())
     assert shown.resume_button.isVisibleTo(shown)
     shown.resume_button.click()
-    await until(lambda: ("Lead", "session-u1") in harness.opened)
+    await until(lambda: ("K5 u1", "session-u1") in harness.opened)
     await until(lambda: "running" in shown.status.text() and view.input.isEnabled())
 
     shown.stop_button.click()  # a message to a stopped fleet starts it again
     await until(lambda: "stopped" in shown.status.text() and view.input.isEnabled())
     view.input.setPlainText("still there?")
     view.send_button.click()
-    await until(lambda: any("still there?" in heard for heard in harness.heard["Lead"]))
+    await until(lambda: any("still there?" in heard for heard in harness.heard["K5 u1"]))
     assert view.running and "running" in shown.status.text()
 
 
@@ -205,7 +205,7 @@ async def test_the_window_opens_on_the_chart_of_the_newest_project(window, tmp_p
     await first.shut()
 
     again, _ = window({})
-    await until(lambda: chart(again) == {"dev": ["Lead K5", "Scout K4"]})
+    await until(lambda: chart(again) == {"dev": ["K5", "Scout K4"]})
     assert again.chart.isVisibleTo(again) and again.title.text() == "Acme"
     assert "0 running" in again.status.text()
     assert again.projects.item(0).data(PREVIEW_ROLE) == "1 fleet"
@@ -216,9 +216,9 @@ async def test_the_window_opens_on_the_chart_of_the_newest_project(window, tmp_p
     scout.clicked.emit()  # an agent on the chart opens its fleet, on what concerns it
     opened = again.view
     assert opened is not None and opened.isVisibleTo(again) and again.title.text() == "dev"
-    assert [header for header, _ in cards(opened)] == ["Scout → Lead · question",
-                                                       "Scout → Lead · report"]
-    assert agents(again) == [(0, "Lead  K5", "done"), (1, "Scout  K4", "done")]
+    assert [header for header, _ in cards(opened)] == ["Scout → K5 u1 · question",
+                                                       "Scout → K5 u1 · report"]
+    assert agents(again) == [(0, "K5", "done"), (1, "Scout  K4", "done")]
     assert not again.resume_button.isVisibleTo(again)  # nothing was at work
     again.show_all.click()
     assert len(cards(opened)) == 3 and not again.show_all.isVisibleTo(again)
@@ -229,13 +229,13 @@ async def test_the_window_opens_on_the_chart_of_the_newest_project(window, tmp_p
 
 
 async def test_fleets_run_side_by_side_and_projects_are_switched(window, tmp_path: Path):
-    shown, _ = window({"Lead": [{"do": [("say", "On watch.")]}]})
+    shown, _ = window({"K5 u1": [{"do": [("say", "On watch.")]}]})
     dev = await start(shown, tmp_path, "Build it", name="dev", duty=True)
     shown.back_button.click()
     art = await start(shown, tmp_path, "Draw it", name="art", duty=True)
     await until(lambda: dev.running and art.running)
     shown.back_button.click()
-    await until(lambda: chart(shown) == {"dev": ["Lead K5"], "art": ["Lead K5"]})
+    await until(lambda: chart(shown) == {"dev": ["K5"], "art": ["K5"]})
     assert "2 running" in shown.status.text()
     dev_head, art_head = shown.chart.heads.values()
     assert dev_head.x() < art_head.x() and dev_head.y() == art_head.y()
@@ -250,7 +250,7 @@ async def test_fleets_run_side_by_side_and_projects_are_switched(window, tmp_pat
     assert shown.project_form.isVisibleTo(shown) and art.running
     await start(shown, tmp_path, "Hire", name="HR", duty=True, project="Other")
     shown.back_button.click()
-    await until(lambda: chart(shown) == {"HR": ["Lead K5"]})  # only this project's fleets
+    await until(lambda: chart(shown) == {"HR": ["K5"]})  # only this project's fleets
     await until(lambda: shown.projects.count() == 2)
     acme = next(shown.projects.item(i) for i in range(2)
                 if shown.projects.item(i).text() == "Acme")
@@ -267,7 +267,7 @@ async def test_a_described_project_is_drafted_and_started_by_the_person(window,
              {"name": "legal", "does": "Read contracts.", "ongoing": True}]
     shown, harness = window({
         "Planner": [{"do": [("tool", "propose", {"teams": teams}), ("report", "Proposed.")]}],
-        "Lead": [{"do": [("say", "On it.")]}, {"do": [("say", "On it.")]}]})
+        "K5 u1": [{"do": [("say", "On it.")]}, {"do": [("say", "On it.")]}]})
     form = shown.project_form
     form.name.setText("Studio")
     form.does.setPlainText("Run my game studio")
@@ -282,7 +282,7 @@ async def test_a_described_project_is_drafted_and_started_by_the_person(window,
             for r in page.rows] == [("dev", "Build the game.", True),
                                     ("trailer", "Cut a trailer.", False),
                                     ("legal", "Read contracts.", True)]
-    assert not shown.views and "Lead" not in harness.heard  # nothing runs yet
+    assert not shown.views and "K5 u1" not in harness.heard  # nothing runs yet
     page.rows[2].remove.click()  # the person changes the draft
     page.rows[1].name.setText("video")
     page.rows[0].name.clear()
@@ -292,10 +292,10 @@ async def test_a_described_project_is_drafted_and_started_by_the_person(window,
     page.rows[0].name.setText("dev")
     page.budget.setValue(4.0)
     page.start.click()
-    await until(lambda: chart(shown) == {"dev": ["Lead K5"], "video": ["Lead K5"]})
+    await until(lambda: chart(shown) == {"dev": ["K5"], "video": ["K5"]})
     assert not shown.drafts and shown.chart.isVisibleTo(shown)
-    await until(lambda: len(harness.heard.get("Lead", [])) == 2)
-    assert any("Build the game." in told for told in harness.heard["Lead"])
+    await until(lambda: len(harness.heard.get("K5 u1", [])) == 2)
+    assert any("Build the game." in told for told in harness.heard["K5 u1"])
     dev, video = shown.project_views()
     assert dev.fleet.lead.ongoing and not video.fleet.lead.ongoing
     assert "of $4.00" in dev.status
@@ -319,21 +319,21 @@ async def test_a_draft_that_fails_or_is_discarded_leaves_the_project(window, tmp
 
 
 async def test_the_person_adds_an_agent_and_sets_a_model_on_the_chart(window, tmp_path: Path):
-    shown, harness = window({"Lead": [{"do": [("say", "On watch.")]}],
+    shown, harness = window({"K5 u1": [{"do": [("say", "On watch.")]}],
                              "Tester": [{"do": [("say", "Testing.")]}]})
     view = await start(shown, tmp_path, "Keep it healthy", name="dev", duty=True)
     shown.back_button.click()
-    await until(lambda: chart(shown) == {"dev": ["Lead K5"]})
+    await until(lambda: chart(shown) == {"dev": ["K5"]})
     [lead] = shown.chart.nodes.values()
     assert lead.add_action.isEnabled() and lead.model_action.isEnabled()
     lead.add_action.trigger()
     dialog = shown.dialog
-    assert dialog.isVisible() and "under Lead" in dialog.windowTitle()
+    assert dialog.isVisible() and "under K5 u1" in dialog.windowTitle()
     dialog.name.setText("Tester")
     dialog.task.setPlainText("Run the tests")
     dialog.model.setText("small-1")
     dialog.add.click()
-    await until(lambda: chart(shown) == {"dev": ["Lead K5", "Tester K4"]})
+    await until(lambda: chart(shown) == {"dev": ["K5", "Tester K4"]})
     assert not dialog.isVisible() and ("Tester", "small-1") in harness.models
     assert not view.fleet.units["u2"].ongoing  # a task, unless Duty is chosen
     tester = shown.chart.nodes[(str(view.folder), "u2")]
@@ -342,7 +342,7 @@ async def test_the_person_adds_an_agent_and_sets_a_model_on_the_chart(window, tm
     lead.model_action.trigger()
     shown.dialog.model.setText("big-1")
     shown.dialog.accept()
-    await until(lambda: ("Lead", "big-1") in harness.models)
+    await until(lambda: ("K5 u1", "big-1") in harness.models)
     await view.stop()
 
 
@@ -403,14 +403,15 @@ async def test_a_fleet_is_built_by_hand_and_then_started(window, tmp_path: Path)
     await until(lambda: ("Editor", None) in harness.models)
     await view.stop()
     await until(lambda: head.start.isVisibleTo(shown))
-    chief.add_action.trigger()  # nothing said about it: it is named by its number
+    chief.add_action.trigger()  # nothing said about it: it has no name, only its rank
     shown.dialog.add.click()
     await until(lambda: (key, "u4") in shown.chart.nodes)
-    assert shown.chart.nodes[(key, "u4")].name.text() == "Agent 4"
+    nameless = shown.chart.nodes[(key, "u4")]
+    assert (nameless.name.text(), nameless.rank.text()) == ("K4", "")
 
 
 async def test_a_project_is_deleted_with_its_fleets_and_not_its_work(window, tmp_path: Path):
-    shown, _ = window({"Lead": [{"do": [("say", "On watch.")]}]})
+    shown, _ = window({"K5 u1": [{"do": [("say", "On watch.")]}]})
     view = await start(shown, tmp_path, "Keep watch", duty=True)
     await until(lambda: shown.projects.count() == 1
                 and shown.projects.item(0).data(FLEETS_ROLE) == 1)
@@ -430,12 +431,12 @@ async def test_a_project_is_deleted_with_its_fleets_and_not_its_work(window, tmp
 
 
 async def test_a_fleet_is_deleted_from_the_chart(window, tmp_path: Path):
-    shown, _ = window({"Lead": [{"do": [("say", "On watch.")]}]})
+    shown, _ = window({"K5 u1": [{"do": [("say", "On watch.")]}]})
     first = await start(shown, tmp_path, "Keep watch", name="dev", duty=True)
     shown.back_button.click()
     second = await start(shown, tmp_path, "Keep watch", name="art", duty=True)
     shown.back_button.click()
-    await until(lambda: chart(shown) == {"dev": ["Lead K5"], "art": ["Lead K5"]})
+    await until(lambda: chart(shown) == {"dev": ["K5"], "art": ["K5"]})
     shown.chart.heads[str(first.folder)].delete_action.trigger()
     assert "dev" in shown.dialog.question.text()
     shown.dialog.reject()
@@ -444,7 +445,7 @@ async def test_a_fleet_is_deleted_from_the_chart(window, tmp_path: Path):
     shown.chart.heads[str(first.folder)].delete_action.trigger()
     shown.dialog.delete.click()
     await until(lambda: not first.folder.exists())
-    await until(lambda: chart(shown) == {"art": ["Lead K5"]})
+    await until(lambda: chart(shown) == {"art": ["K5"]})
     assert list(shown.views.values()) == [second] and second.running and not first.running
     await until(lambda: shown.projects.item(0).data(FLEETS_ROLE) == 1)
     await second.stop()
@@ -454,7 +455,7 @@ async def test_an_agent_a_fleet_and_a_project_are_renamed(window, tmp_path: Path
     shown, _ = window(TEAM)
     view = await start(shown, tmp_path, "Tidy up", name="dev")
     shown.back_button.click()
-    await until(lambda: chart(shown) == {"dev": ["Lead K5", "Scout K4"]})
+    await until(lambda: chart(shown) == {"dev": ["K5", "Scout K4"]})
     key = str(view.folder)
 
     def rename(action, to: str) -> None:
@@ -463,9 +464,9 @@ async def test_an_agent_a_fleet_and_a_project_are_renamed(window, tmp_path: Path
         shown.dialog.accept()
 
     rename(shown.chart.nodes[(key, "u2")].rename_action, "Tidier")  # while it runs
-    await until(lambda: chart(shown) == {"dev": ["Lead K5", "Tidier K4"]})
+    await until(lambda: chart(shown) == {"dev": ["K5", "Tidier K4"]})
     rename(shown.chart.heads[key].rename_action, "docs")
-    await until(lambda: chart(shown) == {"docs": ["Lead K5", "Tidier K4"]})
+    await until(lambda: chart(shown) == {"docs": ["K5", "Tidier K4"]})
     rename(shown.chart.heads[key].rename_action, "  ")  # no name: as it was
     await asyncio.sleep(0.05)
     assert view.name == "docs"

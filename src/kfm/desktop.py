@@ -135,8 +135,9 @@ class SaidEntry(QWidget):
         layout.setSpacing(3)
         self.header = QHBoxLayout()
         self.header.setSpacing(6)
-        self.header.addWidget(label(unit.name, role="strong", wrap=False))
-        self.header.addWidget(label(f"K{unit.rank}", role="small", tone="muted", wrap=False))
+        self.header.addWidget(label(unit.name or f"K{unit.rank}", role="strong", wrap=False))
+        self.header.addWidget(label(f"K{unit.rank}" if unit.name else unit.id, role="small",
+                                    tone="muted", wrap=False))
         self.header.addStretch(1)
         self.body = MarkdownView()
         self.body.setMarkdown(text)
@@ -155,8 +156,8 @@ class DeliveryCard(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(6)
-        target = event.to.name if event.to is not None else "you"
-        self.header = label(f"{event.unit.name} → {target} · {event.kind}", role="strong")
+        target = event.to.called if event.to is not None else "you"
+        self.header = label(f"{event.unit.called} → {target} · {event.kind}", role="strong")
         self.body = MarkdownView()
         self.body.setMarkdown(event.text)
         layout.addWidget(self.header)
@@ -173,7 +174,7 @@ class ApprovalCard(QFrame):
         self.asked = event
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
-        self.question = label(f"{event.unit.name} wants to run {event.tool} {event.arguments}")
+        self.question = label(f"{event.unit.called} wants to run {event.tool} {event.arguments}")
         buttons = QHBoxLayout()
         self.allow = QPushButton("Allow")
         self.allow.setProperty("primary", True)
@@ -189,8 +190,8 @@ class ApprovalCard(QFrame):
         self.deny.hide()
         asked = self.asked
         self.question.setText(
-            f"Allowed: {asked.unit.name} ran {asked.tool} {asked.arguments}" if allow else
-            f"Denied: {asked.unit.name} wanted to run {asked.tool} {asked.arguments}")
+            f"Allowed: {asked.unit.called} ran {asked.tool} {asked.arguments}" if allow else
+            f"Denied: {asked.unit.called} wanted to run {asked.tool} {asked.arguments}")
 
 
 class YouEntry(QWidget):
@@ -647,13 +648,13 @@ class AgentDialog(QDialog):
 
     def __init__(self, parent: QWidget, supervisor: Unit | None, rank: int) -> None:
         super().__init__(parent)
-        self.setWindowTitle(f"Add agent under {supervisor.name}" if supervisor is not None
+        self.setWindowTitle(f"Add agent under {supervisor.called}" if supervisor is not None
                             else "Add the lead")
         self.setMinimumWidth(460)
         rows = QVBoxLayout(self)
         rows.setSpacing(10)
         self.name = QLineEdit()
-        self.name.setPlaceholderText("Name, if it has one")
+        self.name.setPlaceholderText("Name, if it should have one")
         self.task = TaskBox()
         self.task.setPlaceholderText(
             "Its task. Empty: its supervisor gives it one" if supervisor is not None
@@ -737,7 +738,7 @@ class ModelDialog(LineDialog):
     """The model an agent runs on; empty: its rank's."""
 
     def __init__(self, parent: QWidget, unit: Unit) -> None:
-        super().__init__(parent, f"{unit.name}'s model", unit.model or "",
+        super().__init__(parent, f"{unit.called}'s model", unit.model or "",
                          f"K{unit.rank}'s, if empty")
         self.model = self.line
 
@@ -984,7 +985,7 @@ class FleetView(QWidget):
                 # A report or a question says the rest; a line only for what nothing else
                 # shows: it failed, was stopped, or ended without a report.
                 if state not in QUIET_STATES:
-                    self._add(Line(f"{unit.name} · {state}", {unit.id}, tone="warning"))
+                    self._add(Line(f"{unit.called} · {state}", {unit.id}, tone="warning"))
             case Said(unit=unit, text=text):
                 self._add(SaidEntry(unit, text))
             case Delivered():
@@ -1684,7 +1685,7 @@ class FleetWindow(QMainWindow):
                 if parent is not None:
                     parent.setExpanded(True)
                 self._rows[unit.id] = row
-            row.setText(0, f"{unit.name}  K{unit.rank}")
+            row.setText(0, f"{unit.name}  K{unit.rank}" if unit.name else f"K{unit.rank}")
             row.setText(1, unit.state)
             row.setText(2, f"${unit.spent_usd:.2f}")
             # What an agent was doing when its fleet stopped is not what it does now.

@@ -129,8 +129,8 @@ class Node(_Box):
         self.rename_action.setEnabled(editable)
         room = NODE_W - 24 - 30  # beside the rank
         self.name.setText(QFontMetrics(self.name.font()).elidedText(
-            unit.name, Qt.TextElideMode.ElideRight, room))
-        self.rank.setText(f"K{unit.rank}")
+            unit.name or f"K{unit.rank}", Qt.TextElideMode.ElideRight, room))
+        self.rank.setText(f"K{unit.rank}" if unit.name else "")  # a nameless one is its rank
         self.state.setText(unit.state)
         colors = theme.current()
         # What an agent was doing when its fleet stopped is not what it does now.

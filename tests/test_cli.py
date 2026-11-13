@@ -22,7 +22,7 @@ def test_run_follows_the_fleet_to_its_report_and_status_shows_it(tmp_path: Path)
     base = tmp_path / "kayden.toml"
     base.write_text(tomli_w.dumps({
         "core": {"factory": "tests.fakecore:factory", "options": {"scripts": {
-            "Lead": [{"calls": [{"name": "mcp__fleet__delegate",
+            "K5 u1": [{"calls": [{"name": "mcp__fleet__delegate",
                                  "arguments": {"name": "Scout", "task": "Look"}}]},
                      {"when": "[Report from Scout",
                       "calls": [{"name": "finish_goal", "arguments": {"report": "All found."}}]}],
@@ -37,13 +37,13 @@ def test_run_follows_the_fleet_to_its_report_and_status_shows_it(tmp_path: Path)
     ran = kfm("run", "Find it", "--config", str(config), "--fleet", str(fleet),
               "--work", str(work), "--budget", "1", home=tmp_path)
     assert ran.returncode == 0, ran.stderr
-    assert "[Scout K4 u2 → Lead] report: Found it." in ran.stdout
-    assert "[Lead K5 u1 → you] report: All found." in ran.stdout
+    assert "[Scout K4 u2 → K5 u1] report: Found it." in ran.stdout
+    assert "[K5 u1 → you] report: All found." in ran.stdout  # a lead has no name
     assert "The fleet spent $" in ran.stdout
     assert "Error" not in ran.stderr  # nothing to type into (stdin is /dev/null) is no fault
     shown = kfm("status", "--fleet", str(fleet), home=tmp_path)
     assert shown.returncode == 0, shown.stderr
-    assert "Lead (K5, u1): done" in shown.stdout
+    assert "K5 agent u1: done" in shown.stdout
     assert "  Scout (K4, u2): done" in shown.stdout
     assert "stopped" in shown.stdout.splitlines()[0]
     again = kfm("resume", "--fleet", str(fleet), home=tmp_path)

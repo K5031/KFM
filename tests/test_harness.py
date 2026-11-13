@@ -44,7 +44,7 @@ async def test_a_fleet_runs_on_another_harness(tmp_path: Path):
         "Scout": [{"do": [("ask", "Which folder?")]},
                   {"when": "Use docs/", "do": [("say", "On it."), ("report", "Tidied docs/")]}]})
     manager, events = await run(tmp_path, harness)
-    lead = await manager.lead("Tidy up")
+    lead = await manager.lead("Tidy up", name="Lead")
     await asyncio.wait_for(manager.finished.wait(), 10)
     assert delivered(events) == [("Scout", "Lead", "question", "Which folder?"),
                                  ("Scout", "Lead", "report", "Tidied docs/"),
@@ -62,7 +62,7 @@ async def test_a_fleet_runs_on_another_harness(tmp_path: Path):
 async def test_a_fleet_on_another_harness_is_resumed_on_its_sessions(tmp_path: Path):
     harness = FakeHarness({"Lead": [{"do": [("say", "On watch.")]}]})
     manager, _ = await run(tmp_path, harness)
-    await manager.lead("Keep watch", ongoing=True)
+    await manager.lead("Keep watch", ongoing=True, name="Lead")
     while "Lead" not in harness.heard:
         await asyncio.sleep(0.01)
     await manager.aclose()
@@ -83,7 +83,7 @@ async def test_a_supervisor_that_acts_at_once_after_a_resume_finds_its_agents_op
         "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Tidy the docs"})]}],
         "Scout": [{"do": [("ask", "Which folder?")]}]})
     manager, events = await run(tmp_path, harness)
-    await manager.lead("Tidy up")
+    await manager.lead("Tidy up", name="Lead")
     while ("Scout", "Lead", "question", "Which folder?") not in delivered(events):
         await asyncio.sleep(0.01)
     await manager.aclose()
@@ -108,7 +108,7 @@ async def test_what_happens_in_a_fleet_is_kept_in_its_record(tmp_path: Path):
                                                        ("report", "Docs are tidy.")]}],
         "Scout": [{"do": [("report", "Tidied docs/")]}]})
     manager, events = await run(tmp_path, harness)
-    await manager.lead("Tidy up")
+    await manager.lead("Tidy up", name="Lead")
     await asyncio.wait_for(manager.finished.wait(), 10)
     await manager.say("Thanks")
     await manager.aclose()
@@ -143,7 +143,7 @@ async def test_the_person_adds_an_agent_and_sets_models(tmp_path: Path):
         "Tester": [{"do": [("say", "Testing.")]},
                    {"when": "model was changed", "do": [("say", "Carrying on.")]}]})
     manager, _ = await run(tmp_path, harness)
-    lead = await manager.lead("Keep the project healthy", ongoing=True)
+    lead = await manager.lead("Keep the project healthy", ongoing=True, name="Lead")
     tester = await manager.hire(lead, "Tester", "Run the tests", ongoing=True, model="small-1")
     assert (tester.supervisor, tester.rank, tester.model) == (lead.id, 4, "small-1")
     assert harness.models == [("Lead", None), ("Tester", "small-1")]
@@ -216,7 +216,7 @@ async def test_an_agent_with_no_task_takes_its_first_message_as_its_task(tmp_pat
                   "do": [("tool", "message", {"agent": "u2", "text": "Map the docs"})]}],
         "Scout": [{"do": [("report", "Mapped.")]}]})
     manager, events = await run(tmp_path, harness)
-    lead = await manager.lead("Keep watch", ongoing=True)
+    lead = await manager.lead("Keep watch", ongoing=True, name="Lead")
     scout = await manager.hire(lead, "Scout", "")
     assert (scout.state, scout.session) == ("idle", None)  # nothing started, nothing spent
     await until(lambda: delivered(events) == [("Scout", "Lead", "report", "Mapped.")])
@@ -226,22 +226,24 @@ async def test_an_agent_with_no_task_takes_its_first_message_as_its_task(tmp_pat
     assert scout.task == "Map the docs" and "[Message from" not in scout.task
     await manager.aclose()
 
-    # Built by hand with no tasks at all: nothing runs until the person says what to do.
-    harness = FakeHarness({"Chief": [{"do": [("say", "On it.")]}]})
+    # Built by hand with no names and no tasks: nothing runs until the person says what to
+    # do, and the agents are known by rank and id.
+    harness = FakeHarness({"K5 u1": [{"do": [("say", "On it.")]}]})
     folder = tmp_path / "fleet2"
     fleet = lay_out(FleetConfig(), folder, tmp_path / "work", "content")
-    chief = place(fleet, folder, None, "Chief", "")
-    place(fleet, folder, chief, "Writer", "")
-    assert place(fleet, folder, chief, " ", "").name == "Agent 3"  # named by its number
+    chief = place(fleet, folder, None, " ", "")
+    worker = place(fleet, folder, chief, "", "")
+    assert (chief.name, chief.called, worker.label) == ("", "K5 u1", "K4 agent u2")
     manager = Manager.resumed(folder, harness=harness)
     await manager.start()
     assert not harness.models
-    assert [u.state for u in manager.fleet.units.values()] == ["idle", "idle", "idle"]
+    assert [u.state for u in manager.fleet.units.values()] == ["idle", "idle"]
     await manager.say("Run content")
-    await until(lambda: harness.heard.get("Chief"))
-    brief = harness.heard["Chief"][0]
-    assert "Your task: Run content" in brief and "Writer (K4, u2): no task yet" in brief
-    assert harness.models == [("Chief", None)]
+    await until(lambda: harness.heard.get("K5 u1"))
+    brief = harness.heard["K5 u1"][0]
+    assert brief.startswith("You are a K5 agent in a fleet")
+    assert "Your task: Run content" in brief and "K4 agent u2: no task yet" in brief
+    assert harness.models == [("K5 u1", None)]
     await manager.aclose()
 
 
@@ -251,7 +253,7 @@ async def test_a_renamed_agent_is_known_by_its_new_name(tmp_path: Path):
         "Scout": [{"do": [("say", "Mapping.")]},
                   {"when": "go on", "do": [("report", "Mapped.")]}]})
     manager, events = await run(tmp_path, harness)
-    await manager.lead("Tidy up", ongoing=True)
+    await manager.lead("Tidy up", ongoing=True, name="Lead")
     await until(lambda: "u2" in manager.fleet.units)
     scout = manager.fleet.units["u2"]
     await manager.rename("Mapper", scout)

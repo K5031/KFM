@@ -37,7 +37,7 @@ class FleetError(ValueError):
 @dataclass
 class Unit:
     id: str
-    name: str
+    name: str  # "": it has none, and is known by its rank and id
     rank: int  # 5 is K5
     task: str
     supervisor: str | None  # a unit's id; None: the person the fleet works for
@@ -54,8 +54,15 @@ class Unit:
     spent_usd: float = 0.0
 
     @property
+    def called(self) -> str:
+        """What people read for it: its name, or its rank and id."""
+        return self.name or f"K{self.rank} {self.id}"
+
+    @property
     def label(self) -> str:
-        return f"{self.name} (K{self.rank}, {self.id})"
+        """What agents read for it, with the id they address it by."""
+        return (f"{self.name} (K{self.rank}, {self.id})" if self.name
+                else f"K{self.rank} agent {self.id}")
 
     @property
     def active(self) -> bool:
@@ -101,10 +108,9 @@ class Fleet:
 
     def add(self, name: str, task: str, supervisor: Unit | None, *, team: str | None = None,
             ongoing: bool = False, budget_usd: float = 0.0) -> Unit:
-        """A new unit one rank below its supervisor, or the lead at the top rank. With no
-        name it is called by its number; with no task it waits for one: the first message
-        it gets."""
-        name, task = name.strip() or f"Agent {self._next}", task.strip()
+        """A new unit one rank below its supervisor, or the lead at the top rank. A name
+        is optional; with no task it waits for one: the first message it gets."""
+        name, task = name.strip(), task.strip()
         if supervisor is None:
             if self.lead is not None:
                 raise FleetError("The fleet already has a lead.")

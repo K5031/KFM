@@ -74,10 +74,11 @@ def fleet_tools(manager: Manager) -> MCPServer:
         "(what to do, which files are its to change, what done looks like). Returns at "
         "once; its report, or a question, arrives later as a message."))
     async def delegate(
-        name: Annotated[str, Field(description="A short name for the agent, by its role: "
-                                               "Researcher, Tester.")],
         task: Annotated[str, Field(min_length=1, description="The complete task.")],
         ctx: Context,
+        name: Annotated[str, Field(description="A short name for the agent by its role "
+                                               "(Researcher, Tester), if one helps you "
+                                               "tell your agents apart.")] = "",
         team: Annotated[str | None, Field(description="Its team, if it differs from "
                                                       "yours.")] = None,
         ongoing: Annotated[bool, Field(description="True for standing work that never "

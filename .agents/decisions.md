@@ -32,4 +32,4 @@ Design: [Agent Note](notes/implemented/2026-11-12-fleet-window.md).
 | Status | running, stopping (until its processes have ended), stopped, or finished (the lead has reported and nothing is at work) with what was spent of the limit |
 | New fleet | In `<home>/fleets/<date-time>/`, with the settings of `<home>/fleet.toml` and the limit from the form |
 | Opening a fleet | The button lists every fleet under `<home>/fleets`, newest first, by start and task; Resume is offered when something was at work |
-| App menu | `app_menu.py`, as Kayden's: `io.github.k5031.kfm.desktop` and the icon (the owner's logo, 512 x 512 with clear corners, in `hicolor/512x512/apps`) under the user's XDG data directory; the entry runs this install's Python with `-m kfm.desktop`; the icon's file name carries a hash of its content |
+| App menu | `app_menu.py`, as Kayden's: `io.github.k5031.kfm.desktop` and the icon (the owner's logo, 512 x 512 with clear corners and the same margin around its tile as Kayden's icon, in `hicolor/512x512/apps`) under the user's XDG data directory; the entry runs this install's Python with `-m kfm.desktop`; the icon's file name carries a hash of its content |

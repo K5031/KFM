@@ -42,7 +42,8 @@ class ChartFleet:
     name: str
     status: str
     fleet: Fleet | None  # None until its record is read
-    running: bool = False  # its agents can be added to and changed
+    editable: bool = False  # agents can be added to it and changed
+    startable: bool = False  # it is not running and has agents that would start
 
 
 def slots(fleet: Fleet) -> tuple[dict[str, tuple[float, int]], float]:
@@ -86,7 +87,7 @@ class _Box(QFrame):
 
 class Node(_Box):
     """An agent: its name and rank, its state and what it has spent. A right-click offers
-    what the person can do to it while its fleet runs."""
+    what the person can do to it."""
 
     add_asked = Signal()
     model_asked = Signal()
@@ -112,9 +113,9 @@ class Node(_Box):
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         self.menu.popup(event.globalPos())
 
-    def show_unit(self, unit: Unit, running: bool) -> None:
-        self.add_action.setEnabled(running and unit.rank > 1)
-        self.model_action.setEnabled(running)
+    def show_unit(self, unit: Unit, editable: bool) -> None:
+        self.add_action.setEnabled(editable and unit.rank > 1)
+        self.model_action.setEnabled(editable)
         room = NODE_W - 24 - 30  # beside the rank
         self.name.setText(QFontMetrics(self.name.font()).elidedText(
             unit.name, Qt.TextElideMode.ElideRight, room))
@@ -130,25 +131,33 @@ class Node(_Box):
 
 
 class Head(_Box):
-    """A fleet's name over its tree, and how it stands."""
+    """A fleet's name over its tree, how it stands, and Start while it can be started."""
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent, "fleetHead")
         self.name, self.status = _text("title"), _text("small")
-        rows = QVBoxLayout(self)
-        rows.setContentsMargins(2, 0, 2, 4)
+        self.start = QPushButton("Start")
+        self.start.setProperty("primary", True)
+        self.start.setCursor(Qt.CursorShape.ArrowCursor)
+        rows = QVBoxLayout()
         rows.setSpacing(0)
         rows.addWidget(self.name)
         rows.addWidget(self.status)
+        across = QHBoxLayout(self)
+        across.setContentsMargins(2, 0, 2, 4)
+        across.addLayout(rows, 1)
+        across.addWidget(self.start, 0, Qt.AlignmentFlag.AlignVCenter)
 
 
 class Chart(QWidget):
     """`opened`: a fleet's key and the unit clicked, or "" for the fleet as a whole.
-    `add_asked`, `model_asked`: a fleet's key and the unit to add under or to change."""
+    `add_asked`, `model_asked`: a fleet's key and the unit to add under ("": as its lead)
+    or to change. `start_asked`: a fleet's key."""
 
     opened = Signal(str, str)
     add_asked = Signal(str, str)
     model_asked = Signal(str, str)
+    start_asked = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -158,9 +167,13 @@ class Chart(QWidget):
             f"QFrame#node {{ background: {colors.bg}; border: 1px solid {colors.line}; "
             f"border-radius: 10px; }}"
             f"QFrame#node:hover {{ border-color: {colors.accent}; }}"
-            f"QFrame#fleetHead {{ border: none; }}")
+            f"QFrame#fleetHead {{ border: none; }}"
+            f"QPushButton#firstAgent {{ background: transparent; color: {colors.muted}; "
+            f"border: 1px dashed {colors.line}; border-radius: 10px; }}"
+            f"QPushButton#firstAgent:hover {{ border-color: {colors.accent}; }}")
         self.nodes: dict[tuple[str, str], Node] = {}
         self.heads: dict[str, Head] = {}
+        self.firsts: dict[str, QPushButton] = {}  # where a fleet with no agent gets its lead
         self._lines: list[tuple[QPointF, QPointF]] = []  # a supervisor's foot, an agent's top
         self.add_button = QPushButton(" Add fleet", self, objectName="nav")
         self.add_button.setIcon(theme.icon("plus", colors.text, 16))
@@ -171,6 +184,7 @@ class Chart(QWidget):
         x, lowest = MARGIN, 0
         nodes: dict[tuple[str, str], Node] = {}
         heads: dict[str, Head] = {}
+        firsts: dict[str, QPushButton] = {}
         self._lines = []
         top = MARGIN + HEAD_H + GAP_Y // 2
         for shown in fleets:
@@ -179,13 +193,20 @@ class Chart(QWidget):
             head = heads[shown.key] = self.heads.pop(shown.key, None) or self._head(shown.key)
             head.name.setText(shown.name)
             head.status.setText(shown.status)
+            head.start.setVisible(shown.startable)
             head.setGeometry(x, MARGIN, width, HEAD_H)
             head.show()
+            if shown.fleet is not None and not shown.fleet.units and shown.editable:
+                first = firsts[shown.key] = (self.firsts.pop(shown.key, None)
+                                             or self._first(shown.key))
+                first.setGeometry(x, top, NODE_W, NODE_H)
+                first.show()
+                lowest = max(lowest, 1)
             placed: dict[str, QRect] = {}
             for unit_id, (column, row) in at.items():
                 key = (shown.key, unit_id)
                 node = nodes[key] = self.nodes.pop(key, None) or self._node(*key)
-                node.show_unit(shown.fleet.units[unit_id], shown.running)  # type: ignore[union-attr]
+                node.show_unit(shown.fleet.units[unit_id], shown.editable)  # type: ignore[union-attr]
                 placed[unit_id] = QRect(x + round(column * (NODE_W + GAP_X)),
                                         top + row * (NODE_H + GAP_Y), NODE_W, NODE_H)
                 node.setGeometry(placed[unit_id])
@@ -197,10 +218,10 @@ class Chart(QWidget):
                     self._lines.append((QPointF(above.center().x(), above.bottom() + 1),
                                         QPointF(rect.center().x(), rect.top())))
             x += width + FLEET_GAP
-        for gone in (*self.nodes.values(), *self.heads.values()):
+        for gone in (*self.nodes.values(), *self.heads.values(), *self.firsts.values()):
             gone.setParent(None)
             gone.deleteLater()
-        self.nodes, self.heads = nodes, heads
+        self.nodes, self.heads, self.firsts = nodes, heads, firsts
         self.add_button.move(x, MARGIN + (HEAD_H - self.add_button.height()) // 2)
         self.setMinimumSize(x + self.add_button.width() + MARGIN,
                             top + lowest * (NODE_H + GAP_Y) + MARGIN)
@@ -209,7 +230,15 @@ class Chart(QWidget):
     def _head(self, key: str) -> Head:
         head = Head(self)
         head.clicked.connect(lambda: self.opened.emit(key, ""))
+        head.start.clicked.connect(lambda: self.start_asked.emit(key))
         return head
+
+    def _first(self, key: str) -> QPushButton:
+        first = QPushButton(" Add agent", self, objectName="firstAgent")
+        first.setIcon(theme.icon("plus", theme.current().muted, 16))
+        first.setCursor(Qt.CursorShape.PointingHandCursor)
+        first.clicked.connect(lambda: self.add_asked.emit(key, ""))
+        return first
 
     def _node(self, key: str, unit_id: str) -> Node:
         node = Node(self)

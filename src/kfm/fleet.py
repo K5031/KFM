@@ -14,6 +14,7 @@ from typing import Any
 FORMAT = 5  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
+# planned: placed by the person in a fleet that is not running; it starts with the fleet.
 # starting: its process is coming up.  working: on its task, between check-ins included.
 # waiting: it asked its supervisor and waits for the answer.  done: it reported.
 # idle: it ended a turn with nothing left to do and no report.  failed, stopped.

@@ -102,17 +102,25 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
   it has spent. How large a fleet is, is what you see here: its lead hires as the work
   needs.
 - **Add fleet**, after the last fleet on the chart: give it a name, write what it does and
-  press Enter. Under the text you choose **Duty** (standing work that never ends) or
+  press Enter. A lead starts on that and hires the agents it needs. Under the text you choose **Duty** (standing work that never ends) or
   **Task** (ends when the lead reports it done), a folder of its own if it should not
   work in the project's, and the most the fleet may spend.
 
   ![A new fleet](images/start-light.png)
 
-- **Right-click an agent** on the chart, while its fleet runs, to shape the team
-  yourself. **Add agent** puts a new agent under it with a name, a task and, if you
-  like, a model of its own; its supervisor is told. **Model** changes the model the
-  agent runs on, by the model's id; it starts again on it at once. Leave the model
-  empty for the one its rank has in the settings.
+- **Build a fleet yourself** by leaving "what it does" empty. The fleet appears on the
+  chart with no agents and runs nothing. **Add agent** makes its lead: a name, a task
+  and, if you like, a model of its own. Right-click an agent to add agents under it.
+  **Start**, beside the fleet's name, starts them all, each on the task you gave it; a
+  supervisor is told which agents you put under it.
+
+  ![A fleet built by hand](images/built-light.png)
+
+- **Right-click an agent** on the chart of any fleet to shape its team. **Add agent**
+  puts a new agent under it; its supervisor is told. **Model** changes the model the
+  agent runs on, by the model's id; leave it empty for the one its rank has in the
+  settings. In a running fleet both happen at once (an agent starts again on its new
+  model); in a stopped one they take effect when you start it.
 - **Several fleets run at once.** Each has its own limit, and is stopped and resumed by
   itself. Fleets do not talk to each other: each lead reports to you.
 - **Open a fleet** by clicking its name on the chart, or an agent to see only what

@@ -42,14 +42,14 @@ def test_the_brief_says_where_the_unit_stands_in_its_harnesss_words():
     worker = fleet.add("Builder", "Build the page", lead, team="web")
     watcher = fleet.add("Watcher", "Watch the logs", lead, ongoing=True)
     words = kayden.WORDS
-    top, low, standing = (brief(lead, None, words), brief(worker, lead, words),
-                          brief(watcher, lead, words))
+    top, low, standing = (brief(lead, None, [], words), brief(worker, lead, [], words),
+                          brief(watcher, lead, [], words))
     assert "You are Lead, a K2 agent" in top and "Your task: Ship the site" in top
     assert "A person gave you this task" in top and "mcp__fleet__delegate" in top
     assert "Your supervisor is Lead (K2)" in low and "Your team: web." in low
     assert "lowest rank" in low and "mcp__fleet__delegate" not in low
     assert "finish_goal" in low and "finish_goal" not in standing
     assert "mcp__fleet__report" in standing
-    other = brief(worker, lead, Vocabulary(finish="done", ask="ask_boss", tools="fleet."))
+    other = brief(worker, lead, [], Vocabulary(finish="done", ask="ask_boss", tools="fleet."))
     assert "call done with a report" in other and "call ask_boss with" in other
     assert "finish_goal" not in other and "mcp__" not in other

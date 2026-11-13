@@ -12,9 +12,9 @@ import pytest
 from kfm import harnesses, log
 from kfm.config import FleetConfig
 from kfm.events import Delivered, FleetEvent, Told
-from kfm.fleet import Fleet, FleetError
+from kfm.fleet import Fleet, FleetError, Unit
 from kfm.harnesses.kayden import KaydenHarness
-from kfm.manager import Manager
+from kfm.manager import Manager, lay_out, place
 from tests.fakeharness import FakeHarness
 
 
@@ -165,6 +165,48 @@ async def test_the_person_adds_an_agent_and_sets_models(tmp_path: Path):
     with pytest.raises(FleetError, match="has not started"):
         other = Manager(FleetConfig(), tmp_path / "other", tmp_path / "work", harness=harness)
         await other.hire(lead, "X", "y")
+
+
+async def test_a_fleet_laid_out_by_hand_starts_as_it_was_built(tmp_path: Path):
+    harness = FakeHarness({
+        "Chief": [{"do": [("say", "On watch.")]}],
+        "Writer": [{"do": [("report", "Written.")]}],
+        "Checker": [{"do": [("say", "Checking.")]}]})
+    folder = tmp_path / "fleet"
+    (tmp_path / "work").mkdir()
+    fleet = lay_out(FleetConfig(), folder, tmp_path / "work", "content")
+    assert Fleet.load(folder).name == "content" and not Fleet.load(folder).units
+    with pytest.raises(FleetError, match="lead first"):
+        place(fleet, folder, Unit("u9", "X", 4, "y", None), "Writer", "Write")
+    chief = place(fleet, folder, None, "Chief", "Run content", ongoing=True, model="big-1")
+    writer = place(fleet, folder, chief, "Writer", "Write the posts")
+    place(fleet, folder, writer, "Checker", "Check the facts", ongoing=True)
+    with pytest.raises(FleetError, match="already has a lead"):
+        place(fleet, folder, None, "Other", "y")
+    saved = Fleet.load(folder)
+    assert [(u.name, u.rank, u.state, u.model) for u in saved.units.values()] == [
+        ("Chief", 5, "planned", "big-1"), ("Writer", 4, "planned", None),
+        ("Checker", 3, "planned", None)]
+    assert not harness.models  # nothing runs
+
+    manager, events = await run(tmp_path, harness, resume=True)
+    await until(lambda: delivered(events) == [("Writer", "Chief", "report", "Written.")])
+    assert harness.models == [("Chief", "big-1"), ("Writer", None), ("Checker", None)]
+    brief = harness.heard["Chief"][0]  # it knows whom it was given
+    assert "Your task: Run content" in brief and "Writer (K4, u2): Write the posts" in brief
+    assert "Checker" not in brief and "Checker (K3, u3)" in harness.heard["Writer"][0]
+    units = manager.fleet.units
+    assert units["u1"].state == units["u3"].state == "working" and units["u2"].state == "done"
+
+    # In a fleet that has run, an agent placed while it is stopped starts with it.
+    await manager.aclose()
+    stopped = Fleet.load(folder)
+    place(stopped, folder, stopped.units["u1"], "Editor", "Edit the posts")
+    harness.scripts["Editor"] = [{"do": [("say", "Editing.")]}]
+    manager, _ = await run(tmp_path, harness, resume=True)
+    await until(lambda: any("Editor (K4, u4)" in heard for heard in harness.heard["Chief"][1:]))
+    await until(lambda: manager.fleet.units["u4"].state == "working")
+    await manager.aclose()
 
 
 async def until(predicate, timeout: float = 10.0) -> None:

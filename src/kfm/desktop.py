@@ -59,7 +59,7 @@ from kfm.chart import Chart, ChartFleet
 from kfm.config import CONFIG_FILE, HOME, FleetConfig, load
 from kfm.events import Answered, Approval, Changed, Delivered, FleetEvent, Notice, Said, Told
 from kfm.fleet import Fleet, FleetError, Unit
-from kfm.manager import Manager
+from kfm.manager import Manager, lay_out, place
 from kfm.project import Project
 
 SIDEBAR = 280  # px
@@ -310,7 +310,7 @@ class StartForm(QWidget):
         self.name.returnPressed.connect(lambda: self.task.setFocus())
         inside.addWidget(self.name)
         self.task = TaskBox()
-        self.task.setPlaceholderText("What it does")
+        self.task.setPlaceholderText("What it does, to have a lead build it")
         self.task.submitted.connect(self.submitted)
         inside.addWidget(self.task)
         row = QHBoxLayout()
@@ -630,14 +630,16 @@ class DraftPage(QWidget):
 
 
 class AgentDialog(QDialog):
-    """An agent the person puts under another: its name, its task, and a model of its own
-    if it should not run on its rank's. `add_asked` when the person wants it made."""
+    """An agent the person puts under another, or at the top of a fleet that has none: its
+    name, its task, and a model of its own if it should not run on its rank's. `add_asked`
+    when the person wants it made."""
 
     add_asked = Signal()
 
-    def __init__(self, parent: QWidget, supervisor: Unit) -> None:
+    def __init__(self, parent: QWidget, supervisor: Unit | None, rank: int) -> None:
         super().__init__(parent)
-        self.setWindowTitle(f"Add agent under {supervisor.name}")
+        self.setWindowTitle(f"Add agent under {supervisor.name}" if supervisor is not None
+                            else "Add the lead")
         self.setMinimumWidth(460)
         rows = QVBoxLayout(self)
         rows.setSpacing(10)
@@ -648,7 +650,7 @@ class AgentDialog(QDialog):
         self.kind = KindSwitch()
         self.kind.task_kind.setChecked(True)
         self.model = QLineEdit()
-        self.model.setPlaceholderText(f"Model (K{supervisor.rank - 1}'s, if empty)")
+        self.model.setPlaceholderText(f"Model (K{rank}'s, if empty)")
         self.warning = label("", role="small", tone="error")
         self.warning.hide()
         self.add = QPushButton("Add")
@@ -699,7 +701,7 @@ class ModelDialog(QDialog):
 
 class FleetView(QWidget):
     """One fleet: its timeline, the box for messages to its lead, and its manager while it
-    runs. `changed` after anything that alters how it stands."""
+    runs. While it does not run, agents the person adds go into its record and start with it. `changed` after anything that alters how it stands."""
 
     changed = Signal()
 
@@ -770,7 +772,15 @@ class FleetView(QWidget):
     @property
     def can_resume(self) -> bool:
         return (not self.running and not self.stopping and self.fleet is not None
-                and any(unit.active for unit in self.fleet.units.values()))
+                and any(unit.active or unit.state == "planned"
+                        for unit in self.fleet.units.values()))
+
+    @property
+    def started(self) -> bool:
+        """Whether any of its agents has ever run."""
+        return self.fleet is not None and any(
+            unit.session is not None or unit.state != "planned"
+            for unit in self.fleet.units.values())
 
     @property
     def status(self) -> str:
@@ -780,7 +790,8 @@ class FleetView(QWidget):
             return ""
         budget = (self.manager.config.budget_usd if self.manager is not None
                   else fleet.settings.get("budget_usd", 0.0))
-        state = "running" if self.running else "stopping" if self.stopping else "stopped"
+        state = ("running" if self.running else "stopping" if self.stopping
+                 else "stopped" if self.started else "not started")
         if (self.manager is not None and self.manager.finished.is_set()
                 and not any(unit.active for unit in fleet.units.values())):
             state = "finished"  # its task is done; the lead still takes messages
@@ -819,6 +830,25 @@ class FleetView(QWidget):
         self.manager, self.fleet = manager, manager.fleet
         self._enable()
         await manager.start()
+        self.changed.emit()
+
+    async def add_agent(self, supervisor: Unit | None, name: str, task: str, *,
+                        ongoing: bool, model: str | None) -> None:
+        """An agent under `supervisor`, or the lead of a fleet with none. FleetError or
+        UnitError when it cannot be."""
+        if self.manager is not None and supervisor is not None:
+            await self.manager.hire(supervisor, name, task, ongoing=ongoing, model=model)
+        elif self.fleet is not None and not self.running:
+            await asyncio.to_thread(place, self.fleet, self.folder, supervisor, name, task,
+                                    ongoing=ongoing, model=model)
+        self.changed.emit()
+
+    async def set_model(self, unit: Unit, model: str) -> None:
+        if self.manager is not None:
+            await self.manager.set_model(unit, model)
+        elif self.fleet is not None:
+            unit.model = model or None
+            await asyncio.to_thread(self.fleet.save, self.folder)
         self.changed.emit()
 
     async def stop(self) -> None:
@@ -1061,6 +1091,7 @@ class FleetWindow(QMainWindow):
         self.chart.add_button.clicked.connect(self.add_fleet)
         self.chart.add_asked.connect(self._add_agent)
         self.chart.model_asked.connect(self._choose_model)
+        self.chart.start_asked.connect(self._start_asked)
         self.chart_scroll = QScrollArea()
         self.chart_scroll.setWidgetResizable(True)
         self.chart_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -1185,13 +1216,21 @@ class FleetWindow(QMainWindow):
     async def start_fleet(self, name: str, task: str, *, ongoing: bool, work: Path,
                           budget: float, opened: Project | None = None,
                           show: bool = True) -> None:
-        """A new fleet on the task, in `opened` or the open project; `show` opens it."""
+        """A new fleet on the task, in `opened` or the open project; `show` opens it. With
+        no task it has no agents and runs nothing: the person builds it on the chart."""
         opened = opened or self.project
         assert opened is not None
         try:
             config = self._config or await asyncio.to_thread(load, self.home / CONFIG_FILE)
             config = replace(config, budget_usd=budget)
             view = self._view(await asyncio.to_thread(opened.new_fleet))
+            if not task:
+                await asyncio.to_thread(lay_out, config, view.folder, work, name)
+                await view.load()
+                self.start_form.name.clear()
+                self.show_chart()
+                await self.list_projects()
+                return
             started = asyncio.ensure_future(
                 view.start(config, name, task, ongoing=ongoing, work=work))
             await asyncio.sleep(0)  # the manager is made, or could not be
@@ -1332,8 +1371,8 @@ class FleetWindow(QMainWindow):
     def _start_clicked(self) -> None:
         form = self.start_form
         name, task = form.name.text().strip(), form.task.toPlainText().strip()
-        if not name or not task:
-            (form.task if name else form.name).setFocus()
+        if not name:
+            form.name.setFocus()
             return
         work, problem = _work_folder(form.folder)
         if work is None:
@@ -1346,23 +1385,35 @@ class FleetWindow(QMainWindow):
         if (view := self.views.get(Path(key))) is not None:
             self.open_fleet(view, unit_id or None)
 
-    def _add_agent(self, key: str, unit_id: str) -> None:
-        """Ask for an agent to put under the unit, and make it."""
-        view = self.views.get(Path(key))
-        if view is None or view.manager is None:
+    def _start_asked(self, key: str) -> None:
+        if (view := self.views.get(Path(key))) is None:
             return
-        manager, supervisor = view.manager, view.manager.fleet.units[unit_id]
-        dialog = self.dialog = AgentDialog(self, supervisor)
+
+        async def start() -> None:
+            await view.resume()
+            if not view.running:
+                self.open_fleet(view)  # where it says why not
+
+        self._run(start())
+
+    def _add_agent(self, key: str, unit_id: str) -> None:
+        """Ask for an agent to put under the unit ("": as the fleet's lead), and make it."""
+        view = self.views.get(Path(key))
+        if view is None or view.fleet is None:
+            return
+        supervisor = view.fleet.units.get(unit_id)
+        dialog = self.dialog = AgentDialog(
+            self, supervisor, supervisor.rank - 1 if supervisor else view.fleet.top_rank)
 
         async def add() -> None:
             name, task = dialog.name.text().strip(), dialog.task.toPlainText().strip()
             if not name or not task:
                 return dialog.warn("It needs a name and a task.")
             try:
-                await manager.hire(supervisor, name, task,
-                                   ongoing=dialog.kind.duty.isChecked(),
-                                   model=dialog.model.text().strip() or None)
-            except (FleetError, UnitError) as e:
+                await view.add_agent(supervisor, name, task,
+                                     ongoing=dialog.kind.duty.isChecked(),
+                                     model=dialog.model.text().strip() or None)
+            except (FleetError, UnitError, OSError) as e:
                 return dialog.warn(str(e))
             dialog.accept()
             self._refresh()
@@ -1372,12 +1423,12 @@ class FleetWindow(QMainWindow):
 
     def _choose_model(self, key: str, unit_id: str) -> None:
         view = self.views.get(Path(key))
-        if view is None or view.manager is None:
+        if view is None or view.fleet is None:
             return
-        manager, unit = view.manager, view.manager.fleet.units[unit_id]
+        unit = view.fleet.units[unit_id]
         dialog = self.dialog = ModelDialog(self, unit)
         dialog.accepted.connect(
-            lambda: self._run(manager.set_model(unit, dialog.model.text().strip())))
+            lambda: self._run(view.set_model(unit, dialog.model.text().strip())))
         dialog.open()
 
     def _agent_chosen(self, item: QTreeWidgetItem | None, _: object = None) -> None:
@@ -1408,6 +1459,7 @@ class FleetWindow(QMainWindow):
         self.status.setVisible(view is not None or on_chart)
         self.stop_button.setVisible(view is not None and view.running)
         self.resume_button.setVisible(view is not None and view.can_resume)
+        self.resume_button.setText("Resume" if view is None or view.started else "Start")
         self.agents_section.setVisible(view is not None)
         self.projects_label.setVisible(self.projects.count() > 0)
         for i in range(self.projects.count()):
@@ -1424,7 +1476,9 @@ class FleetWindow(QMainWindow):
             self.status.setText(f"{running} running · ${spent:.2f}")
             if on_chart:
                 self.chart.show_fleets([ChartFleet(str(shown.folder), shown.name,
-                                                   shown.status, shown.fleet, shown.running)
+                                                   shown.status, shown.fleet,
+                                                   editable=not shown.stopping,
+                                                   startable=shown.can_resume)
                                         for shown in fleets])
             return
         self.title.setText(view.name)

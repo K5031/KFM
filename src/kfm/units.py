@@ -34,9 +34,10 @@ def answer_note(supervisor: Unit | None, words: Vocabulary) -> str:
             f"complete, and do not also send it with {words.tool('report')}.)")
 
 
-def brief(unit: Unit, supervisor: Unit | None, words: Vocabulary) -> str:
+def brief(unit: Unit, supervisor: Unit | None, placed: list[Unit], words: Vocabulary) -> str:
     """The unit's standing instruction: who it is in the fleet, its task, and how the fleet
-    works from where it stands."""
+    works from where it stands. `placed`: the agents the person put under it, which start
+    when it does."""
     lines = [(f"You are {unit.name}, a K{unit.rank} agent in a fleet of AI agents that works "
               "without human supervision. A higher rank supervises the one below it.")]
     if unit.team:
@@ -72,6 +73,10 @@ def brief(unit: Unit, supervisor: Unit | None, words: Vocabulary) -> str:
             "own supervisor.")
     else:
         lines.append("- You are the lowest rank: do the work yourself.")
+    if placed:
+        lines.append("- The person already put these agents under you, and each has started "
+                     "on its task:")
+        lines += [f"  - {each.label}: {each.task}" for each in placed]
     lines.append("- Every agent works in the same folder. Say in each task which files it "
                  "owns, and do not change files that belong to another agent's task.")
     return "\n".join(lines)

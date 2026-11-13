@@ -330,8 +330,64 @@ async def test_the_person_adds_an_agent_and_sets_a_model_on_the_chart(window, tm
     shown.dialog.accept()
     await until(lambda: ("Lead", "big-1") in harness.models)
     await view.stop()
-    await until(lambda: not lead.add_action.isEnabled())  # only while the fleet runs
-    assert not lead.model_action.isEnabled()
+
+
+async def test_a_fleet_is_built_by_hand_and_then_started(window, tmp_path: Path):
+    shown, harness = window({"Chief": [{"do": [("say", "On watch.")]}],
+                             "Writer": [{"do": [("say", "Writing.")]}],
+                             "Editor": [{"do": [("say", "Editing.")]}]})
+    shown.project_form.name.setText("Acme")
+    shown.project_form.set_folder(tmp_path / "work")
+    shown.project_form.create.click()
+    await until(lambda: shown.chart.isVisibleTo(shown))
+    shown.chart.add_button.click()
+    shown.start_form.name.setText("content")
+    shown.start_form.start.click()  # nothing it should do: no lead builds it
+    await until(lambda: chart(shown) == {"content": []})
+    [view] = shown.views.values()
+    key = str(view.folder)
+    head, first = shown.chart.heads[key], shown.chart.firsts[key]
+    assert "not started" in head.status.text() and not head.start.isVisibleTo(shown)
+
+    first.click()  # the lead
+    assert "lead" in shown.dialog.windowTitle()
+    shown.dialog.name.setText("Chief")
+    shown.dialog.task.setPlainText("Run content")
+    shown.dialog.kind.duty.setChecked(True)
+    shown.dialog.add.click()
+    await until(lambda: chart(shown) == {"content": ["Chief K5"]})
+    chief = shown.chart.nodes[(key, "u1")]
+    assert chief.state.text() == "planned" and key not in shown.chart.firsts
+    chief.add_action.trigger()
+    shown.dialog.name.setText("Writer")
+    shown.dialog.task.setPlainText("Write the posts")
+    shown.dialog.model.setText("small-1")
+    shown.dialog.add.click()
+    await until(lambda: chart(shown) == {"content": ["Chief K5", "Writer K4"]})
+    chief.model_action.trigger()
+    shown.dialog.model.setText("big-1")
+    shown.dialog.accept()
+    await until(lambda: view.fleet.units["u1"].model == "big-1")
+    assert not harness.models and not view.running  # nothing has run
+
+    assert head.start.isVisibleTo(shown)
+    head.start.click()
+    await until(lambda: harness.models == [("Chief", "big-1"), ("Writer", "small-1")])
+    await until(lambda: view.running and not head.start.isVisibleTo(shown))
+    assert "Writer (K4, u2)" in harness.heard["Chief"][0]
+    await until(lambda: chief.state.text() == "working")
+
+    await view.stop()  # a stopped fleet is built on the same way
+    await until(lambda: head.start.isVisibleTo(shown))
+    chief.add_action.trigger()
+    shown.dialog.name.setText("Editor")
+    shown.dialog.task.setPlainText("Edit the posts")
+    shown.dialog.add.click()
+    await until(lambda: (key, "u3") in shown.chart.nodes)
+    assert shown.chart.nodes[(key, "u3")].state.text() == "planned"
+    head.start.click()
+    await until(lambda: ("Editor", None) in harness.models)
+    await view.stop()
 
 
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):

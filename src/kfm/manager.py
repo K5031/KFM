@@ -34,6 +34,30 @@ STOP_GRACE_S = 10.0  # for a unit to end by itself when it is closed
 _OVER = ("done", "idle", "failed", "stopped")
 
 
+def lay_out(config: FleetConfig, folder: Path, work: Path, name: str) -> Fleet:
+    """A fleet with no agents yet, for the person to build by hand: its record, and
+    nothing running. `Manager.resumed` starts it. Blocking."""
+    fleet = Fleet(config.top_rank, config.max_units, name)
+    fleet.work, fleet.settings = str(work), settings.record(config)
+    folder.mkdir(parents=True, exist_ok=True)
+    fleet.save(folder)
+    return fleet
+
+
+def place(fleet: Fleet, folder: Path, supervisor: Unit | None, name: str, task: str, *,
+          ongoing: bool = False, model: str | None = None) -> Unit:
+    """The person puts an agent into a fleet that is not running: under `supervisor`, or
+    as the lead. It starts when the fleet does. FleetError when the hierarchy or the
+    fleet's limits do not allow it. Blocking."""
+    if supervisor is not None and fleet.units.get(supervisor.id) is not supervisor:
+        raise FleetError("Add the lead first.")
+    unit = fleet.add(name, task, supervisor, ongoing=ongoing,
+                     budget_usd=settings.from_record(fleet.settings).unit_budget_usd)
+    unit.model, unit.state = model or None, "planned"
+    fleet.save(folder)
+    return unit
+
+
 class Manager:
     def __init__(self, config: FleetConfig, folder: Path, work: Path, *,
                  harness: Harness | None = None,
@@ -68,7 +92,8 @@ class Manager:
                 on_event: Callable[[FleetEvent], None] = lambda event: None,
                 **overrides: object) -> Manager:
         """A manager for the stopped fleet in `folder`, with the settings it ran with and
-        `overrides` that are not None. `start` then starts every unit that was at work.
+        `overrides` that are not None. `start` then starts every unit that was at work
+        and every unit placed while it was stopped.
         FleetError when the fleet is running or has spent its limit. Blocking."""
         fleet = Fleet.load(folder)
         if fleet.running:
@@ -89,10 +114,18 @@ class Manager:
         if self._resuming:
             # Every unit is open before any is told: a supervisor that acts at once finds
             # its agents there.
-            back = [unit for unit in list(self.fleet.units.values())
-                    if unit.active and await self._reopen(unit)]
+            everyone = list(self.fleet.units.values())
+            placed = [unit for unit in everyone if unit.state == "planned"]
+            back = [unit for unit in everyone if unit.active and await self._reopen(unit)]
+            ready = [unit for unit in placed if await self._come_up(unit)]
             for unit in back:
                 await self._carry_on(unit)
+            for unit in ready:  # a supervisor before its agents
+                supervisor = self.fleet.supervisor_of(unit)
+                await self._begin(unit, placed)
+                if supervisor is not None and supervisor not in placed:
+                    self._spawn(self._tell_quietly(
+                        supervisor, units.hired_note(unit, self._words)))
 
     async def aclose(self) -> None:
         """Stop the fleet's processes. The record keeps every unit's state, so that
@@ -203,10 +236,28 @@ class Manager:
     # ── Units ────────────────────────────────────────────────────────────
 
     async def _start(self, unit: Unit) -> None:
+        if await self._come_up(unit):
+            await self._begin(unit, [])
+
+    async def _come_up(self, unit: Unit) -> bool:
+        """Start the unit's process, before it has its task. False: it could not."""
+        unit.state = "starting"
         self._emit(Changed(unit, unit.state))
         try:
-            session = await self._open(unit, resume=False)
-            brief = units.brief(unit, self.fleet.supervisor_of(unit), self._words)
+            await self._open(unit, resume=False)
+        except UnitError as e:
+            await self._could_not_start(unit, e)
+            return False
+        return True
+
+    async def _begin(self, unit: Unit, placed: list[Unit]) -> None:
+        """Give the unit its task. `placed`: the units that start with it; those under it
+        are named in its brief."""
+        under = [each for each in self.fleet.subordinates(unit) if each in placed]
+        brief = units.brief(unit, self.fleet.supervisor_of(unit), under, self._words)
+        try:
+            if (session := self._sessions.get(unit.id)) is None:
+                raise UnitError("Its process ended.")
             unit.session = await session.begin(
                 Instruction(brief, unit.ongoing, self.config.check_in_s))
         except UnitError as e:

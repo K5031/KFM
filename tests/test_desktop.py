@@ -124,6 +124,9 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
     await until(lambda: form.isVisibleTo(shown))  # a project with no fleet asks for one
     assert shown.title.text() == "Acme" and shown.projects.item(0).text() == "Acme"
     assert form.folder == tmp_path / "work"  # the project's, unless another is chosen
+    assert form.heading.text() == "New fleet in Acme"  # the project is named, this is not
+    assert form.name.placeholderText() == "Fleet name"
+    assert shown.project_form.name.placeholderText() == "Project name"
     assert form.duty.isChecked() and "until you stop" in form.hint.text()
     form.task_kind.setChecked(True)
     assert "Ends" in form.hint.text()

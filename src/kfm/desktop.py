@@ -294,19 +294,19 @@ class StartForm(QWidget):
         logo = QLabel()
         logo.setPixmap(QIcon(str(app_menu.ICON)).pixmap(LOGO, LOGO))
         logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        heading = label("New fleet", wrap=False)
-        heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        heading.setStyleSheet("font-size: 22px; font-weight: 600;")
+        self.heading = label("New fleet", wrap=False)
+        self.heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.heading.setStyleSheet("font-size: 22px; font-weight: 600;")
         outer.addWidget(logo)
         outer.addSpacing(14)
-        outer.addWidget(heading)
+        outer.addWidget(self.heading)
         outer.addSpacing(22)
 
         box = QFrame(objectName="composer")
         inside = QVBoxLayout(box)
         inside.setContentsMargins(16, 14, 12, 12)
         inside.setSpacing(12)
-        self.name = _name_field("Name")
+        self.name = _name_field("Fleet name")
         self.name.returnPressed.connect(lambda: self.task.setFocus())
         inside.addWidget(self.name)
         self.task = TaskBox()
@@ -409,7 +409,7 @@ class ProjectForm(QWidget):
         inside = QVBoxLayout(box)
         inside.setContentsMargins(16, 14, 12, 12)
         inside.setSpacing(12)
-        self.name = _name_field("Name")
+        self.name = _name_field("Project name")
         self.name.returnPressed.connect(lambda: self.does.setFocus())
         inside.addWidget(self.name)
         self.does = TaskBox()
@@ -1241,6 +1241,7 @@ class FleetWindow(QMainWindow):
     def _prepare_start(self) -> None:
         if self.project is not None:
             self.start_form.set_folder(self.project.work)
+            self.start_form.heading.setText(f"New fleet in {self.project.name}")
 
     def _toggle_maximized(self) -> None:
         if self.isMaximized():

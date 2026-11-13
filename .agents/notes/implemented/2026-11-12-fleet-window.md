@@ -34,7 +34,9 @@ event loop, its theme, its Markdown view.
   or was stopped.
 - **The message box** at the bottom goes to the lead.
 - **The bar** on top: the fleet's task, whether it runs, what it has spent of its limit,
-  and Stop or Resume.
+  and Stop or Resume. The window has no title bar, as Kayden's has none: the bar is where
+  it is grabbed and holds minimize, maximize and close, and its edges resize it
+  (Kayden's `DragArea` and `WindowEdges`).
 - **Starting a fleet** is the window's empty state: the task, goal or duty, the folder to
   work in, the limit. **Open a fleet…** lists earlier ones.
 - The window runs the fleet: closing it stops the fleet, which is resumed from the window
@@ -59,7 +61,7 @@ event loop, its theme, its Markdown view.
   and was closed. Not checked: on a real display, and with a real model.
 - The window is the fleet's process: a fleet cannot run with the window closed.
 - KFM's window depends on Kayden's desktop code (`theme`, `QtEventLoop`,
-  `MarkdownView`), which Kayden may change for its own needs; the manager stays free of
+  `MarkdownView`, `DragArea`, `WindowEdges`), which Kayden may change for its own needs; the manager stays free of
   it. The `desktop` extra brings all of Kayden's, its speech libraries included.
 - One fleet per window. An agent's own conversation cannot be read in it: only what it
   said, reported and asked.

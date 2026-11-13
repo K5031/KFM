@@ -184,3 +184,21 @@ async def test_the_window_adds_itself_to_the_app_menu(window, tmp_path: Path, mo
     again, _ = window({})
     await asyncio.sleep(0.2)
     assert not again.app_menu_button.isVisibleTo(again)  # it is there already
+
+
+async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QApplication):
+    from PySide6.QtCore import Qt
+
+    shown, _ = window({})
+    assert shown.windowFlags() & Qt.WindowType.FramelessWindowHint
+    assert [b.toolTip() for b in shown.window_buttons.values()] == [
+        "Minimize", "Maximize", "Close"]
+    assert shown.bar.isAncestorOf(shown.title)  # the bar is where the window is grabbed
+    shown.window_buttons["maximize"].click()
+    qapp.processEvents()
+    assert shown.isMaximized() and shown.window_buttons["maximize"].toolTip() == "Restore"
+    shown.window_buttons["maximize"].click()
+    qapp.processEvents()
+    assert not shown.isMaximized()
+    shown.window_buttons["close"].click()
+    await asyncio.wait_for(shown.closed.wait(), 5)

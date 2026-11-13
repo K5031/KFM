@@ -90,6 +90,9 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
 - **The timeline** shows what the lead says and every report, question and update in
   full, with who sent it to whom. An approval is a card with **Allow** and **Deny**.
 - **Message the lead** in the box at the bottom.
+- **The window has no title bar.** Drag it by the bar at the top, double-click that bar
+  to maximize, and resize it at its edges; minimize, maximize and close are at the top
+  right.
 - **Stop** ends the fleet's processes; **Resume** carries it on. Closing the window stops
   the fleet too: it does not run in the background.
 - **Open a fleet…** shows an earlier fleet with everything that happened in it.

@@ -17,8 +17,8 @@ from typing import Any
 import kayden.frontends.desktop  # noqa: F401 - before any Qt import
 from kayden.frontends.desktop import theme
 from kayden.frontends.desktop.loop import QtEventLoop
-from kayden.frontends.desktop.window import ElidedLabel, MarkdownView
-from PySide6.QtCore import Qt, QTimer
+from kayden.frontends.desktop.window import DragArea, ElidedLabel, MarkdownView, WindowEdges
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -238,6 +239,9 @@ class FleetWindow(QMainWindow):
         self._stopping = False  # its processes are ending
         self._tasks: set[asyncio.Task[None]] = set()
         self.setWindowTitle("KFM")
+        # No title bar: the bar on top is where the window is grabbed, and has its controls.
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        self._edges = WindowEdges(self)
         self._build()
         self.show_all.hide()
         self._timer = QTimer(self, interval=REFRESH_MS)
@@ -295,11 +299,27 @@ class FleetWindow(QMainWindow):
         self.resume_button.setProperty("primary", True)
         self.stop_button.clicked.connect(lambda: self._run(self.stop()))
         self.resume_button.clicked.connect(lambda: self._run(self.resume()))
-        bar = QHBoxLayout()
+        self.bar = DragArea()
+        bar = QHBoxLayout(self.bar)
+        bar.setContentsMargins(20, 8, 8, 6)  # the controls sit in the window's corner
         bar.addWidget(self.title, 1)
         bar.addWidget(self.status)
         bar.addWidget(self.stop_button)
         bar.addWidget(self.resume_button)
+        bar.addSpacing(8)
+        self.window_buttons: dict[str, QToolButton] = {}
+        for name, tip, command in (("minimize", "Minimize", self.showMinimized),
+                                   ("maximize", "Maximize", self._toggle_maximized),
+                                   ("close", "Close", self.close)):
+            button = QToolButton(objectName="titleClose" if name == "close"
+                                 else "titleControl")
+            button.setToolTip(tip)
+            button.setAccessibleName(tip)
+            button.setIconSize(QSize(16, 16))
+            button.clicked.connect(command)
+            self.window_buttons[name] = button
+            bar.addWidget(button)
+        self._paint_controls()
 
         self.start_form = StartForm()
         self.start_form.start.clicked.connect(self._start_clicked)
@@ -324,8 +344,7 @@ class FleetWindow(QMainWindow):
         composer.addWidget(self.send_button, 0, Qt.AlignmentFlag.AlignBottom)
 
         main = QVBoxLayout()
-        main.setContentsMargins(20, 14, 20, 14)
-        main.addLayout(bar)
+        main.setContentsMargins(20, 0, 20, 14)
         main.addWidget(self.start_form, 1, Qt.AlignmentFlag.AlignHCenter)
         main.addWidget(self.scroll, 1)
         self.composer = QWidget()
@@ -335,8 +354,13 @@ class FleetWindow(QMainWindow):
         whole = QWidget()
         layout = QHBoxLayout(whole)
         layout.setContentsMargins(0, 0, 0, 0)
+        right = QVBoxLayout()
+        right.setContentsMargins(0, 0, 0, 0)
+        right.setSpacing(0)
+        right.addWidget(self.bar)
+        right.addLayout(main, 1)
         layout.addWidget(side)
-        layout.addLayout(main, 1)
+        layout.addLayout(right, 1)
         self.setCentralWidget(whole)
         if self._config is not None:
             self.start_form.budget.setValue(self._config.budget_usd)
@@ -430,6 +454,25 @@ class FleetWindow(QMainWindow):
                 task.cancel()
         self.closed.set()
         self.close()
+
+    def _toggle_maximized(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def _paint_controls(self) -> None:
+        maximized = self.isMaximized()
+        for name, button in self.window_buttons.items():
+            kind = "restore" if name == "maximize" and maximized else name
+            button.setIcon(theme.icon(kind, theme.current().muted))
+        self.window_buttons["maximize"].setToolTip("Restore" if maximized else "Maximize")
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if (event.type() in (QEvent.Type.PaletteChange, QEvent.Type.WindowStateChange)
+                and hasattr(self, "window_buttons")):  # not while it is being built
+            self._paint_controls()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if not self.closed.is_set():

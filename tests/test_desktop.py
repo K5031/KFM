@@ -72,7 +72,8 @@ async def start(window: FleetWindow, tmp_path: Path, task: str, *, name: str = "
         window.project_form.name.setText(project)
         window.project_form.set_folder(tmp_path / "work")
         window.project_form.create.click()
-    elif not window.adding:
+        await until(lambda: window.chart.isVisibleTo(window))
+    if not window.adding:
         window.chart.add_button.click()
     form = window.start_form
     await until(lambda: form.isVisibleTo(window))
@@ -121,7 +122,10 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
     shown.project_form.set_folder(tmp_path / "work")
     shown.project_form.create.click()
     form = shown.start_form
-    await until(lambda: form.isVisibleTo(shown))  # a project with no fleet asks for one
+    await until(lambda: shown.chart.isVisibleTo(shown))  # the project's chart, empty so far
+    assert not shown.chart.nodes and not shown.back_button.isVisibleTo(shown)
+    shown.chart.add_button.click()
+    assert form.isVisibleTo(shown) and shown.back_button.isVisibleTo(shown)
     assert shown.title.text() == "Acme" and shown.projects.item(0).text() == "Acme"
     assert form.folder == tmp_path / "work"  # the project's, unless another is chosen
     assert form.heading.text() == "New fleet in Acme"  # the project is named, this is not
@@ -293,7 +297,7 @@ async def test_a_draft_that_fails_or_is_discarded_leaves_the_project(window, tmp
     page.add_button.click()  # by hand, then
     assert len(page.rows) == 1
     page.discard.click()
-    await until(lambda: shown.start_form.isVisibleTo(shown))  # the project asks for a fleet
+    await until(lambda: shown.chart.isVisibleTo(shown))  # the project's chart, empty
     assert not shown.drafts and shown.project.name == "Studio"
 
 

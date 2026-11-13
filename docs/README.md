@@ -92,7 +92,8 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
   agent reads what you want and proposes the teams, each with a name and what it is
   there to do. You can rename them, rewrite what they do, leave some out or add your
   own. Nothing runs until you press **Start**, which starts them all, each with the
-  limit shown beside it. Leave the box empty to add the fleets yourself.
+  limit shown beside it. Leave the box empty to add the fleets yourself: the project
+  opens on its chart, empty, with **Add fleet**.
 
   ![A draft](images/draft-light.png)
 

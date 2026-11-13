@@ -1137,12 +1137,12 @@ class FleetWindow(QMainWindow):
             self.draft_pages.removeWidget(page)
             page.deleteLater()
             if self.project is not None and self.project.folder == page.project.folder:
-                self.adding = not self.project_views()
+                self.adding = False
                 self._prepare_start()
             self._refresh()
 
     async def open_project(self, opened: Project) -> None:
-        """Show the project's chart; a project with no fleet yet asks for its first."""
+        """Show the project's chart, which is empty until it has a fleet."""
         self.project, self.view = opened, None
         folders = await asyncio.to_thread(opened.fleets)
         for folder in folders:
@@ -1154,7 +1154,7 @@ class FleetWindow(QMainWindow):
             except (ValueError, OSError, KeyError):
                 self._drop(view)  # not a fleet this version reads
         if self.project is opened:
-            self.adding = not self.project_views() and opened.folder not in self.drafts
+            self.adding = False
             self._prepare_start()
         await self.list_projects()
 
@@ -1402,7 +1402,7 @@ class FleetWindow(QMainWindow):
             else self.draft_pages if drafted is not None else self.chart_scroll)
         on_chart = (opened is not None and view is None and not self.adding
                     and drafted is None)
-        self.back_button.setVisible(view is not None or (self.adding and bool(fleets)))
+        self.back_button.setVisible(view is not None or self.adding)
         self.title.setVisible(opened is not None)
         self._bar_gap.setVisible(opened is None)
         self.status.setVisible(view is not None or on_chart)

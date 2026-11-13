@@ -92,10 +92,11 @@ class Fleet:
 
     def add(self, name: str, task: str, supervisor: Unit | None, *, team: str | None = None,
             ongoing: bool = False, budget_usd: float = 0.0) -> Unit:
-        """A new unit one rank below its supervisor, or the lead at the top rank."""
+        """A new unit one rank below its supervisor, or the lead at the top rank. With no
+        task it waits for one: the first message it gets."""
         name, task = name.strip(), task.strip()
-        if not name or not task:
-            raise FleetError("A unit needs a name and a task.")
+        if not name:
+            raise FleetError("A unit needs a name.")
         if supervisor is None:
             if self.lead is not None:
                 raise FleetError("The fleet already has a lead.")

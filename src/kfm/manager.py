@@ -117,13 +117,18 @@ class Manager:
             everyone = list(self.fleet.units.values())
             placed = [unit for unit in everyone if unit.state == "planned"]
             back = [unit for unit in everyone if unit.active and await self._reopen(unit)]
-            ready = [unit for unit in placed if await self._come_up(unit)]
+            ready = [unit for unit in placed if unit.task and await self._come_up(unit)]
             for unit in back:
                 await self._carry_on(unit)
-            for unit in ready:  # a supervisor before its agents
+            for unit in placed:  # a supervisor before its agents
                 supervisor = self.fleet.supervisor_of(unit)
-                await self._begin(unit, placed)
-                if supervisor is not None and supervisor not in placed:
+                if unit in ready:
+                    await self._begin(unit)
+                elif not unit.task:
+                    self._set(unit, "idle")  # until it is told what to do
+                # A supervisor that begins now, or later, reads of its agents in its brief.
+                if (supervisor is not None and supervisor not in placed
+                        and supervisor.session is not None):
                     self._spawn(self._tell_quietly(
                         supervisor, units.hired_note(unit, self._words)))
 
@@ -152,7 +157,7 @@ class Manager:
     async def say(self, text: str) -> None:
         """The person's message, to the lead."""
         if (lead := self.fleet.lead) is None:
-            raise FleetError("The fleet has not started.")
+            raise FleetError("The fleet has no lead.")
         await self.tell(lead, text)
         self._emit(Told(text))
 
@@ -165,7 +170,8 @@ class Manager:
             raise FleetError("The fleet has not started.")
         unit = await self.delegate(supervisor, name, task, ongoing=ongoing, model=model)
         self._emit(Notice(f"You added {unit.label} under {supervisor.name}."))
-        self._spawn(self._tell_quietly(supervisor, units.hired_note(unit, self._words)))
+        if supervisor.session is not None:  # one that has not begun reads it in its brief
+            self._spawn(self._tell_quietly(supervisor, units.hired_note(unit, self._words)))
         return unit
 
     async def set_model(self, unit: Unit, model: str | None) -> None:
@@ -198,17 +204,25 @@ class Manager:
         unit = self.fleet.add(name, task, supervisor, team=team, ongoing=ongoing,
                               budget_usd=budget)
         unit.model = model or None
-        await self._start(unit)
+        if unit.task:
+            await self._start(unit)
+        else:
+            self._set(unit, "idle")  # until it is told what to do
         return unit
 
-    async def tell(self, unit: Unit, text: str) -> None:
+    async def tell(self, unit: Unit, text: str, *, task: str | None = None) -> None:
         """Put a message into the unit's conversation, starting it again if it is not
-        running: it then works on what the message says. FleetError or UnitError when it
-        cannot be."""
-        if unit.session is None:
-            raise FleetError(f"{unit.label} never started.")
+        running: it then works on what the message says. A unit that has no task yet
+        starts on the message as its task (`task`: its words alone, when `text` wraps
+        them). FleetError or UnitError when it cannot be."""
         if self._over_budget:
             raise FleetError("The fleet has reached its spending limit.")
+        if unit.session is None:
+            if unit.task or unit.state != "idle":
+                raise FleetError(f"{unit.label} never started.")
+            unit.task = task or text
+            await self._start(unit)
+            return
         session = await self._session(unit)
         unit.question = None  # this is its answer
         if unit.state in _OVER:
@@ -237,7 +251,7 @@ class Manager:
 
     async def _start(self, unit: Unit) -> None:
         if await self._come_up(unit):
-            await self._begin(unit, [])
+            await self._begin(unit)
 
     async def _come_up(self, unit: Unit) -> bool:
         """Start the unit's process, before it has its task. False: it could not."""
@@ -250,10 +264,10 @@ class Manager:
             return False
         return True
 
-    async def _begin(self, unit: Unit, placed: list[Unit]) -> None:
-        """Give the unit its task. `placed`: the units that start with it; those under it
-        are named in its brief."""
-        under = [each for each in self.fleet.subordinates(unit) if each in placed]
+    async def _begin(self, unit: Unit) -> None:
+        """Give the unit its task. The agents it has before it begins are the person's,
+        and are named in its brief."""
+        under = self.fleet.subordinates(unit)
         brief = units.brief(unit, self.fleet.supervisor_of(unit), under, self._words)
         try:
             if (session := self._sessions.get(unit.id)) is None:

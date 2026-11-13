@@ -29,6 +29,13 @@ When the fleet starts, every planned agent's process is brought up first, and th
 is given its task from the top down. A supervisor that starts with its agents finds them
 listed in its brief; a supervisor that was there before is told with a message.
 
+**A task is optional.** An agent with none has no process and spends nothing (state
+`idle`); the first message it gets is its task, and it starts on it (`Manager.tell`).
+Its supervisor is told it has no task yet and how to give it one; for a lead, the
+message is the person's. This lets the person fix who is on a team and leave what each
+does to the supervisor, which knows the work better than a plan written beforehand.
+An agent that delegates must still give a task.
+
 **In a running fleet** an agent is added as if its supervisor had delegated it and
 starts at once (`Manager.hire`), and the supervisor is told.
 
@@ -52,6 +59,8 @@ knowledge, and the unit contract has no way to ask.
 - **A manager for a fleet that is being built**, so that one code path adds agents. It
   would load the agent program and hold a log and a tool server for a fleet in which
   nothing runs, and it would have to be made again each time the window opens.
+- **Start an agent with no task and have it wait.** It would spend on starting up, end
+  its turn with nothing done, and its supervisor would get "stopped without a report".
 - **The model takes effect the next time the agent's process starts.** Nothing is
   interrupted, but an agent on a duty may never start again, and the person who set a
   model would see nothing change.
@@ -61,6 +70,7 @@ knowledge, and the unit contract has no way to ask.
 - Setting the model of an agent at work interrupts its turn; what it ran in the
   background ends, as on a resume.
 - A lead that hires and a person who places agents can build two teams for one job.
+- A supervisor may never give a waiting agent a task: it then stays idle, at no cost.
 - A fleet built by hand has no task of its own: what it does is what its lead's task
   says. Nothing checks that the agents' tasks fit together.
 - An agent placed in a stopped fleet cannot be taken out again, and its name and task

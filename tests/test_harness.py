@@ -209,6 +209,41 @@ async def test_a_fleet_laid_out_by_hand_starts_as_it_was_built(tmp_path: Path):
     await manager.aclose()
 
 
+async def test_an_agent_with_no_task_takes_its_first_message_as_its_task(tmp_path: Path):
+    harness = FakeHarness({
+        "Lead": [{"do": [("say", "On watch.")]},
+                 {"when": "added Scout",
+                  "do": [("tool", "message", {"agent": "u2", "text": "Map the docs"})]}],
+        "Scout": [{"do": [("report", "Mapped.")]}]})
+    manager, events = await run(tmp_path, harness)
+    lead = await manager.lead("Keep watch", ongoing=True)
+    scout = await manager.hire(lead, "Scout", "")
+    assert (scout.state, scout.session) == ("idle", None)  # nothing started, nothing spent
+    await until(lambda: delivered(events) == [("Scout", "Lead", "report", "Mapped.")])
+    told = harness.heard["Lead"][1]
+    assert "no task yet" in told and 'fleet.message(agent="u2"' in told
+    assert "Your task: Map the docs" in harness.heard["Scout"][0]
+    assert scout.task == "Map the docs" and "[Message from" not in scout.task
+    await manager.aclose()
+
+    # Built by hand with no tasks at all: nothing runs until the person says what to do.
+    harness = FakeHarness({"Chief": [{"do": [("say", "On it.")]}]})
+    folder = tmp_path / "fleet2"
+    fleet = lay_out(FleetConfig(), folder, tmp_path / "work", "content")
+    chief = place(fleet, folder, None, "Chief", "")
+    place(fleet, folder, chief, "Writer", "")
+    manager = Manager.resumed(folder, harness=harness)
+    await manager.start()
+    assert not harness.models
+    assert [u.state for u in manager.fleet.units.values()] == ["idle", "idle"]
+    await manager.say("Run content")
+    await until(lambda: harness.heard.get("Chief"))
+    brief = harness.heard["Chief"][0]
+    assert "Your task: Run content" in brief and "Writer (K4, u2): no task yet" in brief
+    assert harness.models == [("Chief", None)]
+    await manager.aclose()
+
+
 async def until(predicate, timeout: float = 10.0) -> None:
     async def poll() -> None:
         while not predicate():

@@ -21,9 +21,13 @@ MODEL_CHANGED = (
 
 def hired_note(unit: Unit, words: Vocabulary) -> str:
     """What a supervisor is told when the person puts an agent under it."""
+    message = f"{words.tool('message')}(agent=\"{unit.id}\", text=...)"
+    if not unit.task:
+        return (f"[The person added {unit.label} under you. It has no task yet and has not "
+                f"started: give it one with {message}. Its reports and questions then come "
+                "to you.]")
     return (f"[The person added {unit.label} under you. Its task: {unit.task}\nIt has "
-            "started on that. Its reports and questions come to you; answer with "
-            f"{words.tool('message')}(agent=\"{unit.id}\", text=...).]")
+            f"started on that. Its reports and questions come to you; answer with {message}.]")
 
 
 def answer_note(supervisor: Unit | None, words: Vocabulary) -> str:
@@ -74,9 +78,10 @@ def brief(unit: Unit, supervisor: Unit | None, placed: list[Unit], words: Vocabu
     else:
         lines.append("- You are the lowest rank: do the work yourself.")
     if placed:
-        lines.append("- The person already put these agents under you, and each has started "
-                     "on its task:")
-        lines += [f"  - {each.label}: {each.task}" for each in placed]
+        lines.append("- The person already put these agents under you. One with a task has "
+                     f"started on it; one with none waits for you to give it one with "
+                     f"{words.tool('message')}:")
+        lines += [f"  - {each.label}: {each.task or 'no task yet'}" for each in placed]
     lines.append("- Every agent works in the same folder. Say in each task which files it "
                  "owns, and do not change files that belong to another agent's task.")
     return "\n".join(lines)

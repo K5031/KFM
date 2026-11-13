@@ -647,7 +647,9 @@ class AgentDialog(QDialog):
         self.name = QLineEdit()
         self.name.setPlaceholderText("Name")
         self.task = TaskBox()
-        self.task.setPlaceholderText("Its task")
+        self.task.setPlaceholderText(
+            "Its task. Empty: its supervisor gives it one" if supervisor is not None
+            else "Its task. Empty: your first message is its task")
         self.task.submitted.connect(self.add_asked)
         self.kind = KindSwitch()
         self.kind.task_kind.setChecked(True)
@@ -786,8 +788,7 @@ class FleetView(QWidget):
     def started(self) -> bool:
         """Whether any of its agents has ever run."""
         return self.fleet is not None and any(
-            unit.session is not None or unit.state != "planned"
-            for unit in self.fleet.units.values())
+            unit.session is not None for unit in self.fleet.units.values())
 
     @property
     def status(self) -> str:
@@ -849,6 +850,7 @@ class FleetView(QWidget):
         elif self.fleet is not None and not self.running:
             await asyncio.to_thread(place, self.fleet, self.folder, supervisor, name, task,
                                     ongoing=ongoing, model=model)
+        self._enable()
         self.changed.emit()
 
     async def set_model(self, unit: Unit, model: str) -> None:
@@ -884,11 +886,10 @@ class FleetView(QWidget):
         self._add(Line(text, set(), tone))
 
     def _enable(self) -> None:
-        """A message can be sent to a fleet that runs, and to a stopped one whose lead has
-        run: it starts the fleet again."""
+        """A message can be sent to a fleet that has a lead, unless it is stopping: it
+        starts a fleet that is not running."""
         lead = self.fleet.lead if self.fleet is not None else None
-        can = self.running or (not self.stopping and lead is not None
-                               and lead.session is not None)
+        can = not self.stopping and (self.running or lead is not None)
         self.input.setEnabled(can)
         self.send_button.setEnabled(can)
 
@@ -1427,8 +1428,8 @@ class FleetWindow(QMainWindow):
 
         async def add() -> None:
             name, task = dialog.name.text().strip(), dialog.task.toPlainText().strip()
-            if not name or not task:
-                return dialog.warn("It needs a name and a task.")
+            if not name:
+                return dialog.warn("It needs a name.")
             try:
                 await view.add_agent(supervisor, name, task,
                                      ongoing=dialog.kind.duty.isChecked(),

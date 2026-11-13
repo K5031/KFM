@@ -76,7 +76,7 @@ def fleet_tools(manager: Manager) -> MCPServer:
     async def delegate(
         name: Annotated[str, Field(description="A short name for the agent, by its role: "
                                                "Researcher, Tester.")],
-        task: Annotated[str, Field(description="The complete task.")],
+        task: Annotated[str, Field(min_length=1, description="The complete task.")],
         ctx: Context,
         team: Annotated[str | None, Field(description="Its team, if it differs from "
                                                       "yours.")] = None,
@@ -107,7 +107,8 @@ def fleet_tools(manager: Manager) -> MCPServer:
         with _refusals():
             me = caller(ctx)
             unit = manager.fleet.subordinate(me, agent)
-            await manager.tell(unit, f"[Message from {me.label}, your supervisor] {text}")
+            await manager.tell(unit, f"[Message from {me.label}, your supervisor] {text}",
+                               task=text)
         return f"Sent to {unit.label}."
 
     @server.tool(description="Your agents: what each is doing, what it reported or asked, "

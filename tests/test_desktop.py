@@ -322,7 +322,7 @@ async def test_the_person_adds_an_agent_and_sets_a_model_on_the_chart(window, tm
     assert dialog.isVisible() and "under Lead" in dialog.windowTitle()
     dialog.add.click()
     await asyncio.sleep(0.05)
-    assert dialog.isVisible() and "name and a task" in dialog.warning.text()
+    assert dialog.isVisible() and "needs a name" in dialog.warning.text()
     dialog.name.setText("Tester")
     dialog.task.setPlainText("Run the tests")
     dialog.model.setText("small-1")

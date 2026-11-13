@@ -17,7 +17,13 @@ from typing import Any
 import kayden.frontends.desktop  # noqa: F401 - before any Qt import
 from kayden.frontends.desktop import theme
 from kayden.frontends.desktop.loop import QtEventLoop
-from kayden.frontends.desktop.window import DragArea, ElidedLabel, MarkdownView, WindowEdges
+from kayden.frontends.desktop.window import (
+    WINDOW_BUTTON,
+    DragArea,
+    ElidedLabel,
+    MarkdownView,
+    WindowEdges,
+)
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QColor, QIcon
 from PySide6.QtWidgets import (
@@ -301,7 +307,8 @@ class FleetWindow(QMainWindow):
         self.resume_button.clicked.connect(lambda: self._run(self.resume()))
         self.bar = DragArea()
         bar = QHBoxLayout(self.bar)
-        bar.setContentsMargins(20, 8, 8, 6)  # the controls sit in the window's corner
+        bar.setContentsMargins(20, 0, 0, 0)  # the controls reach the window's corner
+        bar.setSpacing(4)
         bar.addWidget(self.title, 1)
         bar.addWidget(self.status)
         bar.addWidget(self.stop_button)
@@ -315,10 +322,11 @@ class FleetWindow(QMainWindow):
                                  else "titleControl")
             button.setToolTip(tip)
             button.setAccessibleName(tip)
-            button.setIconSize(QSize(16, 16))
+            button.setIconSize(QSize(14, 14))
+            button.setFixedSize(WINDOW_BUTTON)
             button.clicked.connect(command)
             self.window_buttons[name] = button
-            bar.addWidget(button)
+            bar.addWidget(button, 0, Qt.AlignmentFlag.AlignTop)
         self._paint_controls()
 
         self.start_form = StartForm()

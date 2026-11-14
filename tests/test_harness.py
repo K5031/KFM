@@ -11,7 +11,7 @@ import pytest
 
 from kfm import harnesses, log
 from kfm.config import FleetConfig
-from kfm.events import Delivered, FleetEvent, Instructed, Told
+from kfm.events import Delivered, FleetEvent, Instructed, Notice, Told
 from kfm.fleet import Fleet, FleetError, Unit
 from kfm.harnesses.kayden import KaydenHarness
 from kfm.manager import Manager, lay_out, place
@@ -367,8 +367,13 @@ async def test_an_agent_is_given_another_task_and_an_agent_is_removed(tmp_path: 
                             for heard in harness.heard.get("K4 u4", [])))
 
     (tmp_path / "fleet" / "units" / "u3").mkdir(parents=True, exist_ok=True)
+    await until(lambda: scout.spent_usd > 0 and helper.spent_usd > 0)
+    spent = manager.fleet.spent_usd
     await manager.remove(scout)  # with everything under it
     assert list(manager.fleet.units) == ["u1", "u4"]
+    # What they spent still counts against the fleet's limit.
+    assert manager.fleet.spent_usd == pytest.approx(spent)
+    assert manager.fleet.spent_usd > sum(u.spent_usd for u in manager.fleet.units.values())
     assert not (tmp_path / "fleet" / "units" / "u3").exists()
     await until(lambda: any("removed Scout (K4, u2)" in heard for heard in harness.heard["Lead"]))
     with pytest.raises(FleetError):
@@ -376,7 +381,23 @@ async def test_an_agent_is_given_another_task_and_an_agent_is_removed(tmp_path: 
     again = await manager.hire(lead, "Scout", "Map the docs again")
     assert again.id == "u5"  # a number is not given twice
     await manager.aclose()
-    assert list(Fleet.load(tmp_path / "fleet").units) == ["u1", "u4", "u5"]
+    kept = Fleet.load(tmp_path / "fleet")
+    assert list(kept.units) == ["u1", "u4", "u5"]
+    assert kept.spent_usd > sum(u.spent_usd for u in kept.units.values())  # and is kept
+
+
+async def test_a_failure_in_the_managers_own_work_is_seen(tmp_path: Path, caplog):
+    harness = FakeHarness({"Lead": [{"do": [("say", "On watch.")]}]})
+    manager, events = await run(tmp_path, harness)
+    await manager.lead("Keep watch", ongoing=True, name="Lead")
+
+    async def broken() -> None:
+        raise RuntimeError("disk on fire")
+
+    manager._spawn(broken())
+    await until(lambda: any(isinstance(e, Notice) and "disk on fire" in e.text for e in events))
+    assert "disk on fire" in caplog.text  # with where it happened, for whoever reads the log
+    await manager.aclose()
 
 
 async def until(predicate, timeout: float = 10.0) -> None:

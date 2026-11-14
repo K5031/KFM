@@ -552,4 +552,12 @@ class Manager:
     def _spawn(self, work: object) -> None:
         task: asyncio.Task[None] = asyncio.ensure_future(work)  # type: ignore[arg-type]
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(self._spawned)
+
+    def _spawned(self, task: asyncio.Task[None]) -> None:
+        """Work the manager started by itself ended: a failure nobody awaits is said."""
+        self._tasks.discard(task)
+        if not task.cancelled() and (error := task.exception()) is not None:
+            logger.error("the fleet's own work failed", exc_info=error)
+            self._emit(Notice(f"Something the fleet does by itself failed: "
+                              f"{type(error).__name__}: {error}"))

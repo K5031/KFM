@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-FORMAT = 6  # of fleet.json; a file of another format is refused
+FORMAT = 7  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
 # planned: placed by the person in a fleet that is not running; it starts with the fleet.
@@ -79,6 +79,7 @@ class Fleet:
         self.name = name  # what a person calls it: "marketing"
         self.units: dict[str, Unit] = {}
         self._next = 1
+        self.removed_usd = 0.0  # what units taken out of the fleet had spent
         # What starting the fleet again needs (the manager fills these in).
         self.work = ""  # the folder the fleet works in
         self.settings: dict[str, Any] = {}  # config.record of what it runs with
@@ -104,7 +105,8 @@ class Fleet:
 
     @property
     def spent_usd(self) -> float:
-        return sum(u.spent_usd for u in self.units.values())
+        """What the fleet has spent, by the units it has and by those taken out of it."""
+        return self.removed_usd + sum(u.spent_usd for u in self.units.values())
 
     def add(self, name: str, task: str, supervisor: Unit | None, *, team: str | None = None,
             ongoing: bool = False, budget_usd: float = 0.0) -> Unit:
@@ -136,6 +138,7 @@ class Fleet:
         ids are not given again."""
         gone = list(self.subtree(unit))
         for each in gone:
+            self.removed_usd += each.spent_usd  # still spent: it counts against the limit
             del self.units[each.id]
         return gone
 
@@ -170,6 +173,7 @@ class Fleet:
     def save(self, folder: Path) -> None:
         data = {"format": FORMAT, "name": self.name, "top_rank": self.top_rank,
                 "max_units": self.max_units, "next": self._next,
+                "removed_usd": self.removed_usd,
                 "work": self.work, "settings": self.settings,
                 "manager_pid": self.manager_pid,
                 "units": [asdict(u) for u in self.units.values()]}
@@ -189,5 +193,5 @@ class Fleet:
         for record in data["units"]:
             unit = Unit(**record)
             fleet.units[unit.id] = unit
-        fleet._next = data["next"]
+        fleet._next, fleet.removed_usd = data["next"], data["removed_usd"]
         return fleet

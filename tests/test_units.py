@@ -48,11 +48,15 @@ def test_the_brief_says_where_the_unit_stands_in_its_harnesss_words():
     assert "A person gave you this task" in top and "mcp__fleet__delegate" in top
     assert "Your supervisor is Lead (K2)" in low and "Your team: web." in low
     assert "lowest rank" in low and "mcp__fleet__delegate" not in low
-    # A rank above the lowest runs a team: organising it is its work, not an option it has.
-    assert "You supervise" in top and "the agents under you do the work" in top
-    assert "You can hand work" not in top and "do small things yourself" not in top
+    # A brief says what is so and what each tool does; how to work is the agent's own.
+    for told in (top, low, standing):
+        for instruction in ("you must", "you should", "do not", "make sure", "your job",
+                            "only where", "keep at it", "make it complete"):
+            assert instruction not in told.lower(), instruction
+    assert "mcp__fleet__delegate starts a K1 agent on a task you give it" in top
     assert "finish_goal" in low and "finish_goal" not in standing
     assert "mcp__fleet__report" in standing
     other = brief(worker, lead, [], Vocabulary(finish="done", ask="ask_boss", tools="fleet."))
-    assert "call done with a report" in other and "call ask_boss with" in other
+    assert "done with a report ends the task" in other
+    assert "ask_boss puts a question to it" in other
     assert "finish_goal" not in other and "mcp__" not in other

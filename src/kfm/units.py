@@ -1,6 +1,7 @@
-"""The words KFM writes to a unit: its brief, and what it is told when the fleet starts
-again or when a message reaches it after its goal ended. The tools they name are the
-harness's (api.Vocabulary)."""
+"""The words KFM writes to a unit: its brief, and what it is told when something about it
+or its fleet changes. They state what is so (who it is, what happened, what each tool
+does) and leave what to do about it to the agent: no instruction on how to work is given
+here. The tools they name are the harness's (api.Vocabulary)."""
 
 from __future__ import annotations
 
@@ -12,46 +13,42 @@ from kfm.fleet import Unit
 
 RESUMED = (
     "[The fleet was stopped and has now been started again. Anything you had running in "
-    "the background (a watcher, a long command) ended with it: start it again if you still "
-    "need it. Look at what changed while the fleet was down, then carry on with your work. "
-    "If you were waiting for an answer that has not arrived, ask again.]")
+    "the background (a watcher, a long command) ended with it, and a question you had "
+    "asked that was not answered was not kept.]")
 
 
 MODEL_CHANGED = (
     "[Your model was changed, which started you again. Anything you had running in the "
-    "background ended: start it again if you still need it, then carry on with your work.]")
+    "background ended.]")
 
 
 def from_person(text: str) -> str:
     """The person's message, for a unit that has a supervisor."""
-    return ("[Message from the person the fleet works for. Where it differs from what your "
-            f"supervisor told you, the person's word stands; your supervisor is told of it.] {text}")
+    return ("[Message from the person the fleet works for. Your supervisor is told of "
+            f"it.] {text}")
 
 
 def overheard(unit: Unit, text: str, files: Sequence[str]) -> str:
     """What a supervisor is told when the person speaks to one of its agents."""
     if files:
         text = f"{text}\n(With files: {', '.join(Path(file).name for file in files)}.)"
-    return (f"[The person told {unit.label}: {text}\nThe person's word stands where it differs "
-            "from yours. You need not do anything about this.]")
+    return f"[The person told {unit.label}: {text}]"
 
 
-RETASKED = ("[Your task was changed by the person the fleet works for. It is in your "
-            "instruction now: leave the task you had, and start on the new one.]")
+RETASKED = ("[Your task was changed by the person the fleet works for. The new one is in "
+            "your instruction.]")
 
 
 def retasked_note(unit: Unit) -> str:
     """What a supervisor is told when the person gives one of its agents another task."""
-    return (f"[The person changed the task of {unit.label}. It is now: {unit.task}\nYou "
-            "need not do anything about this.]")
+    return f"[The person changed the task of {unit.label}. It is now: {unit.task}]"
 
 
 def removed_note(unit: Unit, others: int) -> str:
     """What a supervisor is told when the person takes one of its agents out."""
     also = f" and the {others} under it" if others else ""
     return (f"[The person removed {unit.label}{also} from the fleet. What it was doing is "
-            "not being done: take it up yourself or hand it to another agent, if it is "
-            "still needed.]")
+            "not being done.]")
 
 
 def hired_note(unit: Unit, words: Vocabulary) -> str:
@@ -59,18 +56,17 @@ def hired_note(unit: Unit, words: Vocabulary) -> str:
     message = f"{words.tool('message')}(agent=\"{unit.id}\", text=...)"
     if not unit.task:
         return (f"[The person added {unit.label} under you. It has no task yet and has not "
-                f"started: give it one with {message}. Its reports and questions then come "
-                "to you.]")
+                f"started: the first message it gets is its task, and {message} reaches "
+                "it. Its reports and questions then come to you.]")
     return (f"[The person added {unit.label} under you. Its task: {unit.task}\nIt has "
-            f"started on that. Its reports and questions come to you; answer with {message}.]")
+            f"started on that. Its reports and questions come to you; {message} reaches it.]")
 
 
 def answer_note(supervisor: Unit | None, words: Vocabulary) -> str:
     """What a unit is told with a message that reaches it after its goal ended."""
     reader = "the person" if supervisor is None else supervisor.name or "your supervisor"
-    return ("(Your task had ended, so there is no goal to finish now. Deal with this, then "
-            f"end your turn: what you write last goes to {reader} as your report, so make it "
-            f"complete, and do not also send it with {words.tool('report')}.)")
+    return ("(Your task had ended, so there is no goal to finish now: what you write last "
+            f"in this turn goes to {reader} as your report.)")
 
 
 def brief(unit: Unit, supervisor: Unit | None, placed: list[Unit], words: Vocabulary) -> str:
@@ -84,43 +80,36 @@ def brief(unit: Unit, supervisor: Unit | None, placed: list[Unit], words: Vocabu
         lines.append(f"Your team: {unit.team}.")
     lines += ["", f"Your task: {unit.task}", "", "How the fleet works:"]
     if supervisor is None:
+        reader = "the person"
         lines.append("- A person gave you this task and you are their point of contact. "
-                     "They are not watching: decide what you can, and ask them only what "
-                     "only they can decide.")
+                     f"They are not watching. {words.ask} puts a question to them; the "
+                     "answer arrives as a message.")
     else:
+        reader = "your supervisor"
         above = (f"{supervisor.name} (K{supervisor.rank})" if supervisor.name
                  else f"a K{supervisor.rank} agent")
-        lines.append(f"- Your supervisor is {above}. It gave "
-                     "you this task, sees nothing of your conversation, and gets what you "
-                     "report.")
+        lines.append(f"- Your supervisor is {above}. It gave you this task, sees nothing of "
+                     f"your conversation, and gets what you report. {words.ask} puts a "
+                     "question to it; the answer arrives as a message.")
     if unit.ongoing:
-        lines.append(f"- This is standing work: keep at it. When there is something your "
-                     f"supervisor should know, send it with {words.tool('report')}.")
+        lines.append(f"- This is standing work, with no end. {words.tool('report')} sends "
+                     f"{reader} something without ending it.")
     else:
-        lines.append(f"- When the task is done, call {words.finish} with a report: what you did, "
-                     "what you found, where the results are, and what is not done. The "
-                     "report is all your supervisor gets, so make it complete.")
-    lines.append("- When you are blocked on something only your supervisor can decide or "
-                 f"provide, call {words.ask} with one clear question; the answer arrives as "
-                 "a message.")
+        lines.append(f"- {words.finish} with a report ends the task. The report is all "
+                     f"{reader} gets of your work.")
     if unit.rank > 1:
         lines.append(
-            f"- You supervise: the agents under you do the work, and your own work is to "
-            f"judge what the task needs, plan it, hand its parts to K{unit.rank - 1} agents "
-            f"with {words.tool('delegate')}, check what comes back and keep everyone on the "
-            "goal. Use as many agents as the work needs and no more, and do a thing yourself "
-            "only where handing it over would cost more than doing it. Give each agent a "
-            "complete, self-contained task: it sees nothing of your conversation. Their "
-            f"reports and questions arrive as messages; answer with {words.tool('message')}, and see "
-            f"them all with {words.tool('status')}. If an agent fails or stalls, give it the task "
-            "again, hand it to another, or ask your own supervisor.")
+            f"- {words.tool('delegate')} starts a K{unit.rank - 1} agent on a task you give "
+            "it. It works in the same folder and sees nothing of your conversation, only "
+            "that task. Its reports and questions arrive as messages; "
+            f"{words.tool('message')} reaches it, and {words.tool('status')} shows all of "
+            "yours.")
     else:
-        lines.append("- You are the lowest rank: do the work yourself.")
+        lines.append("- You are the lowest rank: there is no rank below you to hand work to.")
     if placed:
         lines.append("- The person already put these agents under you. One with a task has "
-                     f"started on it; one with none waits for you to give it one with "
-                     f"{words.tool('message')}:")
+                     "started on it; one with none starts on the first message it gets:")
         lines += [f"  - {each.label}: {each.task or 'no task yet'}" for each in placed]
-    lines.append("- Every agent works in the same folder. Say in each task which files it "
-                 "owns, and do not change files that belong to another agent's task.")
+    lines.append("- Every agent works in the same folder, and nothing keeps two from "
+                 "changing the same file.")
     return "\n".join(lines)

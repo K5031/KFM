@@ -489,21 +489,23 @@ class Manager:
             case "waiting":
                 self._deliver(
                     unit, "question",
-                    f"[Question from {unit.label}] {unit.question}\nAnswer with "
-                    f"{self._words.tool('message')}(agent=\"{unit.id}\", text=...).",
+                    f"[Question from {unit.label}] {unit.question}\n"
+                    f"{self._words.tool('message')}(agent=\"{unit.id}\", text=...) "
+                    "answers it.",
                     unit.question or "")
             case "failed":
                 why = unit.failure or "It stopped with an error."
                 self._deliver(
                     unit, "failure",
-                    f"[{unit.label} failed] {why}\nTell it to carry on with "
-                    f"{self._words.tool('message')}, hand the task to another agent, or ask your "
-                    "own supervisor.", why)
+                    f"[{unit.label} failed] {why}\n"
+                    f"{self._words.tool('message')}(agent=\"{unit.id}\", text=...) starts "
+                    "it again.", why)
             case "idle":
                 self._deliver(
                     unit, "stopped",
-                    f"[{unit.label} stopped without a report] Ask it what it did with "
-                    f"{self._words.tool('message')}, or hand the task to another agent.",
+                    f"[{unit.label} stopped without a report]\n"
+                    f"{self._words.tool('message')}(agent=\"{unit.id}\", text=...) starts "
+                    "it again.",
                     "It stopped without a report.")
 
     def _deliver(self, unit: Unit, kind: str, message: str, text: str) -> None:

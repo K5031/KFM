@@ -52,7 +52,7 @@ async def test_a_fleet_runs_on_another_harness(tmp_path: Path):
     assert lead.session == "session-u1" and lead.spent_usd > 0
     # The words KFM wrote to the units name this harness's tools, not Kadence's.
     brief, question = harness.heard["Lead"][0], harness.heard["Lead"][1]
-    assert "fleet.delegate" in brief and "call done with a report" in brief
+    assert "fleet.delegate" in brief and "done with a report ends the task" in brief
     assert "fleet.message(agent=\"u2\"" in question
     assert not any("mcp__" in text or "finish_goal" in text
                    for heard in harness.heard.values() for text in heard)

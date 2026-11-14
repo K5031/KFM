@@ -69,16 +69,14 @@ def fleet_tools(manager: Manager) -> MCPServer:
         return manager.fleet.by_token(token)
 
     @server.tool(description=(
-        "Hand a task to a new agent one rank below you. It works on its own, in the same "
-        "folder, and sees nothing of your conversation: write the task so it stands alone "
-        "(what to do, which files are its to change, what done looks like). Returns at "
-        "once; its report, or a question, arrives later as a message."))
+        "Start a new agent one rank below you on a task. It works on its own, in the same "
+        "folder, and sees nothing of your conversation, only the task. Returns at once; "
+        "its report, or a question, arrives later as a message."))
     async def delegate(
-        task: Annotated[str, Field(min_length=1, description="The complete task.")],
+        task: Annotated[str, Field(min_length=1, description="The task.")],
         ctx: Context,
-        name: Annotated[str, Field(description="A short name for the agent by its role "
-                                               "(Researcher, Tester), if one helps you "
-                                               "tell your agents apart.")] = "",
+        name: Annotated[str, Field(description="A name for the agent; it may have "
+                                               "none.")] = "",
         team: Annotated[str | None, Field(description="Its team, if it differs from "
                                                       "yours.")] = None,
         ongoing: Annotated[bool, Field(description="True for standing work that never "
@@ -97,9 +95,8 @@ def fleet_tools(manager: Manager) -> MCPServer:
                 "you can end your turn meanwhile.")
 
     @server.tool(description=(
-        "Send a message to one of your agents: the answer to its question, a correction, "
-        "or a new task for one that has finished or failed (it starts working again). "
-        "Its reply arrives later as a message."))
+        "Send a message to one of your agents. One that has finished, failed or has no "
+        "task yet starts working on it. Its reply arrives later as a message."))
     async def message(
         agent: Annotated[str, Field(description="The agent's id, such as u3.")],
         text: Annotated[str, Field(min_length=1)],
@@ -121,8 +118,7 @@ def fleet_tools(manager: Manager) -> MCPServer:
         return "\n".join(lines or ["You have no agents."]) + (
             f"\nThe fleet has ${left:.2f} of its ${manager.config.budget_usd:.2f} left.")
 
-    @server.tool(description="Stop one of your agents, and every agent under it, when its "
-                             "work is no longer needed.")
+    @server.tool(description="Stop one of your agents, and every agent under it.")
     async def stop(agent: Annotated[str, Field(description="The agent's id.")],
                    ctx: Context) -> str:
         with _refusals():
@@ -131,9 +127,7 @@ def fleet_tools(manager: Manager) -> MCPServer:
         return f"Stopped {unit.label}."
 
     @server.tool(description=(
-        "Send your supervisor an update without ending your work: progress worth knowing, "
-        "a result, a warning. To finish a task use finish_goal; when blocked, "
-        "ask_for_help."))
+        "Send your supervisor an update without ending your work."))
     async def report(text: Annotated[str, Field(min_length=1)], ctx: Context) -> str:
         with _refusals():
             await manager.update(caller(ctx), text)

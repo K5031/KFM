@@ -119,13 +119,10 @@ class Fleet:
             rank = self.top_rank
         else:
             if supervisor.rank <= 1:
-                raise FleetError("A K1 agent is the lowest rank and cannot delegate: do the "
-                                 "work yourself.")
+                raise FleetError("A K1 agent is the lowest rank: there is no rank below it.")
             rank = supervisor.rank - 1
         if len(self.units) >= self.max_units:
-            raise FleetError(f"The fleet is at its limit of {self.max_units} agents. Reuse an "
-                             "agent that has finished (message it a new task) or do the work "
-                             "yourself.")
+            raise FleetError(f"The fleet is at its limit of {self.max_units} agents.")
         unit = Unit(f"u{self._next}", name, rank, task, supervisor.id if supervisor else None,
                     team=team or (supervisor.team if supervisor else None), ongoing=ongoing,
                     budget_usd=budget_usd)

@@ -344,7 +344,8 @@ async def test_the_person_adds_an_agent_and_sets_a_model_on_the_chart(window, tm
     dialog.model.setText("small-1")
     dialog.add.click()
     await until(lambda: chart(shown) == {"dev": ["K5", "Tester K4"]})
-    assert not dialog.isVisible() and ("Tester", "small-1") in harness.models
+    await until(lambda: not dialog.isVisible())  # once its process is up
+    assert ("Tester", "small-1") in harness.models
     assert not view.fleet.units["u2"].ongoing  # a task, unless Duty is chosen
     tester = shown.chart.nodes[(str(view.folder), "u2")]
     assert "small-1" in tester.toolTip()
@@ -613,9 +614,14 @@ async def test_an_agents_task_is_changed_and_an_agent_is_removed_on_the_chart(
     await until(lambda: agents(shown) == [(0, "K5", "working")])
     shown.back_button.click()
 
-    await view.stop()  # in a stopped fleet: one that has run keeps its task until it runs
+    await view.stop()  # in a stopped fleet too: it works on it when the fleet starts
     lead = shown.chart.nodes[(key, "u1")]
-    await until(lambda: not lead.task_action.isEnabled() and lead.remove_action.isEnabled())
+    await until(lambda: lead.task_action.isEnabled() and lead.remove_action.isEnabled())
+    lead.task_action.trigger()
+    shown.dialog.task.setPlainText("Tidy the code")
+    shown.dialog.save.click()
+    await until(lambda: view.fleet.units["u1"].task == "Tidy the code")
+    assert not view.running and len(harness.instructed) == 1  # nobody was started for it
     lead.remove_action.trigger()
     shown.dialog.delete.click()
     await until(lambda: chart(shown) == {"dev": []} and key in shown.chart.firsts)

@@ -127,8 +127,8 @@ class Service(abc.ABC):
     @abc.abstractmethod
     async def start(self, fleet: str, *, budget_usd: float | None = None) -> None:
         """Start a fleet that is not running: every agent that was at work carries on,
-        and every agent placed meanwhile starts. `budget_usd`: a new limit for it, which
-        one that stopped at its limit needs."""
+        and every agent that has a task and has not begun begins. `budget_usd`: a new
+        limit for it, which one that stopped at its limit needs."""
 
     @abc.abstractmethod
     async def stop(self, fleet: str) -> None:
@@ -146,8 +146,9 @@ class Service(abc.ABC):
     @abc.abstractmethod
     async def add_agent(self, fleet: str, supervisor: str | None, name: str, task: str, *,
                         ongoing: bool = False, model: str | None = None) -> str:
-        """An agent under `supervisor`, or the lead of a fleet that has none. In a fleet
-        that runs it starts at once; otherwise with the fleet. Returns its id."""
+        """An agent under `supervisor`, or the lead of a fleet that has none. With a task
+        it begins when the fleet runs; with none, on the first message it gets. Returns
+        its id."""
 
     @abc.abstractmethod
     async def remove_agent(self, fleet: str, unit: str) -> None:
@@ -158,8 +159,8 @@ class Service(abc.ABC):
 
     @abc.abstractmethod
     async def set_task(self, fleet: str, unit: str, task: str) -> None:
-        """Another task for the agent, in the conversation it has. One that has run can
-        only be given one while its fleet runs."""
+        """Another task for the agent, in the conversation it has. In a fleet that is
+        not running it works on it when the fleet starts."""
 
     @abc.abstractmethod
     async def set_model(self, fleet: str, unit: str, model: str) -> None:

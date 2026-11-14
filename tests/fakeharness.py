@@ -71,7 +71,9 @@ class FakeSession(Session):
         return self.session
 
     async def instruct(self, instruction: Instruction) -> None:
+        assert self.session is not None
         self.harness.instructed.append((self.spec.name, instruction.text))
+        self.harness.standing[self.session] = True
 
     async def send(self, text: str, files: Sequence[str] = (), *,
                    spoken: bool = False) -> None:

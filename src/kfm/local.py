@@ -1,4 +1,4 @@
-"""The service in this process: it owns the projects' fleets and their managers. What
+"""The service in this process: it owns the projects and a manager for each fleet it has read. What
 `kfm serve` runs, and what tests use."""
 
 from __future__ import annotations
@@ -7,7 +7,7 @@ import asyncio
 import contextlib
 import re
 from collections.abc import Callable, Coroutine, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -17,20 +17,10 @@ from kfm.api import Harness
 from kfm.config import CONFIG_FILE, HOME, FleetConfig, load, save
 from kfm.events import FleetEvent
 from kfm.fleet import Fleet, FleetError, Unit
-from kfm.manager import Manager, forget, lay_out, place
+from kfm.manager import Manager
 from kfm.service import FleetState, Happened, Listed, ProjectInfo, Service, Update, Updated
 
 _ID = re.compile(r"[\w.-]+")
-
-
-@dataclass
-class _Held:
-    """A fleet this service has read: its record, and its manager while it runs."""
-
-    folder: Path
-    fleet: Fleet
-    manager: Manager | None = None
-    stopping: bool = False
 
 
 class LocalService(Service):
@@ -40,7 +30,7 @@ class LocalService(Service):
     def __init__(self, home: Path = HOME, *, harness: Harness | None = None,
                  config: FleetConfig | None = None) -> None:
         self.home, self._harness, self._config = home, harness, config
-        self._held: dict[str, _Held] = {}
+        self._managers: dict[str, Manager] = {}  # of every fleet read, running or not
         self._listeners: list[Callable[[Update], None]] = []
         self._drafts: dict[str, asyncio.Task[draft.Draft]] = {}
         self._tasks: set[asyncio.Task[Any]] = set()
@@ -67,9 +57,8 @@ class LocalService(Service):
     async def delete_project(self, project_id: str) -> None:
         folder = self._project(project_id)
         await self.cancel_draft(project_id)
-        for fleet_id in [each for each in self._held if each.startswith(f"{project_id}/")]:
-            await self.stop(fleet_id)
-            del self._held[fleet_id]
+        for fleet_id in [each for each in self._managers if each.startswith(f"{project_id}/")]:
+            await self._managers.pop(fleet_id).aclose()
         await asyncio.to_thread(project.delete, folder)
         self._tell(Listed())
 
@@ -118,89 +107,58 @@ class LocalService(Service):
         config = await self.settings()
         if budget_usd is not None:
             config = replace(config, budget_usd=budget_usd)
-        where = Path(work) if work else opened.work
         folder = await asyncio.to_thread(opened.new_fleet)
         fleet_id = f"{project_id}/{folder.name}"
-        if not task.strip():
-            made = await asyncio.to_thread(lay_out, config, folder, where, name.strip())
-            self._held[fleet_id] = _Held(folder, made)
-        else:
-            manager = Manager(config, folder, where, harness=self._harness,
-                              on_event=self._listener(fleet_id), name=name.strip())
-            self._held[fleet_id] = _Held(folder, manager.fleet, manager)
+        manager = self._managers[fleet_id] = await asyncio.to_thread(
+            lambda: Manager.new(config, folder, Path(work) if work else opened.work,
+                                name.strip(), **self._how(fleet_id)))
+        if task.strip():
             await manager.start()
-            self._run(manager.lead(task, ongoing=ongoing))
+            self._run(manager.add(None, "", task, ongoing=ongoing))
         self._tell(Listed())
-        self._tell(Updated(fleet_id))
         return fleet_id
 
     async def watch(self, fleet_id: str) -> None:
-        if fleet_id not in self._held:
+        if fleet_id not in self._managers:
             folder = self._folder(fleet_id)
-            self._held[fleet_id] = _Held(folder, await asyncio.to_thread(Fleet.load, folder))
+            read = await asyncio.to_thread(
+                lambda: Manager.load(folder, **self._how(fleet_id)))
+            self._managers.setdefault(fleet_id, read)  # it may have been read meanwhile
 
     def fleet(self, fleet_id: str) -> Fleet | None:
-        held = self._held.get(fleet_id)
-        return held.fleet if held is not None else None
+        manager = self._managers.get(fleet_id)
+        return manager.fleet if manager is not None else None
 
     def state(self, fleet_id: str) -> FleetState:
-        held = self._held.get(fleet_id)
-        if held is None:
+        manager = self._managers.get(fleet_id)
+        if manager is None:
             return FleetState()
-        manager = held.manager
-        return FleetState(
-            manager is not None, held.stopping,
-            manager is not None and manager.finished.is_set(),
-            manager.config.budget_usd if manager is not None
-            else held.fleet.settings.get("budget_usd", 0.0))
+        return FleetState(manager.up, manager.stopping, manager.finished.is_set(),
+                          manager.config.budget_usd)
 
     async def history(self, fleet_id: str) -> list[FleetEvent]:
-        held = self._get(fleet_id)
-        if held.manager is not None:
-            await held.manager.flush()
+        manager = self._get(fleet_id)
+        await manager.flush()
         return [event for _, event in await asyncio.to_thread(
-            log.read, held.folder, held.fleet)]
+            log.read, manager.folder, manager.fleet)]
 
     async def start(self, fleet_id: str, *, budget_usd: float | None = None) -> None:
-        held = self._get(fleet_id)
-        if held.manager is not None or held.stopping:
-            return
-        manager = await asyncio.to_thread(lambda: Manager.resumed(
-            held.folder, harness=self._harness, on_event=self._listener(fleet_id),
-            budget_usd=budget_usd))
-        held.manager, held.fleet = manager, manager.fleet
-        self._tell(Updated(fleet_id))
-        await manager.start()
-        self._tell(Updated(fleet_id))
+        await self._get(fleet_id).start(budget_usd=budget_usd)
 
     async def stop(self, fleet_id: str) -> None:
-        held = self._held.get(fleet_id)
-        if held is None or (manager := held.manager) is None:
-            return
-        held.manager, held.stopping = None, True
-        self._tell(Updated(fleet_id))
-        try:
-            await manager.aclose()
-        finally:
-            held.stopping = False
-            self._tell(Updated(fleet_id))
+        if (manager := self._managers.get(fleet_id)) is not None:
+            await manager.stop()
 
     async def rename_fleet(self, fleet_id: str, name: str) -> None:
         if not name.strip():
             raise ValueError("A fleet needs a name.")
-        held = self._get(fleet_id)
-        if held.manager is not None:
-            await held.manager.rename(name.strip())
-        else:
-            held.fleet.name = name.strip()
-            await asyncio.to_thread(held.fleet.save, held.folder)
+        await self._get(fleet_id).rename(name.strip())
         self._tell(Listed())
-        self._tell(Updated(fleet_id))
 
     async def delete_fleet(self, fleet_id: str) -> None:
         folder = self._folder(fleet_id)
-        await self.stop(fleet_id)
-        self._held.pop(fleet_id, None)
+        if (manager := self._managers.pop(fleet_id, None)) is not None:
+            await manager.aclose()
         await asyncio.to_thread(records.delete, folder)
         self._tell(Listed())
 
@@ -208,79 +166,35 @@ class LocalService(Service):
 
     async def add_agent(self, fleet_id: str, supervisor: str | None, name: str, task: str, *,
                         ongoing: bool = False, model: str | None = None) -> str:
-        held = self._get(fleet_id)
-        above = self._unit(held, supervisor) if supervisor else None
-        if held.manager is None:
-            unit = await asyncio.to_thread(place, held.fleet, held.folder, above, name, task,
-                                           ongoing=ongoing, model=model)
-        elif above is not None:
-            unit = await held.manager.hire(above, name, task, ongoing=ongoing, model=model)
-        else:
-            raise FleetError("Stop the fleet to give it a lead.")
-        self._tell(Updated(fleet_id))
-        return unit.id
+        manager = self._get(fleet_id)
+        above = self._unit(manager, supervisor) if supervisor else None
+        return (await manager.add(above, name, task, ongoing=ongoing, model=model)).id
 
     async def remove_agent(self, fleet_id: str, unit_id: str) -> None:
-        held = self._get(fleet_id)
-        unit = self._unit(held, unit_id)
-        if held.manager is not None:
-            await held.manager.remove(unit)
-        else:
-            gone = held.fleet.remove(unit)
-            await asyncio.to_thread(held.fleet.save, held.folder)
-            await asyncio.to_thread(forget, held.folder, gone)
-        self._tell(Updated(fleet_id))
+        manager = self._get(fleet_id)
+        await manager.remove(self._unit(manager, unit_id))
 
     async def rename_agent(self, fleet_id: str, unit_id: str, name: str) -> None:
-        held = self._get(fleet_id)
-        unit = self._unit(held, unit_id)
-        if held.manager is not None:
-            await held.manager.rename(name.strip(), unit)
-        else:
-            unit.name = name.strip()
-            await asyncio.to_thread(held.fleet.save, held.folder)
-        self._tell(Updated(fleet_id))
+        manager = self._get(fleet_id)
+        await manager.rename(name.strip(), self._unit(manager, unit_id))
 
     async def set_task(self, fleet_id: str, unit_id: str, task: str) -> None:
-        held = self._get(fleet_id)
-        unit = self._unit(held, unit_id)
-        if held.manager is not None:
-            await held.manager.retask(unit, task)
-        elif not task.strip():
-            raise FleetError("A task cannot be empty.")
-        elif unit.session is not None:
-            raise FleetError(f"{unit.called} has run: start the fleet to give it another "
-                             "task, so that it can be told.")
-        else:
-            unit.task = task.strip()
-            unit.state = "planned"  # one that waited for a task starts with the fleet now
-            await asyncio.to_thread(held.fleet.save, held.folder)
-        self._tell(Updated(fleet_id))
+        manager = self._get(fleet_id)
+        await manager.retask(self._unit(manager, unit_id), task)
 
     async def set_model(self, fleet_id: str, unit_id: str, model: str) -> None:
-        held = self._get(fleet_id)
-        unit = self._unit(held, unit_id)
-        if held.manager is not None:
-            await held.manager.set_model(unit, model.strip())
-        else:
-            unit.model = model.strip() or None
-            await asyncio.to_thread(held.fleet.save, held.folder)
-        self._tell(Updated(fleet_id))
+        manager = self._get(fleet_id)
+        await manager.set_model(self._unit(manager, unit_id), model.strip())
 
     async def say(self, fleet_id: str, text: str, unit_id: str | None = None, *,
                   files: Sequence[str] = (), spoken: bool = False) -> None:
-        held = self._get(fleet_id)
-        if held.manager is None:
-            await self.start(fleet_id)
-        if held.manager is None:
-            raise FleetError("The fleet is stopping: say it again in a moment.")
-        to = self._unit(held, unit_id) if unit_id else None
-        await held.manager.say(text, to, files=files, spoken=spoken)
+        manager = self._get(fleet_id)
+        to = self._unit(manager, unit_id) if unit_id else None
+        await manager.say(text, to, files=files, spoken=spoken)
 
     async def approve(self, fleet_id: str, unit_id: str, request_id: str, allow: bool) -> None:
-        held = self._get(fleet_id)
-        if held.manager is not None:
-            await held.manager.approve(self._unit(held, unit_id), request_id, allow)
+        manager = self._get(fleet_id)
+        await manager.approve(self._unit(manager, unit_id), request_id, allow)
 
     # ── Settings, and what happens ───────────────────────────────────────
 
@@ -297,7 +211,7 @@ class LocalService(Service):
     async def aclose(self) -> None:
         for work in list(self._drafts.values()):
             work.cancel()
-        await asyncio.gather(*(self.stop(fleet_id) for fleet_id in list(self._held)),
+        await asyncio.gather(*(manager.aclose() for manager in self._managers.values()),
                              return_exceptions=True)
         for task in list(self._tasks):
             task.cancel()
@@ -305,18 +219,18 @@ class LocalService(Service):
 
     def watched(self) -> list[str]:
         """The fleets this service holds."""
-        return list(self._held)
+        return list(self._managers)
 
     def running(self) -> bool:
         """Whether any fleet runs or is stopping."""
-        return any(held.manager is not None or held.stopping for held in self._held.values())
+        return any(manager.running for manager in self._managers.values())
 
     # ── Internals ────────────────────────────────────────────────────────
 
     def _info(self, opened: project.Project, fleets: int) -> ProjectInfo:
         mine = f"{opened.folder.name}/"
-        running = sum(1 for fleet_id, held in self._held.items()
-                      if held.manager is not None and fleet_id.startswith(mine))
+        running = sum(1 for fleet_id, manager in self._managers.items()
+                      if manager.up and fleet_id.startswith(mine))
         return ProjectInfo(opened.folder.name, opened.name, str(opened.work), fleets, running)
 
     def _project(self, project_id: str) -> Path:
@@ -330,24 +244,26 @@ class LocalService(Service):
             raise ValueError(f"{fleet_id!r} is not a fleet.")
         return self._project(owner) / "fleets" / name
 
-    def _get(self, fleet_id: str) -> _Held:
-        if (held := self._held.get(fleet_id)) is None:
+    def _get(self, fleet_id: str) -> Manager:
+        if (manager := self._managers.get(fleet_id)) is None:
             raise ValueError(f"The fleet {fleet_id} is not being watched.")
-        return held
+        return manager
 
     @staticmethod
-    def _unit(held: _Held, unit_id: str) -> Unit:
-        if (unit := held.fleet.units.get(unit_id)) is None:
+    def _unit(manager: Manager, unit_id: str) -> Unit:
+        if (unit := manager.fleet.units.get(unit_id)) is None:
             raise FleetError(f"The fleet has no agent {unit_id}.")
         return unit
 
-    def _listener(self, fleet_id: str) -> Callable[[FleetEvent], None]:
+    def _how(self, fleet_id: str) -> dict[str, Any]:
+        """What a fleet's manager is made with: its harness, and what it says to whom."""
         def happened(event: FleetEvent) -> None:
             self._tell(Happened(fleet_id, event))
             # After the manager has finished with the event: it may end the fleet's task.
             asyncio.get_running_loop().call_soon(self._tell, Updated(fleet_id))
 
-        return happened
+        return {"harness": self._harness, "on_event": happened,
+                "on_change": lambda: self._tell(Updated(fleet_id))}
 
     def _tell(self, update: Update) -> None:
         for listener in list(self._listeners):

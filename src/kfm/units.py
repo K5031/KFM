@@ -69,10 +69,9 @@ def answer_note(supervisor: Unit | None, words: Vocabulary) -> str:
             f"in this turn goes to {reader} as your report.)")
 
 
-def brief(unit: Unit, supervisor: Unit | None, placed: list[Unit], words: Vocabulary) -> str:
+def brief(unit: Unit, supervisor: Unit | None, under: list[Unit], words: Vocabulary) -> str:
     """The unit's standing instruction: who it is in the fleet, its task, and how the fleet
-    works from where it stands. `placed`: the agents the person put under it, which start
-    when it does."""
+    works from where it stands. `under`: the agents it has when this is written."""
     who = f"{unit.name}, a" if unit.name else "a"
     lines = [(f"You are {who} K{unit.rank} agent in a fleet of AI agents that works "
               "without human supervision. A higher rank supervises the one below it.")]
@@ -106,10 +105,10 @@ def brief(unit: Unit, supervisor: Unit | None, placed: list[Unit], words: Vocabu
             "yours.")
     else:
         lines.append("- You are the lowest rank: there is no rank below you to hand work to.")
-    if placed:
-        lines.append("- The person already put these agents under you. One with a task has "
-                     "started on it; one with none starts on the first message it gets:")
-        lines += [f"  - {each.label}: {each.task or 'no task yet'}" for each in placed]
+    if under:
+        lines.append("- These agents are under you. One with a task works on it by itself; "
+                     "one with none starts on the first message it gets:")
+        lines += [f"  - {each.label}: {each.task or 'no task yet'}" for each in under]
     lines.append("- Every agent works in the same folder, and nothing keeps two from "
                  "changing the same file.")
     return "\n".join(lines)

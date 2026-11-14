@@ -64,7 +64,7 @@ def test_the_record_round_trips_and_another_format_is_refused(tmp_path: Path):
     again = Fleet.load(tmp_path)
     assert (again.top_rank, again.max_units) == (4, 7)
     assert [(u.id, u.name, u.state) for u in again.units.values()] == [
-        ("u1", "Lead", "starting"), ("u2", "A", "done")]
+        ("u1", "Lead", "planned"), ("u2", "A", "done")]
     assert again.add("B", "b", again.lead).id == "u3"
     (tmp_path / "fleet.json").write_text('{"format": 99}')
     with pytest.raises(ValueError, match="format 99"):

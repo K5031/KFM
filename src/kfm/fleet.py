@@ -12,10 +12,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-FORMAT = 7  # of fleet.json; a file of another format is refused
+FORMAT = 8  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
-# planned: placed by the person in a fleet that is not running; it starts with the fleet.
+# planned: in the fleet and not begun; it begins when the fleet runs and it has a task.
 # starting: its process is coming up.  working: on its task, between check-ins included.
 # waiting: it asked its supervisor and waits for the answer.  done: it reported.
 # idle: it ended a turn with nothing left to do and no report.  failed, stopped.
@@ -46,7 +46,7 @@ class Unit:
     budget_usd: float = 0.0  # the most this unit may spend
     model: str | None = None  # the person's choice for it; None: its rank's or team's
     token: str = field(default_factory=lambda: secrets.token_urlsafe(16))  # for the fleet tools
-    state: str = "starting"
+    state: str = "planned"
     session: str | None = None  # what its harness opens it on again (api.Session.begin)
     report: str | None = None
     question: str | None = None
@@ -110,8 +110,9 @@ class Fleet:
 
     def add(self, name: str, task: str, supervisor: Unit | None, *, team: str | None = None,
             ongoing: bool = False, budget_usd: float = 0.0) -> Unit:
-        """A new unit one rank below its supervisor, or the lead at the top rank. A name
-        is optional; with no task it waits for one: the first message it gets."""
+        """A new unit one rank below its supervisor, or the lead at the top rank, not
+        begun. A name is optional; with no task it waits for one: the first message it
+        gets."""
         name, task = name.strip(), task.strip()
         if supervisor is None:
             if self.lead is not None:

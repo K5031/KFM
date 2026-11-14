@@ -135,8 +135,7 @@ class Node(_Box):
         self.model_action.setEnabled(editable)
         self.rename_action.setEnabled(editable)
         self.remove_action.setEnabled(editable)
-        # One that has run is told of its new task, which a fleet that is stopped cannot do.
-        self.task_action.setEnabled(editable and (running or unit.session is None))
+        self.task_action.setEnabled(editable)
         room = NODE_W - 24 - 30  # beside the rank
         self.name.setText(QFontMetrics(self.name.font()).elidedText(
             unit.name or f"K{unit.rank}", Qt.TextElideMode.ElideRight, room))

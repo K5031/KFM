@@ -152,8 +152,8 @@ opens a window on the same service the commands talk to, without a terminal. It 
   settings. In a running fleet both happen at once (an agent starts again on its new
   model); in a stopped one they take effect when you start it.
 - **Task…** in an agent's right-click menu gives it another task. It keeps its
-  conversation, is told, and its supervisor is told. In a stopped fleet this works for
-  agents that have not run yet.
+  conversation, is told, and its supervisor is told. In a stopped fleet the agent works
+  on the new task when you start the fleet.
 - **Remove…** takes an agent out of the fleet, with every agent under it: they stop,
   and what they kept is deleted. Its supervisor is told, so the work can be picked up.
 - **Rename** an agent, a fleet or a project by right-clicking it and choosing
@@ -182,7 +182,8 @@ opens a window on the same service the commands talk to, without a terminal. It 
   the page is the whole fleet's feed.
 - **Attach files** to a message with the plus beside the box, by dropping them anywhere
   on the fleet's page, or by pasting them; a copied picture is pasted as a file. They go to the agent the message is for, which reads what it can (pictures, PDFs,
-  text and office files); files alone are a message too.
+  text and office files); files alone are a message too, except as the first message to an agent
+  that has no task yet, which needs words.
 - **Message one agent** by choosing it in the agents list first: the box then says whom
   it goes to. The agent is told the message is yours and that it stands over what its
   supervisor said; its supervisor is told what you said. With no agent chosen, or the
@@ -213,7 +214,7 @@ event, whichever way the fleet was run.
   a message and decides what to do next: answer, give the task again, or hand it to
   another agent.
 - **Spending.** Each agent has its own limit, and the fleet has one for everyone. When the
-  fleet's limit is reached, every agent is stopped.
+  fleet's limit is reached, the fleet stops.
 
 ## Settings
 

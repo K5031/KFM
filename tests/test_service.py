@@ -109,10 +109,12 @@ async def test_a_fleet_is_built_and_changed_through_the_service(tmp_path: Path):
     await service.remove_agent(fleet, writer)
     assert list(service.fleet(fleet).units) == [chief]
     await service.stop(fleet)
-    with pytest.raises(FleetError, match="has run"):
-        await service.set_task(fleet, chief, "Something else")
+    await service.set_task(fleet, chief, "Run the blog")  # one that has run, while stopped
+    assert service.fleet(fleet).units[chief].task == "Run the blog" and not harness.instructed[1:]
     await service.say(fleet, "Still there?")  # a message starts a stopped fleet
     await until(lambda: service.state(fleet).running)
+    assert any(name == "Chief" and "Your task: Run the blog" in instruction
+               for name, instruction in harness.instructed[1:])  # as it was started
     await service.aclose()
     assert list(Fleet.load(tmp_path / "home" / "projects" / made.id / "fleets"
                            / fleet.split("/")[1]).units) == [chief]

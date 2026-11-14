@@ -123,7 +123,7 @@ def fleet_tools(manager: Manager) -> MCPServer:
                    ctx: Context) -> str:
         with _refusals():
             unit = manager.fleet.subordinate(caller(ctx), agent)
-            await manager.stop(unit)
+            await manager.stop_unit(unit)
         return f"Stopped {unit.label}."
 
     @server.tool(description=(

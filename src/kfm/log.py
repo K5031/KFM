@@ -72,11 +72,15 @@ class Log:
             self._writer = None
 
     async def _write(self) -> None:
-        while (text := await self._lines.get()) is not None:
-            batch = [text]
-            while not self._lines.empty() and (more := self._lines.get_nowait()) is not None:
-                batch.append(more)
-            await asyncio.to_thread(self._append, batch)
+        closed = False
+        while not closed:
+            batch = [await self._lines.get()]
+            while not self._lines.empty():
+                batch.append(self._lines.get_nowait())
+            if None in batch:  # the close: what came before it is still written
+                closed, batch = True, batch[: batch.index(None)]
+            if batch:
+                await asyncio.to_thread(self._append, [line for line in batch if line])
 
     def _append(self, batch: list[str]) -> None:
         with contextlib.suppress(OSError), self._path.open("a") as record:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -16,6 +17,7 @@ from kfm.config import FleetConfig
 from kfm.events import Approval, Changed, Delivered, FleetEvent, Notice, Said
 from kfm.fleet import Fleet, FleetError
 from kfm.manager import Manager
+from tests.fakeharness import FakeHarness
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -286,3 +288,22 @@ async def test_a_running_fleet_is_not_resumed_again(fleet, tmp_path: Path):
     await manager.lead("Keep watch", ongoing=True, name="Lead")
     with pytest.raises(FleetError, match="is running"):
         await fleet({}, resume=True)
+
+
+async def test_a_harness_crash_fails_the_unit_instead_of_leaving_it_starting(
+        tmp_path: Path):
+    class Crashing(FakeHarness):
+        async def open(self, spec, on_event, session=None):
+            raise RuntimeError("the harness broke")
+
+    events: list[FleetEvent] = []
+    manager = Manager(FleetConfig(), tmp_path / "fleet", tmp_path,
+                      harness=Crashing({}), on_event=events.append)
+    await manager.start()
+    try:
+        with contextlib.suppress(RuntimeError):
+            await manager.lead("Do it", name="Lead")
+        lead = manager.fleet.units["u1"]
+        assert lead.state == "failed" and "harness broke" in lead.failure
+    finally:
+        await manager.aclose()

@@ -355,6 +355,10 @@ class Manager:
         except UnitError as e:
             await self._could_not_start(unit, e)
             return False
+        except Exception as e:  # a harness's own bug must not leave the unit starting
+            logger.exception("opening %s failed", unit.label)
+            await self._could_not_start(unit, UnitError(f"{type(e).__name__}: {e}"))
+            return False
         return True
 
     async def _begin(self, unit: Unit) -> None:

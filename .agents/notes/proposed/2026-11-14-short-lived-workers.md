@@ -43,6 +43,20 @@ of a model call.
   history, is what keeps a fresh worker from learning the project again.
 - **Nothing tells a lead to reuse or not to.** It is given the means and decides.
 
+**Who lives long is who holds the direction.** A long conversation is worth its cost
+where the value is in what has been decided along the way: what the person wants, what
+was tried and dropped, why a thing is as it is. A fresh agent can read the code again
+and not that, and the person pays for the gap in corrections. That is the lead, as it
+is a person's own long session with one agent. A worker building one named thing needs
+a good brief, not the history.
+
+**Watching is not a task.** Work that is itself ongoing ("watch the logs", "keep an eye
+on the inbox") needs an agent that stays, and such an agent has the cost described
+above. There should be as few as possible, ideally the lead alone, each kept cheap: a
+check that does almost nothing unless something changed (about 1.5 cents a check-in in
+the duty run of 2026-11-12, see [standing teams](2026-11-12-standing-teams.md)). A
+standing team is the role, its lead and what it knows; its workers come and go.
+
 ## Alternatives considered
 
 - **Reuse finished agents for the next task.** Possible today (a message to a finished

@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 SOCKET = "service.sock"  # in KFM's home
 IDLE_S = 5.0  # with no fleet running and nobody attached, before it ends
-SPENDING_S = 1.0  # how often a running fleet's spending is passed on
+LOOK_S = 1.0  # how often it looks whether it is idle, at most
 LINE_LIMIT = 16 * 1024 * 1024  # bytes: a fleet's history is one line
 CALLS = frozenset({
     "projects", "create_project", "rename_project", "delete_project", "draft", "cancel_draft",
@@ -45,7 +45,6 @@ class Server:
         self.service, self.path, self._idle_s = service, path, idle_s
         self._writers: set[asyncio.StreamWriter] = set()
         self._calls: set[asyncio.Task[None]] = set()
-        self._spent: dict[str, float] = {}
 
     async def run(self) -> None:
         """Serve until idle. RuntimeError when a service already answers on the socket."""
@@ -73,13 +72,7 @@ class Server:
     async def _until_idle(self) -> None:
         idle_since: float | None = None
         while True:
-            await asyncio.sleep(min(SPENDING_S, self._idle_s / 2))
-            for fleet_id in self.service.watched():
-                fleet = self.service.fleet(fleet_id)
-                spent = fleet.spent_usd if fleet is not None else 0.0
-                if self._spent.get(fleet_id) != spent:
-                    self._spent[fleet_id] = spent
-                    self._send_all(self._record(fleet_id))
+            await asyncio.sleep(min(LOOK_S, self._idle_s / 2))
             if self._writers or self.service.running():
                 idle_since = None
             elif idle_since is None:
@@ -91,9 +84,8 @@ class Server:
 
     def _update(self, update: Update) -> None:
         match update:
-            case Happened(fleet=fleet_id, event=event):
-                self._send_all(self._record(fleet_id))  # the units it speaks of, first
-                self._send_all({"update": "happened", "fleet": fleet_id,
+            case Happened(fleet=fleet_id, event=event, number=number):
+                self._send_all({"update": "happened", "fleet": fleet_id, "number": number,
                                 "event": log.encode(event, time.time())})
             case Updated(fleet=fleet_id):
                 self._send_all(self._record(fleet_id))
@@ -170,7 +162,8 @@ class Server:
             case "watch":
                 return self._record(args[0])
             case "history":
-                return [log.encode(event, 0.0) for event in result]
+                return {"events": [log.encode(event, 0.0) for event in result[0]],
+                        "upto": result[1]}
             case "settings" | "save_settings":
                 return settings.record(result)
         return result

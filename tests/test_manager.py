@@ -72,9 +72,12 @@ async def fleet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         await manager.aclose()
 
 
-def delivered(events: list[FleetEvent]) -> list[tuple[str, str | None, str, str]]:
-    return [(e.unit.name, e.to.name if e.to else None, e.kind, e.text)
-            for e in events if isinstance(e, Delivered)]
+def delivered(manager: Manager, events: list[FleetEvent]) -> list[tuple[str, str | None, str, str]]:
+    """Who sent what to whom, by the units' names."""
+    def name(unit: str | None) -> str | None:
+        return manager.fleet.units[unit].name if unit is not None else None
+
+    return [(name(e.unit), name(e.to), e.kind, e.text) for e in events if isinstance(e, Delivered)]
 
 
 async def test_a_task_is_delegated_and_the_reports_travel_up(fleet, tmp_path: Path):
@@ -86,9 +89,9 @@ async def test_a_task_is_delegated_and_the_reports_travel_up(fleet, tmp_path: Pa
     await asyncio.wait_for(manager.finished.wait(), 30)
     scout = manager.fleet.units["u2"]
     assert (lead.rank, scout.rank, scout.supervisor) == (5, 4, "u1")
-    assert [e.state for e in events if isinstance(e, Changed) and e.unit is lead] == [
+    assert [e.state for e in events if isinstance(e, Changed) and e.unit == lead.id] == [
         "starting", "working", "done"]
-    assert delivered(events) == [("Scout", "Lead", "report", "3 files"),
+    assert delivered(manager, events) == [("Scout", "Lead", "report", "3 files"),
                                  ("Lead", None, "report", "Scout counted 3 files.")]
     assert (lead.state, scout.state) == ("done", "done")
     assert lead.spent_usd > 0 and manager.fleet.spent_usd > lead.spent_usd
@@ -108,10 +111,10 @@ async def test_a_question_goes_to_the_supervisor_and_its_answer_back(fleet):
                   finish("Tidied docs/", when="your supervisor] Use docs/")]})
     await manager.add(None, "Lead", "Tidy up")
     await asyncio.wait_for(manager.finished.wait(), 30)
-    assert delivered(events) == [("Scout", "Lead", "question", "Which folder?"),
+    assert delivered(manager, events) == [("Scout", "Lead", "question", "Which folder?"),
                                  ("Scout", "Lead", "report", "Tidied docs/"),
                                  ("Lead", None, "report", "Docs are tidy.")]
-    states = [e.state for e in events if isinstance(e, Changed) and e.unit.name == "Scout"]
+    states = [e.state for e in events if isinstance(e, Changed) and e.unit == "u2"]
     assert "waiting" in states
 
 
@@ -125,7 +128,7 @@ async def test_a_finished_agent_that_is_told_more_has_its_goal_again_and_finishe
         "Scout": [finish("3 files")]}
     manager, events = await fleet(scripts)
     await manager.add(None, "Lead", "Find out how many files there are")
-    await until(lambda: delivered(events) == [("Scout", "Lead", "report", "3 files")])
+    await until(lambda: delivered(manager, events) == [("Scout", "Lead", "report", "3 files")])
     scout = manager.fleet.units["u2"]
     await until(lambda: scout.state == "done" and "u2" not in manager._sessions)
 
@@ -137,7 +140,7 @@ async def test_a_finished_agent_that_is_told_more_has_its_goal_again_and_finishe
         "runtime": {"model": "fake-1"}}))
     await manager.say("go on")
     await asyncio.wait_for(manager.finished.wait(), 30)
-    assert delivered(events) == [("Scout", "Lead", "report", "3 files"),
+    assert delivered(manager, events) == [("Scout", "Lead", "report", "3 files"),
                                  ("Scout", "Lead", "report", "Still 3 files."),
                                  ("Lead", None, "report", "Confirmed: 3.")]
     assert scout.state == "done"
@@ -150,7 +153,7 @@ async def test_the_lowest_rank_is_told_it_cannot_delegate(fleet):
     await manager.add(None, "Lead", "Do it")
     await asyncio.wait_for(manager.finished.wait(), 30)
     assert len(manager.fleet.units) == 1
-    assert "lowest rank" in delivered(events)[0][3]
+    assert "lowest rank" in delivered(manager, events)[0][3]
 
 
 async def test_the_lead_asks_the_person_and_carries_on_with_the_answer(fleet):
@@ -159,10 +162,10 @@ async def test_the_lead_asks_the_person_and_carries_on_with_the_answer(fleet):
                  finish("Painted it green.", when="green")]})
     lead = await manager.add(None, "Lead", "Paint it")
     await until(lambda: lead.state == "waiting")
-    assert delivered(events) == [("Lead", None, "question", "Blue or green?")]
+    assert delivered(manager, events) == [("Lead", None, "question", "Blue or green?")]
     await manager.say("green")
     await asyncio.wait_for(manager.finished.wait(), 30)
-    assert delivered(events)[-1] == ("Lead", None, "report", "Painted it green.")
+    assert delivered(manager, events)[-1] == ("Lead", None, "report", "Painted it green.")
 
 
 async def test_the_person_approves_what_permissions_do_not_cover(fleet, tmp_path: Path):
@@ -175,7 +178,7 @@ async def test_the_person_approves_what_permissions_do_not_cover(fleet, tmp_path
     approval = next(e for e in events if isinstance(e, Approval))
     assert approval.tool == "write_file" and str(outside) in approval.arguments
     assert not outside.exists()
-    await manager.approve(approval.unit, approval.request_id, True)
+    await manager.approve(manager.fleet.units[approval.unit], approval.request_id, True)
     await asyncio.wait_for(manager.finished.wait(), 30)
     assert outside.read_text() == "hello"
 
@@ -210,7 +213,7 @@ async def test_the_fleets_spending_limit_stops_everyone_until_it_is_given_more(f
     manager, events = await fleet({"Lead": [{"when": "go on", "text": "Going on."}]},
                                   resume=True, budget_usd=1.0, check_in_s=(60.0, 60.0))
     await manager.say("go on")
-    await until(lambda: "Going on." in said(events, "Lead"))
+    await until(lambda: "Going on." in said(manager, events, "Lead"))
 
 
 async def test_a_unit_that_cannot_start_has_failed(fleet, tmp_path: Path):
@@ -222,14 +225,15 @@ async def test_a_unit_that_cannot_start_has_failed(fleet, tmp_path: Path):
 # ── Resuming ─────────────────────────────────────────────────────────────
 
 
-def said(events: list[FleetEvent], name: str) -> list[str]:
-    return [e.text for e in events if isinstance(e, Said) and e.unit.name == name]
+def said(manager: Manager, events: list[FleetEvent], name: str) -> list[str]:
+    return [e.text for e in events
+            if isinstance(e, Said) and manager.fleet.units[e.unit].name == name]
 
 
 async def test_a_stopped_fleet_carries_on_where_it_was(fleet, tmp_path: Path):
     manager, events = await fleet({"Lead": [{"text": "On watch."}]})
     lead = await manager.add(None, "Lead", "Keep watch over the folder", ongoing=True)
-    await until(lambda: "On watch." in said(events, "Lead"))
+    await until(lambda: "On watch." in said(manager, events, "Lead"))
     await until(lambda: Fleet.load(tmp_path / "fleet").spent_usd > 0)  # while it runs
     session = lead.session
     await manager.aclose()
@@ -242,9 +246,9 @@ async def test_a_stopped_fleet_carries_on_where_it_was(fleet, tmp_path: Path):
                                             {"when": "anything new", "text": "All quiet."}]},
                                   resume=True)
     assert Fleet.load(tmp_path / "fleet").running
-    await until(lambda: "Back on watch." in said(events, "Lead"))
+    await until(lambda: "Back on watch." in said(manager, events, "Lead"))
     await manager.say("anything new?")
-    await until(lambda: "All quiet." in said(events, "Lead"))
+    await until(lambda: "All quiet." in said(manager, events, "Lead"))
     assert manager.fleet.units["u1"].session == session
     assert manager.fleet.spent_usd >= stopped.spent_usd
 
@@ -254,7 +258,7 @@ async def test_a_resumed_fleet_finishes_what_was_under_way(fleet, tmp_path: Path
         "Lead": [call("mcp__fleet__delegate", name="Scout", task="Tidy the docs")],
         "Scout": [call("ask_for_help", question="Which folder?")]})
     await manager.add(None, "Lead", "Tidy up")
-    await until(lambda: ("Scout", "Lead", "question", "Which folder?") in delivered(events))
+    await until(lambda: ("Scout", "Lead", "question", "Which folder?") in delivered(manager, events))
     await manager.aclose()
     assert Fleet.load(tmp_path / "fleet").units["u2"].state == "waiting"
 
@@ -266,7 +270,7 @@ async def test_a_resumed_fleet_finishes_what_was_under_way(fleet, tmp_path: Path
     assert manager.fleet.units["u2"].state == "working"  # its question went with its process
     await manager.say("go ahead")
     await asyncio.wait_for(manager.finished.wait(), 30)
-    assert delivered(events) == [("Scout", "Lead", "report", "Tidied docs/"),
+    assert delivered(manager, events) == [("Scout", "Lead", "report", "Tidied docs/"),
                                  ("Lead", None, "report", "Docs are tidy.")]
 
 
@@ -274,10 +278,10 @@ async def test_a_kadence_unit_is_given_another_task(fleet, tmp_path: Path):
     manager, events = await fleet({"Lead": [{"text": "On watch."},
                                             {"when": "task was changed", "text": "Counting."}]})
     lead = await manager.add(None, "Lead", "Keep watch over the folder", ongoing=True)
-    await until(lambda: "On watch." in said(events, "Lead"))
+    await until(lambda: "On watch." in said(manager, events, "Lead"))
     session = lead.session
     await manager.retask(lead, "Count the files")
-    await until(lambda: "Counting." in said(events, "Lead"))
+    await until(lambda: "Counting." in said(manager, events, "Lead"))
     assert lead.session == session and lead.state == "working"
 
 

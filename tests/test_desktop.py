@@ -31,10 +31,12 @@ from kfm.desktop import (
     SaidEntry,
     YouEntry,
 )
+from kfm.events import Said
 from kfm.fleet import Fleet
 from kfm.local import LocalService
 from kfm.remote import RemoteService
 from kfm.server import Server
+from kfm.service import FleetState
 from tests.fakeharness import FakeHarness
 
 TEAM = {
@@ -605,11 +607,13 @@ async def test_an_agents_task_is_changed_and_an_agent_is_removed_on_the_chart(
     await until(lambda: harness.instructed and "Map the code" in harness.instructed[0][1])
     assert "Map the code" in scout.toolTip()
 
+    assert any("u2" in entry.concerns for entry in view.entries)
     scout.remove_action.trigger()
     assert "Scout" in shown.dialog.question.text()
     shown.dialog.delete.click()
     await until(lambda: chart(shown) == {"dev": ["K5"]})
     assert list(view.fleet.units) == ["u1"]
+    assert not any("u2" in entry.concerns for entry in view.entries)  # what named it went
     shown.chart.heads[key].clicked.emit()  # its row in the agents list went with it
     await until(lambda: agents(shown) == [(0, "K5", "working")])
     shown.back_button.click()
@@ -626,6 +630,39 @@ async def test_an_agents_task_is_changed_and_an_agent_is_removed_on_the_chart(
     shown.dialog.delete.click()
     await until(lambda: chart(shown) == {"dev": []} and key in shown.chart.firsts)
     assert not Fleet.load(view.folder).units
+
+
+async def test_a_page_shows_each_event_once_where_its_history_and_what_happens_meet(
+        qapp: QApplication):
+    fleet = Fleet()
+    fleet.add("Lead", "Keep watch", None)
+    fetched = asyncio.Event()
+
+    class Stub:  # of the service, what a fleet's page asks of it
+        def fleet(self, fleet_id: str) -> Fleet:
+            return fleet
+
+        def state(self, fleet_id: str) -> FleetState:
+            return FleetState(running=True)
+
+        async def watch(self, fleet_id: str) -> None:
+            pass
+
+        async def history(self, fleet_id: str) -> tuple[list[Any], int]:
+            await fetched.wait()
+            return [Said("u1", "one"), Said("u1", "same")], 2
+
+    view = FleetView(Stub(), "p/f", Path("p/f"))
+    loading = view.load()
+    view.happened(Said("u1", "same"), 2)  # while the history is fetched, and in it
+    view.happened(Said("u1", "same"), 3)  # said again: the history lacks it
+    fetched.set()
+    await loading
+    assert view.load() is loading and view.loaded
+    view.happened(Said("u1", "later"), 4)
+    assert [entry.body.toPlainText() for entry in view.entries] == [
+        "one", "same", "same", "later"]
+    view.deleteLater()
 
 
 async def test_a_fleet_outlives_the_window_that_started_it(tmp_path: Path, qapp: QApplication):

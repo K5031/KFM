@@ -435,19 +435,30 @@ class Console:
         self.approvals: deque[Approval] = deque()
 
     def show(self, event: object) -> None:
+        record = self.service.fleet(self.fleet)
+        units = record.units if record is not None else {}
+        lead = record.lead if record is not None else None
+
+        def tag(unit: str) -> str:
+            return _tag(units[unit]) if unit in units else unit
+
+        def called(unit: str) -> str:
+            return units[unit].called if unit in units else unit
+
         match event:
             case Changed(unit=unit, state=state):
-                print(f"[{_tag(unit)}] {state}")
+                print(f"[{tag(unit)}] {state}")
             case Said(unit=unit, text=text):
-                print(f"[{_tag(unit)}] {text if unit.supervisor is None else _clip(text)}")
+                whole = lead is not None and unit == lead.id
+                print(f"[{tag(unit)}] {text if whole else _clip(text)}")
             case Delivered(unit=unit, to=to, kind=kind, text=text):
-                target = to.called if to is not None else "you"
-                print(f"[{_tag(unit)} → {target}] {kind}: {text}")
+                target = called(to) if to is not None else "you"
+                print(f"[{tag(unit)} → {target}] {kind}: {text}")
             case Instructed(unit=unit, by=by, kind=kind, text=text) if by is not None:
-                print(f"[{_tag(by)} → {unit.called}] {kind}: {_clip(text)}")
+                print(f"[{tag(by)} → {called(unit)}] {kind}: {_clip(text)}")
             case Approval(unit=unit, tool=tool, arguments=arguments):
                 self.approvals.append(event)
-                print(f"[{_tag(unit)}] wants to run {tool} {_clip(arguments)}. Allow? (y/n)")
+                print(f"[{tag(unit)}] wants to run {tool} {_clip(arguments)}. Allow? (y/n)")
             case Notice(text=text):
                 print(f"! {text}")
         sys.stdout.flush()
@@ -471,7 +482,7 @@ class Console:
         try:
             if self.approvals and text.lower() in ("y", "yes", "n", "no"):
                 approval = self.approvals.popleft()
-                await self.service.approve(self.fleet, approval.unit.id, approval.request_id,
+                await self.service.approve(self.fleet, approval.unit, approval.request_id,
                                            text.lower().startswith("y"))
             else:
                 await self.service.say(self.fleet, text)

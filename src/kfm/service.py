@@ -23,7 +23,7 @@ from kfm.draft import Draft
 from kfm.events import FleetEvent
 from kfm.fleet import Fleet
 
-VERSION = 1  # of this contract; a service and a client of different versions do not talk
+VERSION = 2  # of this contract; a service and a client of different versions do not talk
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,15 +47,18 @@ class FleetState:
 
 @dataclass(frozen=True, slots=True)
 class Happened:
-    """Something happened in a fleet."""
+    """Something happened in a fleet. The fleet's record already says who the units it
+    names are: an `Updated` comes first when it changed."""
 
     fleet: str
     event: FleetEvent
+    number: int  # its place in the fleet's history, from 1
 
 
 @dataclass(frozen=True, slots=True)
 class Updated:
-    """A fleet's record or state changed: `Service.fleet` and `Service.state` are current."""
+    """A fleet's record or state changed: `Service.fleet` and `Service.state` answer with
+    what they are now."""
 
     fleet: str
 
@@ -114,15 +117,18 @@ class Service(abc.ABC):
 
     @abc.abstractmethod
     def fleet(self, fleet: str) -> Fleet | None:
-        """A watched fleet's record, kept current; None for one that is not watched. It
-        is read, never changed: changes go through this contract."""
+        """A watched fleet's record as it is now; None for one that is not watched. It is
+        read, never changed or kept: changes go through this contract, and after an
+        `Updated` the record is asked for again."""
 
     @abc.abstractmethod
     def state(self, fleet: str) -> FleetState: ...
 
     @abc.abstractmethod
-    async def history(self, fleet: str) -> list[FleetEvent]:
-        """What happened in a watched fleet so far, oldest first."""
+    async def history(self, fleet: str) -> tuple[list[FleetEvent], int]:
+        """What happened in a watched fleet so far, oldest first, without what was about
+        an agent since removed; and the number of the last event it covers: a `Happened`
+        with a higher one came after it."""
 
     @abc.abstractmethod
     async def start(self, fleet: str, *, budget_usd: float | None = None) -> None:

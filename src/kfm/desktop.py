@@ -11,7 +11,7 @@ import getpass
 import sys
 import tempfile
 import time
-from collections.abc import Coroutine, Sequence
+from collections.abc import Callable, Coroutine, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +84,7 @@ from kfm.events import (
     Notice,
     Said,
     Told,
+    units,
 )
 from kfm.fleet import Fleet, FleetError, Unit
 from kfm.local import LocalService
@@ -155,20 +156,21 @@ class Line(QLabel):
 class SaidEntry(QWidget):
     """What an agent wrote in its own conversation."""
 
-    def __init__(self, unit: Unit, text: str) -> None:
+    def __init__(self, unit_id: str, unit: Unit | None, text: str) -> None:
+        """`unit`: who wrote it, as the fleet's record has it."""
         super().__init__()
-        self.concerns = {unit.id}
+        self.concerns = {unit_id}
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 4, 15, 4)  # in line with a card's text
         layout.setSpacing(3)
-        self.unit = unit.id
+        self.unit = unit_id
         self.header = QWidget()  # hidden where the page is this agent's conversation
         who = QHBoxLayout(self.header)
         who.setContentsMargins(0, 0, 0, 0)
         who.setSpacing(6)
-        who.addWidget(label(unit.name or f"K{unit.rank}", role="strong", wrap=False))
-        who.addWidget(label(f"K{unit.rank}" if unit.name else unit.id, role="small",
-                            tone="muted", wrap=False))
+        name, rank = (unit.name, f"K{unit.rank}") if unit is not None else ("", unit_id)
+        who.addWidget(label(name or rank, role="strong", wrap=False))
+        who.addWidget(label(rank if name else unit_id, role="small", tone="muted", wrap=False))
         who.addStretch(1)
         self.body = MarkdownView()
         self.body.setMarkdown(text)
@@ -179,16 +181,16 @@ class SaidEntry(QWidget):
 class DeliveryCard(QFrame):
     """A report, question, update or failure on its way up, with its whole text."""
 
-    def __init__(self, event: Delivered) -> None:
+    def __init__(self, event: Delivered, called: Callable[[str], str]) -> None:
         super().__init__()
         self.setObjectName("delivery")
         self.setProperty("you", event.to is None)  # it is the person's to read or answer
-        self.concerns = {event.unit.id} | ({event.to.id} if event.to is not None else set())
+        self.concerns = units(event)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(6)
-        target = event.to.called if event.to is not None else "you"
-        self.header = label(f"{event.unit.called} → {target} · {event.kind}", role="strong")
+        target = called(event.to) if event.to is not None else "you"
+        self.header = label(f"{called(event.unit)} → {target} · {event.kind}", role="strong")
         self.body = MarkdownView()
         self.body.setMarkdown(event.text)
         layout.addWidget(self.header)
@@ -198,15 +200,15 @@ class DeliveryCard(QFrame):
 class InstructionCard(QFrame):
     """What an agent was given by its supervisor: its task, or a message."""
 
-    def __init__(self, event: Instructed) -> None:
+    def __init__(self, event: Instructed, called: Callable[[str], str]) -> None:
         super().__init__()
         assert event.by is not None
         self.setObjectName("delivery")
-        self.concerns = {event.unit.id, event.by.id}
+        self.concerns = units(event)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(6)
-        self.header = label(f"{event.by.called} → {event.unit.called} · {event.kind}",
+        self.header = label(f"{called(event.by)} → {called(event.unit)} · {event.kind}",
                             role="strong")
         self.body = MarkdownView()
         self.body.setMarkdown(event.text)
@@ -217,14 +219,14 @@ class InstructionCard(QFrame):
 class ApprovalCard(QFrame):
     """An agent wants to do something its permissions do not cover."""
 
-    def __init__(self, event: Approval) -> None:
+    def __init__(self, event: Approval, called: str) -> None:
         super().__init__()
         self.setObjectName("prompt")
-        self.concerns = {event.unit.id}
-        self.asked = event
+        self.concerns = {event.unit}
+        self.asked, self.called = event, called
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
-        self.question = label(f"{event.unit.called} wants to run {event.tool} {event.arguments}")
+        self.question = label(f"{called} wants to run {event.tool} {event.arguments}")
         buttons = QHBoxLayout()
         self.allow = QPushButton("Allow")
         self.allow.setProperty("primary", True)
@@ -240,8 +242,8 @@ class ApprovalCard(QFrame):
         self.deny.hide()
         asked = self.asked
         self.question.setText(
-            f"Allowed: {asked.unit.called} ran {asked.tool} {asked.arguments}" if allow else
-            f"Denied: {asked.unit.called} wanted to run {asked.tool} {asked.arguments}")
+            f"Allowed: {self.called} ran {asked.tool} {asked.arguments}" if allow else
+            f"Denied: {self.called} wanted to run {asked.tool} {asked.arguments}")
 
 
 class YouEntry(QWidget):
@@ -911,9 +913,9 @@ class FleetView(QWidget):
         self.service, self.id, self.folder = service, fleet_id, folder
         self.entries: list[QWidget] = []
         self.shown: str | None = None  # the agent whose entries are shown; None: all
-        self.loaded = False  # its history is shown
-        self._early: list[FleetEvent] | None = []  # what happens until then
-        self._loading = False
+        self._upto: int | None = None  # the number of the last event shown; None: none yet
+        self._held: list[tuple[int, FleetEvent]] = []  # what happens until its history is shown
+        self._load: asyncio.Future[None] | None = None
         self._approvals: dict[str, ApprovalCard] = {}
         self._tasks: set[asyncio.Task[None]] = set()
 
@@ -1029,21 +1031,27 @@ class FleetView(QWidget):
             state = "finished"  # its task is done; the lead still takes messages
         return f"{state} · ${fleet.spent_usd:.2f} of ${how.budget_usd:.2f}"
 
-    async def load(self) -> None:
-        """Watch the fleet and show what happened in it so far. ValueError, OSError or
-        KeyError when its record cannot be read."""
-        if self._loading:
-            return
-        self._loading = True
+    def load(self) -> asyncio.Future[None]:
+        """Watch the fleet and show what happened in it so far: once, however often it is
+        asked for. A refusal of the service when the fleet cannot be read."""
+        if self._load is None:
+            self._load = asyncio.ensure_future(self._show_history())
+        return self._load
+
+    @property
+    def loaded(self) -> bool:
+        """Whether its history is shown."""
+        return self._upto is not None
+
+    async def _show_history(self) -> None:
         await self.service.watch(self.id)
-        history = await self.service.history(self.id)
-        early, self._early = self._early or [], None
-        # What happened while the history was fetched may be at its end too.
-        both = max((n for n in range(1, min(len(history), len(early)) + 1)
-                    if history[-n:] == early[:n]), default=0)
-        for event in (*history, *early[both:]):
+        history, upto = await self.service.history(self.id)
+        for event in history:
             self._show(event)
-        self.loaded = True
+        self._upto = upto
+        held, self._held = self._held, []
+        for number, event in held:  # what happened meanwhile, if the history lacks it
+            self.happened(event, number)
         self._enable()
 
     async def resume(self) -> None:
@@ -1067,14 +1075,7 @@ class FleetView(QWidget):
 
     async def remove(self, unit: Unit) -> None:
         """Take the agent and everything under it out of the fleet."""
-        gone = {each.id for each in self.fleet.subtree(unit)} if self.fleet is not None else set()
         await self.service.remove_agent(self.id, unit.id)
-        if self.shown in gone:
-            self.choose(None)
-        for entry in [e for e in self.entries if e.concerns and e.concerns <= gone]:
-            self.entries.remove(entry)  # what was only theirs goes with them
-            entry.setParent(None)
-            entry.deleteLater()
 
     async def rename(self, name: str, unit: Unit | None = None) -> None:
         """Another name for the agent, or for the fleet."""
@@ -1092,6 +1093,13 @@ class FleetView(QWidget):
 
     def updated(self) -> None:
         """Its record or state changed in the service."""
+        here = self.fleet.units.keys() if self.fleet is not None else set()
+        if self.shown is not None and self.shown not in here:
+            self.choose(None)
+        for entry in [e for e in self.entries if not e.concerns <= here]:
+            self.entries.remove(entry)  # what was about an agent taken out goes with it
+            entry.setParent(None)
+            entry.deleteLater()
         self._enable()
         self.changed.emit()
 
@@ -1173,18 +1181,24 @@ class FleetView(QWidget):
 
     async def _answer(self, event: Approval, allow: bool) -> None:
         try:
-            await self.service.approve(self.id, event.unit.id, event.request_id, allow)
+            await self.service.approve(self.id, event.unit, event.request_id, allow)
         except REFUSALS as e:
             self.say(str(e), tone="error")
 
-    def happened(self, event: FleetEvent) -> None:
-        """Something happened in the fleet."""
-        if self._early is not None:
-            self._early.append(event)
-            return
-        self._show(event)
-        QTimer.singleShot(0, lambda: self.scroll.verticalScrollBar().setValue(
-            self.scroll.verticalScrollBar().maximum()))
+    def happened(self, event: FleetEvent, number: int) -> None:
+        """Something happened in the fleet: its event of that number."""
+        if self._upto is None:
+            self._held.append((number, event))
+        elif number > self._upto:
+            self._upto = number
+            self._show(event)
+            QTimer.singleShot(0, lambda: self.scroll.verticalScrollBar().setValue(
+                self.scroll.verticalScrollBar().maximum()))
+
+    def _called(self, unit_id: str) -> str:
+        """What people read for the unit; its id for one the record does not have."""
+        unit = self.fleet.units.get(unit_id) if self.fleet is not None else None
+        return unit.called if unit is not None else unit_id
 
     def _show(self, event: FleetEvent) -> None:
         match event:
@@ -1192,16 +1206,18 @@ class FleetView(QWidget):
                 # A report or a question says the rest; a line only for what nothing else
                 # shows: it failed, was stopped, or ended without a report.
                 if state not in QUIET_STATES:
-                    self._add(Line(f"{unit.called} · {state}", {unit.id}, tone="warning"))
+                    self._add(Line(f"{self._called(unit)} · {state}", {unit}, tone="warning"))
             case Said(unit=unit, text=text):
-                self._add(SaidEntry(unit, text))
+                known = self.fleet.units.get(unit) if self.fleet is not None else None
+                self._add(SaidEntry(unit, known, text))
             case Delivered():
-                self._add(DeliveryCard(event))
+                self._add(DeliveryCard(event, self._called))
             case Instructed(unit=unit, by=by, text=text):
                 if text:  # the person's own is what they said; a supervisor's is a card
-                    self._add(YouEntry(text, unit.id) if by is None else InstructionCard(event))
+                    self._add(YouEntry(text, unit) if by is None
+                              else InstructionCard(event, self._called))
             case Approval():
-                card = ApprovalCard(event)
+                card = ApprovalCard(event, self._called(event.unit))
                 card.allow.clicked.connect(lambda: self._run(self._answer(event, True)))
                 card.deny.clicked.connect(lambda: self._run(self._answer(event, False)))
                 self._approvals[event.request_id] = card
@@ -1210,8 +1226,7 @@ class FleetView(QWidget):
                 if (card := self._approvals.pop(request_id, None)) is not None:
                     card.answered(allow)
             case Told(text=text, to=to, files=files):
-                to = to or (self.fleet.lead if self.fleet is not None else None)
-                self._add(YouEntry(text, to.id if to is not None else None, files))
+                self._add(YouEntry(text, to, files))
             case Notice(text=text):
                 self.say(text, tone="warning")
 
@@ -1629,9 +1644,9 @@ class FleetWindow(QMainWindow):
     def _update(self, update: Update) -> None:
         """What the service says happened."""
         match update:
-            case Happened(fleet=fleet_id, event=event):
+            case Happened(fleet=fleet_id, event=event, number=number):
                 if (view := self._by_id.get(fleet_id)) is not None:
-                    view.happened(event)
+                    view.happened(event, number)
             case Updated(fleet=fleet_id):
                 if (view := self._by_id.get(fleet_id)) is not None:
                     view.updated()

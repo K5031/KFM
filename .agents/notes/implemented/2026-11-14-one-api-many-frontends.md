@@ -52,10 +52,15 @@ the contract's version, and a frontend of another version is told so.
 (`desktop.py`) and the command line (`__main__.py`) take a `Service` and nothing else:
 neither imports the manager.
 
-- A client keeps a copy of each fleet it watches (`fleet.Fleet`, which is plain data).
-  The service sends a fleet's record before each of its events and when it changed; the
-  client updates its copy in place and hands frontends the manager's own `FleetEvent`s.
-  The window's chart, agents list and timeline read a `Fleet` as they did.
+- A client keeps the record of each fleet it watches (`fleet.Fleet`, which is plain
+  data) as the service last sent it. The manager says when the record or the fleet's
+  state changed, and the service sends the record then, ahead of any event that tells
+  of the change. Events are plain data too: they name units by id, and a frontend reads
+  who that is in the record. The window's chart, agents list and timeline read a
+  `Fleet`.
+- Each event has a number, its place in the fleet's log. `history` says which number it
+  reaches, so a frontend that opens a fleet shows the history and then what has a
+  higher number.
 - The command line has a command for each part of the contract. `kfm run` puts its
   fleet in a project, so the window shows it.
 
@@ -74,9 +79,13 @@ neither imports the manager.
 - **HTTP or WebSocket on localhost** with uvicorn, which KFM already has. A port on
   localhost is reachable by every local program and by web pages, so it needs a token
   and its own care; a socket file is guarded by the file system.
-- **Events with whole units inside.** Simpler to decode, but every event would carry
-  each unit's task and state, and a frontend would still need the record for agents that
-  no event has mentioned.
+- **Events with whole units inside.** Every event would carry each unit's task and
+  state, and a frontend would still need the record for agents that no event has
+  mentioned.
+- **Events that refer to the record's unit objects**, with the record sent before every
+  event so that they can be found (built first). Decoding failed for a unit the copy
+  lacked, spending needed a check every second, and a page had to compare the end of
+  its history with the events that came meanwhile to guess which were the same.
 
 ## Consequences
 

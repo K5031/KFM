@@ -1,22 +1,21 @@
 """What the manager tells whoever shows the fleet to the person: a frontend gets these as
-they happen (Manager's on_event), and the fleet's record keeps them (log.py)."""
+they happen (Manager's on_event), and the fleet's record keeps them (log.py). They are
+plain data: a unit is named by its id, and the fleet's record says who that is."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from kfm.fleet import Unit
-
 
 @dataclass(frozen=True, slots=True)
 class Changed:
-    unit: Unit
+    unit: str
     state: str  # what it became
 
 
 @dataclass(frozen=True, slots=True)
 class Said:
-    unit: Unit
+    unit: str
     text: str  # what the agent wrote in its own conversation
 
 
@@ -25,8 +24,8 @@ class Delivered:
     """A report, question, failure or update on its way up: to the unit's supervisor, or
     with `to` None to the person."""
 
-    unit: Unit
-    to: Unit | None
+    unit: str
+    to: str | None
     kind: str  # report, question, failure, update, stopped
     text: str
 
@@ -36,8 +35,8 @@ class Instructed:
     """What a unit is given from above: its task, or a message from its supervisor. `by`
     None: the person gave it."""
 
-    unit: Unit
-    by: Unit | None
+    unit: str
+    by: str | None
     kind: str  # task, message
     text: str
 
@@ -47,7 +46,7 @@ class Approval:
     """A unit wants to do something its permissions do not cover. Answer with
     Manager.approve."""
 
-    unit: Unit
+    unit: str
     request_id: str
     tool: str
     arguments: str
@@ -57,7 +56,7 @@ class Approval:
 class Answered:
     """The person answered an Approval."""
 
-    unit: Unit
+    unit: str
     request_id: str
     allow: bool
 
@@ -67,7 +66,7 @@ class Told:
     """What the person said to a unit."""
 
     text: str
-    to: Unit | None = None
+    to: str | None = None
     files: tuple[str, ...] = ()  # paths of what went with it
 
 
@@ -78,3 +77,9 @@ class Notice:
 
 type FleetEvent = (Changed | Said | Delivered | Instructed | Approval | Answered | Told
                    | Notice)
+
+
+def units(event: FleetEvent) -> set[str]:
+    """The ids of the units the event names."""
+    named = (getattr(event, name, None) for name in ("unit", "to", "by"))
+    return {unit for unit in named if unit is not None}

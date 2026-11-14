@@ -16,6 +16,7 @@ from typing import Any
 
 from kfm import api, harnesses, log, units
 from kfm import config as settings
+from kfm import fleet as records
 from kfm.api import (
     Harness,
     Instruction,
@@ -61,8 +62,8 @@ class Manager:
                  on_event: Callable[[FleetEvent], None] = lambda event: None,
                  on_change: Callable[[], None] = lambda: None) -> None:
         """`harness`: the agent program the units run; None: the one the fleet's settings
-        name, loaded when it starts. `on_change`: called when the record, or whether the
-        fleet runs, changed."""
+        name, loaded when it starts. `on_change`: called when the record, or how the
+        fleet stands, changed, before any event that tells of it."""
         self.folder, self.fleet, self.work = folder, fleet, Path(fleet.work)
         self.config = settings.from_record(fleet.settings)
         self.running = False  # its processes are up, or ending
@@ -71,11 +72,13 @@ class Manager:
         self._own_harness, self._harness = harness, harness
         self._on_event, self._on_change = on_event, on_change
         self._log = log.Log(folder)  # every event, for whoever opens the fleet later
+        self.count = 0  # of the events so far: the newest one's number
         self._tools: ToolServer  # the fleet tools, made each time it starts
         self._switch = asyncio.Lock()  # one start or stop at a time
         self._sessions: dict[str, Session] = {}
         self._opening: dict[str, asyncio.Lock] = {}  # one start of a unit's process at a time
         self._tasks: set[asyncio.Task[None]] = set()
+        self._unsaved = False
         self._saving = asyncio.Lock()
 
     @classmethod
@@ -92,7 +95,9 @@ class Manager:
     def load(cls, folder: Path, **how: Any) -> Manager:
         """The fleet kept in `folder`, not running. ValueError when its record cannot be
         read. Blocking."""
-        return cls(folder, Fleet.load(folder), **how)
+        manager = cls(folder, Fleet.load(folder), **how)
+        manager.count = log.count(folder)
+        return manager
 
     @property
     def up(self) -> bool:
@@ -127,11 +132,11 @@ class Manager:
             self.fleet.manager_pid = os.getpid()
             self.running = True
             self.finished.clear()
-            await self._save()
             everyone = list(self.fleet.units.values())
             for unit in everyone:
                 if unit.active and unit.session is None:  # stopped while its process came up
                     unit.state = "planned"
+            self._changed()
             # Every unit is open before any is told: a supervisor that acts at once finds
             # its agents there.
             back = [unit for unit in everyone if unit.active and await self._reopen(unit)]
@@ -146,7 +151,7 @@ class Manager:
             if not self.running:
                 return
             self.stopping = True
-            self._on_change()
+            self._changed()
             try:
                 await self._close_all()
                 mine = [task for task in self._tasks if task is not asyncio.current_task()]
@@ -158,6 +163,7 @@ class Manager:
             finally:
                 self.running = self.stopping = False
                 self.fleet.manager_pid = None
+                self._changed()
                 await self._save()
 
     async def flush(self) -> None:
@@ -207,12 +213,13 @@ class Manager:
                             files=files, spoken=spoken)
         if supervisor is not None and supervisor.active:  # one that has ended is not woken
             self._spawn(self._tell_quietly(supervisor, units.overheard(unit, text, files)))
-        self._emit(Told(text, unit, tuple(files)))
+        self._emit(Told(text, unit.id, tuple(files)))
 
     async def set_model(self, unit: Unit, model: str | None) -> None:
         """The model the unit runs on from now; None or "": its rank's or team's. A unit
         at work is started again on it, in its own conversation."""
         unit.model = model or None
+        self._changed()
         await self._save()
         if unit.id not in self._sessions:
             return  # its process starts on it the next time
@@ -231,7 +238,7 @@ class Manager:
         be."""
         if not task.strip():
             raise FleetError("A task cannot be empty.")
-        self._emit(Instructed(unit, None, "task", task.strip()))
+        self._emit(Instructed(unit.id, None, "task", task.strip()))
         await self._assign(unit, task)
         supervisor = self.fleet.supervisor_of(unit)
         if self.up and supervisor is not None and supervisor.active:
@@ -245,6 +252,7 @@ class Manager:
         gone = self.fleet.remove(unit)
         for each in gone:
             self._opening.pop(each.id, None)
+        self._changed()
         await self._save()
         await asyncio.to_thread(_forget, self.folder, gone)
         self._emit(Notice(f"You removed {unit.called}"
@@ -260,12 +268,13 @@ class Manager:
             unit.name = name
         else:
             self.fleet.name = name
+        self._changed()
         await self._save()
 
     async def approve(self, unit: Unit, request_id: str, allow: bool) -> None:
         if (session := self._sessions.get(unit.id)) is not None:
             await session.approve(request_id, allow)
-            self._emit(Answered(unit, request_id, allow))
+            self._emit(Answered(unit.id, request_id, allow))
 
     # ── What units do, through the fleet tools ───────────────────────────
 
@@ -290,6 +299,7 @@ class Manager:
             raise FleetError(f"{unit.label} has not begun.")
         session = await self._session(unit)
         unit.question = None  # this is its answer
+        self._changed()
         ended = unit.state in ("done", "idle")  # its instruction stands no more
         if unit.state in _OVER:
             unit.report = unit.failure = None
@@ -304,7 +314,7 @@ class Manager:
             await self._assign(unit, text)
         else:
             await self.tell(unit, f"[Message from {supervisor.label}, your supervisor] {text}")
-        self._emit(Instructed(unit, supervisor, "message", text))
+        self._emit(Instructed(unit.id, supervisor.id, "message", text))
 
     async def update(self, unit: Unit, text: str) -> None:
         """A unit's update for its supervisor, without ending its work."""
@@ -327,8 +337,9 @@ class Manager:
         unit = self.fleet.add(name, task, supervisor, team=team, ongoing=ongoing,
                               budget_usd=budget)
         unit.model = model or None
+        self._changed()
         if unit.task:
-            self._emit(Instructed(unit, by, "task", unit.task))
+            self._emit(Instructed(unit.id, by.id if by is not None else None, "task", unit.task))
         await self._launch([unit])
         await self._save()
         return unit
@@ -339,6 +350,7 @@ class Manager:
         if not (task := task.strip()):
             raise FleetError("A task cannot be empty.")
         unit.task = task
+        self._changed()
         if unit.session is None:
             await self._launch([unit])
         else:
@@ -363,8 +375,7 @@ class Manager:
         not one, or it could not start."""
         if unit.state != "planned" or not unit.task:
             return False
-        unit.state = "starting"
-        self._emit(Changed(unit, unit.state))
+        self._set(unit, "starting")
         try:
             await self._open(unit, resume=False)
         except UnitError as e:
@@ -391,6 +402,7 @@ class Manager:
         except UnitError as e:
             await self._could_not_start(unit, e)
             return
+        self._changed()
         if unit.state == "starting":
             self._set(unit, "working")
 
@@ -398,7 +410,7 @@ class Manager:
         """Open a unit that was at work when the fleet stopped, on its session, with its
         instruction as the fleet now has it. False: it could not be."""
         unit.question = None  # an open question does not outlive the unit's process
-        self._emit(Changed(unit, unit.state))
+        self._emit(Changed(unit.id, unit.state))
         try:
             await (await self._session(unit)).instruct(self._instruction(unit))
         except UnitError as e:
@@ -460,17 +472,17 @@ class Manager:
                 if unit.state != "working":
                     self._turn_ended(unit)
             case api.Said(text=text):
-                self._emit(Said(unit, text))
+                self._emit(Said(unit.id, text))
             case api.Reported(text=text):
                 unit.report = text
             case api.Asked(question=question):
                 unit.question = question
             case api.Spent(usd=usd):
                 unit.spent_usd = usd
-                self._spawn(self._save())
+                self._changed()
                 self._check_budget()
             case api.ApprovalNeeded(request_id=request_id, tool=tool, arguments=arguments):
-                self._emit(Approval(unit, request_id, tool, arguments))
+                self._emit(Approval(unit.id, request_id, tool, arguments))
             case api.Failed(message=message):
                 unit.failure = message
                 self._set(unit, "failed")
@@ -491,7 +503,7 @@ class Manager:
                 self._spawn(self._close(unit))
                 if unit.supervisor is None:
                     self.finished.set()
-                    self._on_change()
+                    self._changed()
             case "waiting":
                 self._deliver(
                     unit, "question",
@@ -516,7 +528,7 @@ class Manager:
 
     def _deliver(self, unit: Unit, kind: str, message: str, text: str) -> None:
         supervisor = self.fleet.supervisor_of(unit)
-        self._emit(Delivered(unit, supervisor, kind, text))
+        self._emit(Delivered(unit.id, supervisor.id if supervisor is not None else None, kind, text))
         if supervisor is not None:
             self._spawn(self._tell_quietly(supervisor, message))
 
@@ -535,6 +547,7 @@ class Manager:
         self._emit(Notice(f"The fleet reached its spending limit of "
                           f"${self.config.budget_usd:.2f}; every agent is stopped."))
         self.finished.set()
+        self._changed()
         self._spawn(self.stop())
 
     # ── Bookkeeping ──────────────────────────────────────────────────────
@@ -542,17 +555,27 @@ class Manager:
     def _set(self, unit: Unit, state: str) -> None:
         if unit.state != state:
             unit.state = state
-            self._emit(Changed(unit, unit.state))
+            self._changed()
+            self._emit(Changed(unit.id, state))
+
+    def _changed(self) -> None:
+        """The record changed, or how the fleet stands: whoever shows the fleet is told
+        now, and the record is written soon."""
+        self._on_change()
+        if not self._unsaved:
+            self._unsaved = True
             self._spawn(self._save())
 
     async def _save(self) -> None:
-        """The record changed: whoever shows the fleet is told, and it is written."""
-        self._on_change()
+        """Return once the record as it is now is in its file."""
         async with self._saving:
-            with contextlib.suppress(OSError):
-                await asyncio.to_thread(self.fleet.save, self.folder)
+            if self._unsaved:
+                self._unsaved = False
+                with contextlib.suppress(OSError):
+                    await asyncio.to_thread(records.write, self.folder, self.fleet.record())
 
     def _emit(self, event: FleetEvent) -> None:
+        self.count += 1
         self._log.add(event)
         try:
             self._on_event(event)

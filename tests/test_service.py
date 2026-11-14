@@ -8,12 +8,12 @@ from pathlib import Path
 import pytest
 
 from kfm.config import FleetConfig
-from kfm.events import Delivered, Said, Told
+from kfm.events import Delivered, Said, Told, units
 from kfm.fleet import Fleet, FleetError
 from kfm.local import LocalService
 from kfm.remote import RemoteService, ServiceError
 from kfm.server import Server
-from kfm.service import Happened, Listed, Update, Updated
+from kfm.service import Happened, Listed, Service, Update, Updated
 from tests.fakeharness import FakeHarness
 
 TEAM = {
@@ -39,8 +39,9 @@ def local(tmp_path: Path, scripts) -> tuple[LocalService, FakeHarness, list[Upda
     return service, harness, seen
 
 
-def reports(seen: list[Update]) -> list[tuple[str, str]]:
-    return [(u.event.unit.called, u.event.text) for u in seen
+def reports(service: Service, seen: list[Update]) -> list[tuple[str, str]]:
+    """What was delivered, with the names the fleets' records give the units."""
+    return [(service.fleet(u.fleet).units[u.event.unit].called, u.event.text) for u in seen
             if isinstance(u, Happened) and isinstance(u.event, Delivered)]
 
 
@@ -51,7 +52,8 @@ async def test_a_project_and_a_fleet_through_the_service(tmp_path: Path):
     assert (made.name, made.fleets, made.running) == ("Acme", 0, 0) and Listed() in seen
     fleet = await service.add_fleet(made.id, "dev", "Tidy up", ongoing=False, budget_usd=3.0)
     assert fleet.startswith(f"{made.id}/") and await service.fleets(made.id) == [fleet]
-    await until(lambda: reports(seen) == [("Scout", "Tidied docs/"), ("K5 u1", "Docs are tidy.")])
+    await until(lambda: reports(service, seen) == [("Scout", "Tidied docs/"),
+                                                   ("K5 u1", "Docs are tidy.")])
     await until(lambda: service.state(fleet).finished)
     record = service.fleet(fleet)
     assert [(u.called, u.state) for u in record.units.values()] == [("K5 u1", "done"),
@@ -65,8 +67,12 @@ async def test_a_project_and_a_fleet_through_the_service(tmp_path: Path):
     await until(lambda: any("Thanks" in heard for heard in harness.heard["K5 u1"]))
     await service.stop(fleet)
     assert not service.state(fleet).running and (await service.projects())[0].running == 0
-    kinds = [type(event) for event in await service.history(fleet)]
+    history, upto = await service.history(fleet)
+    kinds = [type(event) for event in history]
     assert Told in kinds and Delivered in kinds
+    happened = [u for u in seen if isinstance(u, Happened)]
+    assert [u.number for u in happened] == list(range(1, upto + 1))  # each has its place
+    assert history == [u.event for u in happened]
 
     await service.rename_project(made.id, "Globex")
     await service.rename_fleet(fleet, "docs")
@@ -106,8 +112,12 @@ async def test_a_fleet_is_built_and_changed_through_the_service(tmp_path: Path):
         await service.set_model(fleet, "u9", "x")
     await service.say(fleet, "Shorter ones", writer)
     await until(lambda: any("Shorter ones" in heard for heard in harness.heard["Writer"]))
+    assert any(units(event) == {writer} for event in (await service.history(fleet))[0])
     await service.remove_agent(fleet, writer)
     assert list(service.fleet(fleet).units) == [chief]
+    history, upto = await service.history(fleet)  # what was about it went with it
+    assert history and not any(writer in units(event) for event in history)
+    assert upto > len(history)  # the events keep their numbers
     await service.stop(fleet)
     await service.set_task(fleet, chief, "Run the blog")  # one that has run, while stopped
     assert service.fleet(fleet).units[chief].task == "Run the blog" and not harness.instructed[1:]
@@ -152,12 +162,15 @@ async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
 
     first = await RemoteService.connect(home, socket=socket, start=False)
     seen: list[Update] = []
+    strangers: list[Update] = []  # events that name a unit the record does not have yet
     first.subscribe(seen.append)
+    first.subscribe(lambda u: isinstance(u, Happened) and not units(u.event) <= first.fleet(
+        u.fleet).units.keys() and strangers.append(u))
     made = await first.create_project("Acme", str(tmp_path / "work"))
     fleet = await first.add_fleet(made.id, "dev", "Tidy up", budget_usd=3.0)
     await until(lambda: first.fleet(fleet) is not None and len(first.fleet(fleet).units) == 2)
     await until(lambda: any(isinstance(u, Happened) and isinstance(u.event, Said)
-                            and u.event.unit.called == "Scout" for u in seen))
+                            and u.event.unit == "u2" for u in seen))
     assert first.state(fleet).running and first.state(fleet).budget_usd == 3.0
     assert Listed() in seen and Updated(fleet) in seen
 
@@ -169,8 +182,8 @@ async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
     assert (listed.name, listed.fleets, listed.running) == ("Acme", 1, 1)
     assert await second.fleets(made.id) == [fleet]
     assert [u.called for u in second.fleet(fleet).units.values()] == ["K5 u1", "Scout"]
-    told = [type(event).__name__ for event in await second.history(fleet)]
-    assert "Instructed" in told
+    history, upto = await second.history(fleet)
+    assert "Instructed" in [type(event).__name__ for event in history] and upto >= len(history)
 
     await second.say(fleet, "hello")  # what one says, both see
     for watching in (seen, later):
@@ -179,9 +192,12 @@ async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
             and u.event.text == "Hi there." for u in w))
     assert sum(1 for u in seen if isinstance(u, Happened) and isinstance(u.event, Said)
                and u.event.text == "Hi there.") == 1  # once
-    scout = second.fleet(fleet).units["u2"]
+    assert all(u.number > upto for u in later if isinstance(u, Happened))  # after the history
+    assert not strangers  # a frontend's record had every unit an event named
+    assert first.fleet(fleet).spent_usd > 0  # spending is a change like any other
     await second.rename_agent(fleet, "u2", "Tidier")
-    await until(lambda: scout.name == "Tidier" and first.fleet(fleet).units["u2"].name == "Tidier")
+    await until(lambda: second.fleet(fleet).units["u2"].name == "Tidier"
+                and first.fleet(fleet).units["u2"].name == "Tidier")
     with pytest.raises(FleetError, match="no agent"):
         await first.set_model(fleet, "u9", "x")
     assert (await first.settings()).budget_usd == 10.0

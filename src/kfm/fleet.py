@@ -30,6 +30,14 @@ def delete(folder: Path) -> None:
     shutil.rmtree(folder)
 
 
+def write(folder: Path, record: dict[str, Any]) -> None:
+    """Put a fleet's record (Fleet.record) into its folder. Blocking."""
+    target = folder / RECORD
+    partial = target.with_suffix(".tmp")
+    partial.write_text(json.dumps(record, indent=2))
+    partial.replace(target)
+
+
 class FleetError(ValueError):
     """A request the hierarchy does not allow; its message is for the unit that asked."""
 
@@ -177,39 +185,20 @@ class Fleet:
                 "manager_pid": self.manager_pid,
                 "units": [asdict(u) for u in self.units.values()]}
 
-    def update(self, data: dict[str, Any]) -> None:
-        """Make this fleet what the record says, in place: a unit it already has stays
-        the same object. ValueError for a record of another format."""
-        if data.get("format") != FORMAT:
-            raise ValueError(f"the record is of format {data.get('format')}, not {FORMAT}")
-        self.top_rank, self.max_units, self.name = (data["top_rank"], data["max_units"],
-                                                    data["name"])
-        self.work, self.settings = data["work"], data["settings"]
-        self.manager_pid = data["manager_pid"]
-        self._next, self.removed_usd = data["next"], data["removed_usd"]
-        units: dict[str, Unit] = {}
-        for record in data["units"]:
-            unit = self.units.get(record["id"])
-            if unit is None:
-                unit = Unit(**record)
-            else:
-                for key, value in record.items():
-                    setattr(unit, key, value)
-            units[unit.id] = unit
-        self.units = units
-
     @classmethod
     def of(cls, data: dict[str, Any]) -> Fleet:
-        """The fleet a record describes."""
-        fleet = cls(data.get("top_rank", 5))
-        fleet.update(data)
+        """The fleet a record describes. ValueError for a record of another format."""
+        if data.get("format") != FORMAT:
+            raise ValueError(f"the record is of format {data.get('format')}, not {FORMAT}")
+        fleet = cls(data["top_rank"], data["max_units"], data["name"])
+        fleet.work, fleet.settings = data["work"], data["settings"]
+        fleet.manager_pid = data["manager_pid"]
+        fleet._next, fleet.removed_usd = data["next"], data["removed_usd"]
+        fleet.units = {record["id"]: Unit(**record) for record in data["units"]}
         return fleet
 
     def save(self, folder: Path) -> None:
-        target = folder / RECORD
-        partial = target.with_suffix(".tmp")
-        partial.write_text(json.dumps(self.record(), indent=2))
-        partial.replace(target)
+        write(folder, self.record())
 
     @classmethod
     def load(cls, folder: Path) -> Fleet:

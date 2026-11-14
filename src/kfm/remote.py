@@ -1,12 +1,11 @@
 """The service that `kfm serve` runs, as a frontend holds it: `kfm.service` over the
-socket (kfm.server). It keeps a copy of every fleet it watches, made current by what the
-service sends, so that a frontend reads a `Fleet` and gets the manager's own events as it
-would in the service's process. Letting go of it leaves the fleets running."""
+socket (kfm.server). It keeps the record of every fleet it watches as the service last
+sent it, so that a frontend reads a `Fleet` and gets the manager's own events as it would
+in the service's process. Letting go of it leaves the fleets running."""
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import itertools
 import json
 import subprocess
@@ -132,15 +131,9 @@ class RemoteService(Service):
     def state(self, fleet: str) -> FleetState:
         return self._states.get(fleet, FleetState())
 
-    async def history(self, fleet: str) -> list[FleetEvent]:
-        record = self._fleets.get(fleet)
-        if record is None:
-            raise ValueError(f"The fleet {fleet} is not being watched.")
-        found = []
-        for data in await self._request("history", fleet):
-            with contextlib.suppress(ValueError, KeyError, TypeError):  # a unit since removed
-                found.append(log.decode(data, record)[1])
-        return found
+    async def history(self, fleet: str) -> tuple[list[FleetEvent], int]:
+        kept = await self._request("history", fleet)
+        return [log.decode(data)[1] for data in kept["events"]], kept["upto"]
 
     async def start(self, fleet: str, *, budget_usd: float | None = None) -> None:
         await self._request("start", fleet, budget_usd=budget_usd)
@@ -247,18 +240,14 @@ class RemoteService(Service):
                     self._keep(message)
                 self._tell(Updated(fleet_id))
             case "happened" if fleet_id in self._fleets:
-                with contextlib.suppress(ValueError, KeyError, TypeError):
-                    self._tell(Happened(fleet_id, log.decode(
-                        message["event"], self._fleets[fleet_id])[1]))
+                self._tell(Happened(fleet_id, log.decode(message["event"])[1],
+                                    message["number"]))
 
     def _keep(self, message: dict[str, Any]) -> None:
         fleet_id = message["fleet"]
         if message["record"] is None:
             raise ValueError(f"There is no fleet {fleet_id}.")
-        if (kept := self._fleets.get(fleet_id)) is None:
-            self._fleets[fleet_id] = Fleet.of(message["record"])
-        else:
-            kept.update(message["record"])
+        self._fleets[fleet_id] = Fleet.of(message["record"])
         self._states[fleet_id] = FleetState(**message["state"])
 
     def _drop(self, fleet_id: str) -> None:

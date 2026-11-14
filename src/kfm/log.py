@@ -8,12 +8,11 @@ import asyncio
 import contextlib
 import json
 import time
-from dataclasses import fields
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from kfm import events
-from kfm.fleet import Fleet, Unit
 
 FILE = "log.jsonl"
 _KINDS = {kind.__name__: kind for kind in (events.Changed, events.Said, events.Delivered,
@@ -23,23 +22,15 @@ _KINDS = {kind.__name__: kind for kind in (events.Changed, events.Said, events.D
 
 
 def encode(event: events.FleetEvent, at: float) -> dict[str, Any]:
-    """The event as plain data: its kind, the time, and its fields, units by their ids."""
-    data: dict[str, Any] = {"t": round(at, 3), "type": type(event).__name__}
-    for field in fields(event):
-        value = getattr(event, field.name)
-        data[field.name] = value.id if isinstance(value, Unit) else value
-    return data
+    """The event as plain data: its kind, the time, and its fields."""
+    return {"t": round(at, 3), "type": type(event).__name__, **asdict(event)}
 
 
-def decode(data: dict[str, Any], fleet: Fleet) -> tuple[float, events.FleetEvent]:
-    """What `encode` made, with the units of `fleet`. ValueError, KeyError or TypeError
-    for what is not an event of this fleet (a unit it no longer has, a kind unknown)."""
+def decode(data: dict[str, Any]) -> tuple[float, events.FleetEvent]:
+    """What `encode` made. ValueError, KeyError or TypeError for what is not an event."""
     data = dict(data)
     kind = _KINDS[data.pop("type")]
     at = data.pop("t")
-    for name in ("unit", "to", "by"):
-        if data.get(name) is not None:
-            data[name] = fleet.units[data[name]]
     if "files" in data:
         data["files"] = tuple(data["files"])
     return at, kind(**data)
@@ -50,14 +41,25 @@ def line(event: events.FleetEvent, at: float) -> str:
     return json.dumps(encode(event, at), ensure_ascii=False)
 
 
-def read(folder: Path, fleet: Fleet) -> list[tuple[float, events.FleetEvent]]:
-    """The fleet's events with their times, oldest first; none when it has no record.
-    Lines that cannot be read (cut off by a crash) are left out. Blocking."""
+def count(folder: Path) -> int:
+    """How many events the fleet's record holds: an event's number is its line's.
+    Blocking."""
+    try:
+        with (folder / FILE).open("rb") as record:
+            return sum(1 for _ in record)
+    except FileNotFoundError:
+        return 0
+
+
+def read(folder: Path, upto: int | None = None) -> list[tuple[float, events.FleetEvent]]:
+    """The fleet's events with their times, oldest first, as far as number `upto`; none
+    when it has no record. Lines that cannot be read (cut off by a crash) are left out.
+    Blocking."""
     found: list[tuple[float, events.FleetEvent]] = []
     with contextlib.suppress(FileNotFoundError):
-        for text in (folder / FILE).read_text().splitlines():
+        for text in (folder / FILE).read_text().splitlines()[:upto]:
             try:
-                found.append(decode(json.loads(text), fleet))
+                found.append(decode(json.loads(text)))
             except (ValueError, KeyError, TypeError):
                 continue
     return found

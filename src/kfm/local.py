@@ -15,7 +15,7 @@ from kfm import draft, harnesses, log, project
 from kfm import fleet as records
 from kfm.api import Harness
 from kfm.config import CONFIG_FILE, HOME, FleetConfig, load, save
-from kfm.events import FleetEvent
+from kfm.events import FleetEvent, units
 from kfm.fleet import Fleet, FleetError, Unit
 from kfm.manager import Manager
 from kfm.service import FleetState, Happened, Listed, ProjectInfo, Service, Update, Updated
@@ -136,11 +136,13 @@ class LocalService(Service):
         return FleetState(manager.up, manager.stopping, manager.finished.is_set(),
                           manager.config.budget_usd)
 
-    async def history(self, fleet_id: str) -> list[FleetEvent]:
+    async def history(self, fleet_id: str) -> tuple[list[FleetEvent], int]:
         manager = self._get(fleet_id)
+        upto = manager.count
         await manager.flush()
-        return [event for _, event in await asyncio.to_thread(
-            log.read, manager.folder, manager.fleet)]
+        kept = await asyncio.to_thread(log.read, manager.folder, upto)
+        # What was about an agent since removed went with it.
+        return [event for _, event in kept if units(event) <= manager.fleet.units.keys()], upto
 
     async def start(self, fleet_id: str, *, budget_usd: float | None = None) -> None:
         await self._get(fleet_id).start(budget_usd=budget_usd)
@@ -258,9 +260,7 @@ class LocalService(Service):
     def _how(self, fleet_id: str) -> dict[str, Any]:
         """What a fleet's manager is made with: its harness, and what it says to whom."""
         def happened(event: FleetEvent) -> None:
-            self._tell(Happened(fleet_id, event))
-            # After the manager has finished with the event: it may end the fleet's task.
-            asyncio.get_running_loop().call_soon(self._tell, Updated(fleet_id))
+            self._tell(Happened(fleet_id, event, self._managers[fleet_id].count))
 
         return {"harness": self._harness, "on_event": happened,
                 "on_change": lambda: self._tell(Updated(fleet_id))}

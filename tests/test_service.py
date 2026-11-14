@@ -68,8 +68,8 @@ async def test_a_project_and_a_fleet_through_the_service(tmp_path: Path):
     await until(lambda: any("Thanks" in heard for heard in harness.heard["K5 u1"]))
     await service.stop(fleet)
     assert not service.state(fleet).running and (await service.projects())[0].running == 0
-    stopped = service.state(fleet)  # every agent had finished: there is nothing to start
-    assert (stopped.status, stopped.can_start, stopped.has_run) == ("stopped", False, True)
+    stopped = service.state(fleet)  # the lead, told more, was at work again
+    assert (stopped.status, stopped.can_start, stopped.has_run) == ("stopped", True, True)
     history, upto = await service.history(fleet)
     kinds = [type(event) for event in history]
     assert Told in kinds and Delivered in kinds

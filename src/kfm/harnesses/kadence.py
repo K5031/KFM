@@ -55,7 +55,8 @@ TOOLS = "fleet"  # the MCP server's name in a unit: its tools are mcp__fleet__<t
 WORDS = Vocabulary(finish="finish_goal", ask="ask_for_help", tools=f"mcp__{TOOLS}__")
 UNIT_RECORD = "unit.json"
 _LINE_LIMIT = 16 * 1024 * 1024
-_ACTIVE = (AgentState.THINKING, AgentState.RUNNING_TOOLS, AgentState.AWAITING_PERMISSION)
+_ACTIVE = (AgentState.THINKING, AgentState.RUNNING_TOOLS, AgentState.AWAITING_PERMISSION,
+           AgentState.FINISHING)  # a turn is over when what follows the answer is too
 
 
 def factory(options: dict[str, Any]) -> KadenceHarness:

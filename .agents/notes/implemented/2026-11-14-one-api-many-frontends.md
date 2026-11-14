@@ -50,7 +50,8 @@ the contract's version, and a frontend of another version is told so.
 
 **Frontends are clients.** `kfm/remote.py` is `Service` over that socket. The window
 (`desktop.py`) and the command line (`__main__.py`) take a `Service` and nothing else:
-neither imports the manager.
+neither imports the manager or the service in a process, and both know a project and a
+fleet by the id the service gives it, never by where its record is kept.
 
 - A client keeps the record of each fleet it watches (`fleet.Fleet`, which is plain
   data) as the service last sent it. The manager says when the record or the fleet's

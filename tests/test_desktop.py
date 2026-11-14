@@ -72,7 +72,8 @@ async def window(tmp_path: Path, qapp: QApplication):
     def make(scripts: dict[str, list[dict[str, Any]]]) -> tuple[FleetWindow, FakeHarness]:
         harness = FakeHarness(scripts)
         (tmp_path / "work").mkdir(exist_ok=True)
-        shown = FleetWindow(tmp_path / "home", harness=harness, config=FleetConfig())
+        shown = FleetWindow(LocalService(tmp_path / "home", harness=harness,
+                                         config=FleetConfig()))
         shown.resize(1100, 720)
         shown.show()
         made.append(shown)
@@ -81,6 +82,12 @@ async def window(tmp_path: Path, qapp: QApplication):
     yield make
     for shown in made:
         await shown.shut()
+
+
+def folder(tmp_path: Path, fleet_id: str) -> Path:
+    """Where the service keeps what has this id: a project's, or a fleet's."""
+    owner, _, fleet = fleet_id.partition("/")
+    return tmp_path / "home" / "projects" / owner / ("fleets" if fleet else "") / fleet
 
 
 async def start(window: FleetWindow, tmp_path: Path, task: str, *, name: str = "dev",
@@ -170,7 +177,7 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
     await until(lambda: "finished" in shown.status.text())
     assert "of $3.00" in shown.status.text()
     assert view.fleet.work == str(tmp_path / "work")
-    assert view.folder.parent == shown.project.folder / "fleets"
+    assert view.id.startswith(f"{shown.project.id}/") and shown.views == {view.id: view}
 
 
 async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: Path):
@@ -349,7 +356,7 @@ async def test_the_person_adds_an_agent_and_sets_a_model_on_the_chart(window, tm
     await until(lambda: not dialog.isVisible())  # once its process is up
     assert ("Tester", "small-1") in harness.models
     assert not view.fleet.units["u2"].ongoing  # a task, unless Duty is chosen
-    tester = shown.chart.nodes[(str(view.folder), "u2")]
+    tester = shown.chart.nodes[(view.id, "u2")]
     assert "small-1" in tester.toolTip()
 
     lead.model_action.trigger()
@@ -372,7 +379,7 @@ async def test_a_fleet_is_built_by_hand_and_then_started(window, tmp_path: Path)
     shown.start_form.start.click()  # nothing it should do: no lead builds it
     await until(lambda: chart(shown) == {"content": []})
     [view] = shown.views.values()
-    key = str(view.folder)
+    key = view.id
     head, first = shown.chart.heads[key], shown.chart.firsts[key]
     assert "not started" in head.status.text() and not head.start.isVisibleTo(shown)
 
@@ -428,16 +435,16 @@ async def test_a_project_is_deleted_with_its_fleets_and_not_its_work(window, tmp
     view = await start(shown, tmp_path, "Keep watch", duty=True)
     await until(lambda: shown.projects.count() == 1
                 and shown.projects.item(0).data(FLEETS_ROLE) == 1)
-    folder = shown.project.folder
+    kept = folder(tmp_path, shown.project.id)
     (tmp_path / "work" / "kept.txt").write_text("the agents' work")
     shown.ask_delete(shown.projects.item(0))  # what a right-click on it offers
     assert "Acme" in shown.dialog.question.text() and "1 fleet" in shown.dialog.question.text()
     shown.dialog.reject()
     await asyncio.sleep(0.05)
-    assert folder.exists() and view.running
+    assert kept.exists() and view.running
     shown.ask_delete(shown.projects.item(0))
     shown.dialog.delete.click()
-    await until(lambda: not folder.exists())
+    await until(lambda: not kept.exists())
     await until(lambda: shown.projects.count() == 0 and shown.project_form.isVisibleTo(shown))
     assert not shown.views and shown.project is None and not view.running
     assert (tmp_path / "work" / "kept.txt").exists()
@@ -450,14 +457,14 @@ async def test_a_fleet_is_deleted_from_the_chart(window, tmp_path: Path):
     second = await start(shown, tmp_path, "Keep watch", name="art", duty=True)
     shown.back_button.click()
     await until(lambda: chart(shown) == {"dev": ["K5"], "art": ["K5"]})
-    shown.chart.heads[str(first.folder)].delete_action.trigger()
+    shown.chart.heads[first.id].delete_action.trigger()
     assert "dev" in shown.dialog.question.text()
     shown.dialog.reject()
     await asyncio.sleep(0.05)
-    assert first.folder.exists() and first.running
-    shown.chart.heads[str(first.folder)].delete_action.trigger()
+    assert folder(tmp_path, first.id).exists() and first.running
+    shown.chart.heads[first.id].delete_action.trigger()
     shown.dialog.delete.click()
-    await until(lambda: not first.folder.exists())
+    await until(lambda: not folder(tmp_path, first.id).exists())
     await until(lambda: chart(shown) == {"art": ["K5"]})
     assert list(shown.views.values()) == [second] and second.running and not first.running
     await until(lambda: shown.projects.item(0).data(FLEETS_ROLE) == 1)
@@ -469,7 +476,7 @@ async def test_an_agent_a_fleet_and_a_project_are_renamed(window, tmp_path: Path
     view = await start(shown, tmp_path, "Tidy up", name="dev")
     shown.back_button.click()
     await until(lambda: chart(shown) == {"dev": ["K5", "Scout K4"]})
-    key = str(view.folder)
+    key = view.id
 
     def rename(action, to: str) -> None:
         action.trigger()
@@ -486,7 +493,7 @@ async def test_an_agent_a_fleet_and_a_project_are_renamed(window, tmp_path: Path
     await view.stop()
     rename(shown.chart.nodes[(key, "u1")].rename_action, "Chief")  # and while it does not
     await until(lambda: chart(shown) == {"docs": ["Chief K5", "Tidier K4"]})
-    saved = Fleet.load(view.folder)
+    saved = Fleet.load(folder(tmp_path, view.id))
     assert (saved.name, [u.name for u in saved.units.values()]) == ("docs", ["Chief", "Tidier"])
 
     shown.ask_rename(shown.projects.item(0))  # what a right-click on it offers
@@ -495,7 +502,7 @@ async def test_an_agent_a_fleet_and_a_project_are_renamed(window, tmp_path: Path
     shown.dialog.accept()
     await until(lambda: shown.projects.item(0).text() == "Globex")
     assert shown.title.text() == "Globex" and shown.project.name == "Globex"
-    assert project.load(shown.project.folder).name == "Globex"
+    assert project.load(folder(tmp_path, shown.project.id)).name == "Globex"
 
 
 async def test_the_chosen_agent_is_the_one_messaged(window, tmp_path: Path):
@@ -560,7 +567,7 @@ async def test_files_are_attached_to_a_message(window, tmp_path: Path):
 
 
 async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp: QApplication):
-    shown = FleetWindow(tmp_path / "home", harness=FakeHarness({}))  # settings from its home
+    shown = FleetWindow(LocalService(tmp_path / "home", harness=FakeHarness({})))  # its home's
     shown.show()
     try:
         assert shown.profile_button.text().strip() == getpass.getuser()
@@ -598,7 +605,7 @@ async def test_an_agents_task_is_changed_and_an_agent_is_removed_on_the_chart(
     view = await start(shown, tmp_path, "Tidy up", duty=True)
     shown.back_button.click()
     await until(lambda: chart(shown) == {"dev": ["K5", "Scout K4"]})
-    key = str(view.folder)
+    key = view.id
     scout = shown.chart.nodes[(key, "u2")]
     scout.task_action.trigger()
     assert shown.dialog.task.toPlainText() == "Map the docs"
@@ -629,7 +636,7 @@ async def test_an_agents_task_is_changed_and_an_agent_is_removed_on_the_chart(
     lead.remove_action.trigger()
     shown.dialog.delete.click()
     await until(lambda: chart(shown) == {"dev": []} and key in shown.chart.firsts)
-    assert not Fleet.load(view.folder).units
+    assert not Fleet.load(folder(tmp_path, view.id)).units
 
 
 async def test_a_page_shows_each_event_once_where_its_history_and_what_happens_meet(
@@ -652,7 +659,7 @@ async def test_a_page_shows_each_event_once_where_its_history_and_what_happens_m
             await fetched.wait()
             return [Said("u1", "one"), Said("u1", "same")], 2
 
-    view = FleetView(Stub(), "p/f", Path("p/f"))
+    view = FleetView(Stub(), "p/f")
     loading = view.load()
     view.happened(Said("u1", "same"), 2)  # while the history is fetched, and in it
     view.happened(Said("u1", "same"), 3)  # said again: the history lacks it
@@ -676,8 +683,7 @@ async def test_a_fleet_outlives_the_window_that_started_it(tmp_path: Path, qapp:
     serving = asyncio.ensure_future(Server(owner, socket, idle_s=0.3).run())
     await until(socket.exists)
 
-    first = FleetWindow(home, service=await RemoteService.connect(home, socket=socket,
-                                                                 start=False))
+    first = FleetWindow(await RemoteService.connect(home, socket=socket, start=False))
     first.show()
     view = await start(first, tmp_path, "Keep watch", duty=True)
     await until(lambda: "running" in first.status.text())
@@ -685,8 +691,7 @@ async def test_a_fleet_outlives_the_window_that_started_it(tmp_path: Path, qapp:
     await first.shut()
     assert owner.state(view.id).running  # nobody is watching, and it runs
 
-    again = FleetWindow(home, service=await RemoteService.connect(home, socket=socket,
-                                                                 start=False))
+    again = FleetWindow(await RemoteService.connect(home, socket=socket, start=False))
     again.show()
     try:
         await until(lambda: chart(again) == {"dev": ["K5"]})
@@ -726,7 +731,7 @@ async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, mo
     assert not form.warning.isVisibleTo(shown) and form.folder_button.text().strip() == "work"
     form.create.click()
     await until(lambda: shown.project is not None)
-    assert shown.project.work == tmp_path / "work" and form.folder is None
+    assert shown.project.work == str(tmp_path / "work") and form.folder is None
 
 
 async def test_the_window_adds_itself_to_the_app_menu(window, tmp_path: Path, monkeypatch):

@@ -44,7 +44,7 @@ RADIUS = 14
 
 @dataclass(frozen=True, slots=True)
 class ChartFleet:
-    key: str  # tells fleets apart: its folder
+    key: str  # tells fleets apart: its id in the service
     name: str
     status: str
     fleet: Fleet | None  # None until its record is read

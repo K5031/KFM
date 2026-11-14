@@ -21,7 +21,7 @@ A fleet that lives inside whatever started it, the window with its managers and
   renaming agents, another task or model, a message to one agent and files exist only in
   the window. What a frontend can do is decided by where the code happened to be written.
 
-Kayden has the answer for one agent: a runtime behind `RuntimeAPI`, and the desktop
+Kadence has the answer for one agent: a runtime behind `RuntimeAPI`, and the desktop
 window, the terminal UI and the headless channel as frontends of it.
 
 ## Decision
@@ -43,7 +43,7 @@ agent programs.
 use it directly, with the second harness.
 
 **One service.** `kfm serve` runs it and answers the contract on a Unix socket in KFM's
-home (`kfm/server.py`), one JSON object a line, as Kayden's headless channel speaks.
+home (`kfm/server.py`), one JSON object a line, as Kadence's headless channel speaks.
 Any number of frontends attach. One that finds no service starts it, detached. It ends
 when no fleet runs and no frontend is attached. The first line of a connection names
 the contract's version, and a frontend of another version is told so.
@@ -65,10 +65,10 @@ neither imports the manager.
 
 - **Add command-line commands one at a time.** Each would be a second copy of code that
   is in the window, and a terminal still could not reach a fleet the window runs.
-- **One process per fleet**, as a Kayden instance is one process. Projects, the list of
+- **One process per fleet**, as a Kadence instance is one process. Projects, the list of
   fleets and settings then belong to no process, and a frontend holds a connection per
   fleet and finds them by scanning folders.
-- **Kayden's stdio channel as it is.** It speaks to a child process, which ends with its
+- **Kadence's stdio channel as it is.** It speaks to a child process, which ends with its
   parent: the opposite of what is wanted. Its line format is taken; its transport is
   not.
 - **HTTP or WebSocket on localhost** with uvicorn, which KFM already has. A port on
@@ -94,6 +94,6 @@ neither imports the manager.
 - `kfm run` lost `--fleet`, `--config`, `--unit-budget` and `--top-rank`: where a fleet
   is kept and what it gets are the service's.
 - Checked on the second harness, in process and over the socket with two frontends, in
-  the window's tests, and with the real command and real Kayden units on a scripted
+  the window's tests, and with the real command and real Kadence units on a scripted
   model. Not checked: with a real model, on a real display, or a service left running
   across an upgrade.

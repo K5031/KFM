@@ -1,12 +1,12 @@
 [project]
 name = "kfm"
 version = "0.0.0"
-description = "Kayden Fleet Manager: teams of Kayden agents that work toward a goal without supervision"
+description = "Kadence Fleet Manager: teams of Kadence agents that work toward a goal without supervision"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
-    "kayden",
+    "kadence",
     "mcp>=2.3.0",
     "pydantic>=2",
     "tomli-w>=1.2.0",
@@ -20,17 +20,17 @@ kfm = "kfm.__main__:main"
 kfm-desktop = "kfm.desktop:main"
 
 [project.optional-dependencies]
-desktop = ["kayden[desktop]"]  # the window is built on Kayden's desktop code
+desktop = ["kadence[desktop]"]  # the window is built on Kadence's desktop code
 
 [project.entry-points."kfm.harnesses"]
-kayden = "kfm.harnesses.kayden:factory"
+kadence = "kfm.harnesses.kadence:factory"
 
 [tool.uv.sources]
-kayden = { path = "../Kayden", editable = true }
+kadence = { path = "../Kadence", editable = true }
 
 [dependency-groups]
 dev = [
-    "kayden[desktop]",
+    "kadence[desktop]",
     "pytest",
     "pytest-asyncio",
     "ruff",

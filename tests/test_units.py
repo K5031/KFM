@@ -3,7 +3,7 @@ from pathlib import Path
 
 from kfm.api import UnitSpec, Vocabulary
 from kfm.fleet import Fleet
-from kfm.harnesses import kayden
+from kfm.harnesses import kadence
 from kfm.units import brief
 
 
@@ -14,12 +14,12 @@ def spec(tmp_path: Path, unit_id: str, **fields) -> UnitSpec:
                        "tools_url": "http://127.0.0.1:1/mcp?unit=abc", **fields})
 
 
-def test_a_kayden_units_folder_holds_the_base_configuration_with_its_own_limits(
+def test_a_kadence_units_folder_holds_the_base_configuration_with_its_own_limits(
         tmp_path: Path):
-    base = tmp_path / "kayden.toml"
+    base = tmp_path / "kadence.toml"
     base.write_text('[core]\nfactory = "x:y"\n[runtime]\nmodel = "base"\n'
                     'maintenance_model = "light"\n[frontend]\nfactory = "a:b"\n')
-    harness = kayden.factory({"config": str(base)})
+    harness = kadence.factory({"config": str(base)})
     harness.prepare(spec(tmp_path, "u1"))
     harness.prepare(spec(tmp_path, "u2", model="mid", budget_usd=0.5))
     lead_config = tomllib.loads((tmp_path / "u1" / "config.toml").read_text())
@@ -41,7 +41,7 @@ def test_the_brief_says_where_the_unit_stands_in_its_harnesss_words():
     lead = fleet.add("Lead", "Ship the site", None)
     worker = fleet.add("Builder", "Build the page", lead, team="web")
     watcher = fleet.add("Watcher", "Watch the logs", lead, ongoing=True)
-    words = kayden.WORDS
+    words = kadence.WORDS
     top, low, standing = (brief(lead, None, [], words), brief(worker, lead, [], words),
                           brief(watcher, lead, [], words))
     assert "You are Lead, a K2 agent" in top and "Your task: Ship the site" in top

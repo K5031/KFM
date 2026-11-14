@@ -1,4 +1,4 @@
-"""A fleet end to end: real Kayden units, run headless, with a scripted model
+"""A fleet end to end: real Kadence units, run headless, with a scripted model
 (tests/fakecore.py)."""
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ async def fleet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     async def make(scripts: dict[str, list[dict[str, Any]]], *, resume: bool = False,
                    **settings: Any) -> tuple[Manager, list[FleetEvent]]:
-        base = tmp_path / "kayden.toml"
+        base = tmp_path / "kadence.toml"
         base.write_text(tomli_w.dumps({
             "core": {"factory": "tests.fakecore:factory", "options": {"scripts": scripts}},
             "runtime": {"model": "fake-1"}}))
@@ -239,7 +239,7 @@ async def test_a_stopped_fleet_carries_on_where_it_was(fleet, tmp_path: Path):
     assert stopped.units["u1"].state == "working"  # interrupted, not failed or stopped
     assert not stopped.running
 
-    # Its Kayden waits for a message after it was closed: the manager says what happened.
+    # Its Kadence waits for a message after it was closed: the manager says what happened.
     manager, events = await fleet({"Lead": [{"when": "started again", "text": "Back on watch."},
                                             {"when": "anything new", "text": "All quiet."}]},
                                   resume=True)
@@ -272,7 +272,7 @@ async def test_a_resumed_fleet_finishes_what_was_under_way(fleet, tmp_path: Path
                                  ("Lead", None, "report", "Docs are tidy.")]
 
 
-async def test_a_kayden_unit_is_given_another_task(fleet, tmp_path: Path):
+async def test_a_kadence_unit_is_given_another_task(fleet, tmp_path: Path):
     manager, events = await fleet({"Lead": [{"text": "On watch."},
                                             {"when": "task was changed", "text": "Counting."}]})
     lead = await manager.lead("Keep watch over the folder", ongoing=True, name="Lead")

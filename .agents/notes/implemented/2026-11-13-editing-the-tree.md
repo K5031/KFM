@@ -84,5 +84,5 @@ knowledge, and the unit contract has no way to ask.
 - A model id that the harness does not know fails the agent when it starts; the chart
   shows it failed.
 - The menu is reached by right-click only; nothing on an agent's box shows it is there.
-- Checked on the second harness. Not checked: with real Kayden units, so that a
-  conversation carries on under another model is taken from Kayden, not seen here.
+- Checked on the second harness. Not checked: with real Kadence units, so that a
+  conversation carries on under another model is taken from Kadence, not seen here.

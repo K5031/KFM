@@ -50,6 +50,6 @@ one's name, what it is there to do, and whether that is a duty or a task.
 - A draft lives in the window: closing the window, or the agent's process, loses it, and
   the project is then empty.
 - The draft guards against waste only if the person reads it before starting it.
-- Checked with a real Kayden unit on a scripted model, and in the window on the second
+- Checked with a real Kadence unit on a scripted model, and in the window on the second
   harness. Not checked: with a real model, so what a model proposes for a description is
   not known.

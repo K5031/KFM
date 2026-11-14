@@ -1,4 +1,4 @@
-"""A fleet on a harness that is not Kayden (tests/fakeharness.py): what the manager needs
+"""A fleet on a harness that is not Kadence (tests/fakeharness.py): what the manager needs
 of a unit is in kfm.api and nowhere else."""
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from kfm import harnesses, log
 from kfm.config import FleetConfig
 from kfm.events import Delivered, FleetEvent, Instructed, Notice, Told
 from kfm.fleet import Fleet, FleetError, Unit
-from kfm.harnesses.kayden import KaydenHarness
+from kfm.harnesses.kadence import KadenceHarness
 from kfm.manager import Manager, lay_out, place
 from tests.fakeharness import FakeHarness
 
@@ -50,7 +50,7 @@ async def test_a_fleet_runs_on_another_harness(tmp_path: Path):
                                  ("Scout", "Lead", "report", "Tidied docs/"),
                                  ("Lead", None, "report", "Docs are tidy.")]
     assert lead.session == "session-u1" and lead.spent_usd > 0
-    # The words KFM wrote to the units name this harness's tools, not Kayden's.
+    # The words KFM wrote to the units name this harness's tools, not Kadence's.
     brief, question = harness.heard["Lead"][0], harness.heard["Lead"][1]
     assert "fleet.delegate" in brief and "call done with a report" in brief
     assert "fleet.message(agent=\"u2\"" in question
@@ -127,14 +127,14 @@ async def test_what_happens_in_a_fleet_is_kept_in_its_record(tmp_path: Path):
 
 
 def test_a_harness_is_found_by_its_name_or_its_import_path(tmp_path: Path):
-    by_name = harnesses.load("kayden", {"config": str(tmp_path / "kayden.toml")})
-    assert isinstance(by_name, KaydenHarness) and by_name.config == tmp_path / "kayden.toml"
+    by_name = harnesses.load("kadence", {"config": str(tmp_path / "kadence.toml")})
+    assert isinstance(by_name, KadenceHarness) and by_name.config == tmp_path / "kadence.toml"
     by_path = harnesses.load("tests.fakeharness:FakeHarness", {})
     assert isinstance(by_path, FakeHarness)
-    with pytest.raises(ValueError, match="no harness 'nope'.*kayden"):
+    with pytest.raises(ValueError, match="no harness 'nope'.*kadence"):
         harnesses.load("nope", {})
     with pytest.raises(ValueError, match="could not be loaded"):
-        harnesses.load("kayden", {"wrong": 1})
+        harnesses.load("kadence", {"wrong": 1})
 
 
 async def test_the_person_adds_an_agent_and_sets_models(tmp_path: Path):

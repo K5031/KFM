@@ -1,2 +1,2 @@
-"""Kayden Fleet Manager: teams of Kayden agents that work toward a goal without
+"""Kadence Fleet Manager: teams of Kadence agents that work toward a goal without
 supervision."""

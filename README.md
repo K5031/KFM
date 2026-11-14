@@ -1,6 +1,6 @@
 # KFM
 
-Kayden Fleet Manager runs a team of [Kayden](https://github.com/K5031/Kayden) agents on one
+Kadence Fleet Manager runs a team of [Kadence](https://github.com/K5031/Kadence) agents on one
 task. You tell the lead agent what you want; it plans, hands parts of the work to agents
 below it, checks what comes back and reports to you. The fleet works without supervision,
 inside the spending limit and permissions you set.

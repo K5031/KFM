@@ -25,10 +25,10 @@ class FleetConfig:
     max_units: int = 12
     budget_usd: float = 10.0  # the whole fleet; reaching it stops every unit
     unit_budget_usd: float = 2.0  # each unit's own limit, unless its supervisor sets less
-    permissions: str = "allow_workspace"  # Kayden's level for every unit
+    permissions: str = "allow_workspace"  # Kadence's level for every unit
     models: Mapping[str, str] = field(default_factory=dict)
     teams: Mapping[str, str] = field(default_factory=dict)
-    harness: str = "kayden"
+    harness: str = "kadence"
     harness_options: Mapping[str, Any] = field(default_factory=dict)
     # A unit's duty intervals: it carries on soon after a turn, and checks in this often
     # when nothing wakes it.

@@ -1,5 +1,5 @@
 """`kfm serve`: the service of this process (kfm.local) answering `kfm.service` on a Unix
-socket, for any number of frontends. One JSON object a line, as Kayden's headless channel
+socket, for any number of frontends. One JSON object a line, as Kadence's headless channel
 speaks: the first line names the contract's version; a request {"id", "method", "args",
 "kwargs"} is answered by {"id", "result"} or {"id", "error": {"type", "message"}}; what
 happens arrives as lines with "update" and no id. It ends when no fleet runs and no

@@ -1,6 +1,6 @@
-"""Kayden as a fleet's unit: an unchanged Kayden, run headless in the unit's data folder.
+"""Kadence as a fleet's unit: an unchanged Kadence, run headless in the unit's data folder.
 This module writes that folder's configuration, starts the process, and turns what
-Kayden's headless channel says into the unit contract's events (kfm.api)."""
+Kadence's headless channel says into the unit contract's events (kfm.api)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import tomli_w
-from kayden.api import (
+from kadence.api import (
     AgentState,
     ConversationUpdated,
     EventEnvelope,
@@ -29,8 +29,8 @@ from kayden.api import (
     ToolCall,
     UsageUpdated,
 )
-from kayden.frontends.remote import Channel
-from kayden.frontends.wire import from_json
+from kadence.frontends.remote import Channel
+from kadence.frontends.wire import from_json
 
 from kfm.api import (
     ApprovalNeeded,
@@ -58,19 +58,19 @@ _LINE_LIMIT = 16 * 1024 * 1024
 _ACTIVE = (AgentState.THINKING, AgentState.RUNNING_TOOLS, AgentState.AWAITING_PERMISSION)
 
 
-def factory(options: dict[str, Any]) -> KaydenHarness:
-    """Options: `config`, the Kayden configuration every unit starts from: its provider,
-    key and options (default ~/.kayden/config.toml); `command`, how Kayden is started
-    (default: this Python's `-m kayden`)."""
+def factory(options: dict[str, Any]) -> KadenceHarness:
+    """Options: `config`, the Kadence configuration every unit starts from: its provider,
+    key and options (default ~/.kadence/config.toml); `command`, how Kadence is started
+    (default: this Python's `-m kadence`)."""
     options = dict(options)
-    config = Path(options.pop("config", Path.home() / ".kayden" / "config.toml")).expanduser()
-    command = tuple(options.pop("command", (sys.executable, "-m", "kayden")))
+    config = Path(options.pop("config", Path.home() / ".kadence" / "config.toml")).expanduser()
+    command = tuple(options.pop("command", (sys.executable, "-m", "kadence")))
     if options:
         raise TypeError(f"unknown option {', '.join(sorted(options))}")
-    return KaydenHarness(config, command)
+    return KadenceHarness(config, command)
 
 
-class KaydenHarness(Harness):
+class KadenceHarness(Harness):
     def __init__(self, config: Path, command: Sequence[str]) -> None:
         self.config, self.command = config, tuple(command)
 
@@ -98,7 +98,7 @@ class KaydenHarness(Harness):
         return opened
 
     def prepare(self, spec: UnitSpec) -> None:
-        """The unit's Kayden data folder: the base configuration with this unit's model,
+        """The unit's Kadence data folder: the base configuration with this unit's model,
         limit and permissions, the fleet tools, and the folder the fleet works in.
         Blocking."""
         spec.folder.mkdir(parents=True, exist_ok=True)
@@ -125,7 +125,7 @@ class _Session(Session):
         self._channel, self._emit, self._conversation = channel, on_event, conversation
         self._active = False
         self._has_duty = False
-        self._failure: str | None = None  # what Kayden said before its state became failed
+        self._failure: str | None = None  # what Kadence said before its state became failed
         self._closed = False
         self._answers: set[asyncio.Task[Any]] = set()
         channel.listeners.append(self._event)
@@ -181,7 +181,7 @@ class _Session(Session):
             case MessageCommitted(message=message) if message.role == Role.ASSISTANT:
                 for block in message.blocks:
                     if isinstance(block, ToolCall) and block.name == WORDS.finish:
-                        if self._has_duty:  # else Kayden refuses the call
+                        if self._has_duty:  # else Kadence refuses the call
                             self._emit(Reported(block.arguments.get("report") or "Done."))
                     elif isinstance(block, Text) and block.text.strip():
                         self._emit(Said(block.text.strip()))

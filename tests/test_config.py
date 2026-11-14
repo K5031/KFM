@@ -33,11 +33,11 @@ def test_a_wrong_setting_is_named(tmp_path: Path, text: str):
 
 def test_settings_are_saved_beside_what_the_file_already_says(tmp_path: Path):
     path = tmp_path / "fleet.toml"
-    path.write_text('harness = "kayden"\n[models]\nK5 = "old"\nK1 = "small"\n')
+    path.write_text('harness = "kadence"\n[models]\nK5 = "old"\nK1 = "small"\n')
     saved = config.save(path, budget_usd=25.0, max_units=6,
                         models={"K5": "big-1", "K1": "", "K3": "mid-1"})
     assert saved == config.load(path)
-    assert (saved.budget_usd, saved.max_units, saved.harness) == (25.0, 6, "kayden")
+    assert (saved.budget_usd, saved.max_units, saved.harness) == (25.0, 6, "kadence")
     assert saved.models == {"K5": "big-1", "K3": "mid-1"}  # an empty one is taken out
     with pytest.raises(ValueError, match="above zero"):
         config.save(path, budget_usd=0)

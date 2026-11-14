@@ -12,10 +12,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import kayden.frontends.desktop  # noqa: F401 - before any Qt import
+import kadence.frontends.desktop  # noqa: F401 - before any Qt import
 import pytest
-from kayden.frontends.desktop import theme
-from kayden.frontends.desktop.window import PREVIEW_ROLE
+from kadence.frontends.desktop import theme
+from kadence.frontends.desktop.window import PREVIEW_ROLE
 from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
 from PySide6.QtGui import QDropEvent, QImage
 from PySide6.QtWidgets import QApplication

@@ -1,4 +1,4 @@
-"""A scripted model for the units of a test fleet. The base Kayden configuration names it
+"""A scripted model for the units of a test fleet. The base Kadence configuration names it
 as the Core and carries one script per unit name: a list of steps, each {text} or
 {calls: [{name, arguments}]}. Every request of a turn takes the unit's next step; when
 the script is used up the model answers "ok".
@@ -14,7 +14,7 @@ import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
-from kayden.api import (
+from kadence.api import (
     Completed,
     Core,
     CoreEvent,

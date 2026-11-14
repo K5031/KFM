@@ -38,19 +38,19 @@ async def test_no_proposal_is_an_error(tmp_path: Path, steps, why):
                     folder=tmp_path / "planner", work=tmp_path)
 
 
-async def test_a_real_kayden_unit_drafts_on_a_scripted_model(tmp_path: Path, monkeypatch):
+async def test_a_real_kadence_unit_drafts_on_a_scripted_model(tmp_path: Path, monkeypatch):
     import tomli_w
 
     from kfm import harnesses
 
     monkeypatch.setenv("PYTHONPATH", str(Path(__file__).resolve().parents[1]))
-    base = tmp_path / "kayden.toml"
+    base = tmp_path / "kadence.toml"
     base.write_text(tomli_w.dumps({
         "core": {"factory": "tests.fakecore:factory", "options": {"scripts": {"Planner": [
             {"calls": [{"name": "mcp__fleet__propose", "arguments": {"teams": TEAMS}}]}]}}},
         "runtime": {"model": "fake-1"}}))
     (tmp_path / "work").mkdir()
     made = await draft("Run my game studio", config=FleetConfig(),
-                       harness=harnesses.load("kayden", {"config": str(base)}),
+                       harness=harnesses.load("kadence", {"config": str(base)}),
                        folder=tmp_path / "planner", work=tmp_path / "work")
     assert [team.name for team in made.teams] == ["dev", "trailer"]  # no approval was asked

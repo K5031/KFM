@@ -1,6 +1,6 @@
 """The window (`kfm-desktop`): projects, each one's fleets as a chart, and for a fleet its
 agents, what passes between them and the person's part in it. A frontend on Managers, like
-the terminal's Console: their events in, their methods out. Built on Kayden's desktop code: its event loop, theme and Markdown
+the terminal's Console: their events in, their methods out. Built on Kadence's desktop code: its event loop, theme and Markdown
 view."""
 
 from __future__ import annotations
@@ -15,10 +15,10 @@ from collections.abc import Coroutine, Sequence
 from pathlib import Path
 from typing import Any
 
-import kayden.frontends.desktop  # noqa: F401 - before any Qt import
-from kayden.frontends.desktop import theme
-from kayden.frontends.desktop.loop import QtEventLoop
-from kayden.frontends.desktop.window import (
+import kadence.frontends.desktop  # noqa: F401 - before any Qt import
+from kadence.frontends.desktop import theme
+from kadence.frontends.desktop.loop import QtEventLoop
+from kadence.frontends.desktop.window import (
     DATE_ROLE,
     PREVIEW_ROLE,
     WINDOW_BUTTON,
@@ -945,7 +945,7 @@ class FleetView(QWidget):
         self.send_button.setToolTip("Send")
         self.send_button.setAccessibleName("Send to the lead")
         self.send_button.clicked.connect(self._send_clicked)
-        # Kayden's message box: what is attached, then add files, the text and send.
+        # Kadence's message box: what is attached, then add files, the text and send.
         self.attachments = AttachmentStrip()
         self.input.attached.connect(self.attachments.add)
         self.input.pasted.connect(self._paste_image)
@@ -1336,7 +1336,7 @@ class FleetWindow(QMainWindow):
         self.projects_label = label("Projects", role="small", tone="muted")
         side_layout.addWidget(self.projects_label)
         side_layout.addWidget(self.projects, 1)
-        # The corner at the bottom, as in Kayden: who you are, with the app's menu, and
+        # The corner at the bottom, as in Kadence: who you are, with the app's menu, and
         # the settings.
         user = getpass.getuser()
         self.profile_button = QToolButton(objectName="profile", text=f" {user}")

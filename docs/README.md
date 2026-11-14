@@ -1,11 +1,11 @@
 # KFM documentation
 
-KFM (Kayden Fleet Manager) runs a team of Kayden agents on one task. You talk to the lead
+KFM (Kadence Fleet Manager) runs a team of Kadence agents on one task. You talk to the lead
 agent; it hands work to agents below it and reports back.
 
 ## Install
 
-KFM needs [Kayden](https://github.com/K5031/Kayden) checked out next to it (`../Kayden`)
+KFM needs [Kadence](https://github.com/K5031/Kadence) checked out next to it (`../Kadence`)
 and set up with a provider and an API key, and [uv](https://docs.astral.sh/uv/).
 
 ```bash
@@ -207,7 +207,7 @@ event, whichever way the fleet was run.
 - **Ranks.** The lead has the top rank (K5 by default). An agent can hand work only to
   new agents one rank below it, so K1 agents do their work themselves. The fleet uses only
   as many levels as the lead and its agents decide the work needs.
-- **Each agent is a separate Kayden** with its own conversation and memory. It sees
+- **Each agent is a separate Kadence** with its own conversation and memory. It sees
   nothing of the others; it knows only its task and what is reported to it.
 - **Reports go up.** When an agent finishes, asks a question or fails, its supervisor gets
   a message and decides what to do next: answer, give the task again, or hand it to
@@ -227,8 +227,8 @@ budget_usd = 10.0         # the whole fleet
 unit_budget_usd = 2.0     # one agent
 permissions = "allow_workspace"
 
-[harness_options]         # for Kayden, the agent program the units run
-config = "~/.kayden/config.toml"   # the provider, key and options every agent uses
+[harness_options]         # for Kadence, the agent program the units run
+config = "~/.kadence/config.toml"   # the provider, key and options every agent uses
 
 [models]                  # a model per rank; "default" for the rest
 K5 = "claude-opus-5-5"
@@ -238,11 +238,11 @@ default = "claude-sonnet-5-5"
 marketing = "claude-sonnet-5-5"
 ```
 
-Without `[models]`, every agent uses the model in your Kayden configuration.
+Without `[models]`, every agent uses the model in your Kadence configuration.
 
 ## Another agent program
 
-Every agent of a fleet is a Kayden unless the settings name another program:
+Every agent of a fleet is a Kadence unless the settings name another program:
 
 ```toml
 harness = "my_package.my_harness:factory"   # or the name it is installed under

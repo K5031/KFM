@@ -1,5 +1,5 @@
 """A launcher for the fleet window in the Linux app menu: a desktop entry and an icon in
-the user's XDG data directory, as Kayden adds its own. The entry starts the window with
+the user's XDG data directory, as Kadence adds its own. The entry starts the window with
 this install's Python.
 
 The icon's name carries a hash of its content: desktops cache icons by name, so a new

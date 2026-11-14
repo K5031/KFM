@@ -1,5 +1,5 @@
 """A second harness, written against kfm.api alone: units that follow a script inside the
-test's own process. Nothing of Kayden is used: a fleet that runs on this runs on the
+test's own process. Nothing of Kadence is used: a fleet that runs on this runs on the
 contract.
 
 A unit's script is a list of steps, one per turn: {"when": text, "do": [actions]}. A turn

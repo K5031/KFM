@@ -21,7 +21,7 @@ def kfm(*args: str, home: Path) -> subprocess.CompletedProcess[str]:
 
 def settings(home: Path, scripts: dict) -> None:
     """KFM's settings in `home`, with units on the scripted model."""
-    base = home / "kayden.toml"
+    base = home / "kadence.toml"
     base.write_text(tomli_w.dumps({
         "core": {"factory": "tests.fakecore:factory", "options": {"scripts": scripts}},
         "runtime": {"model": "fake-1"}}))

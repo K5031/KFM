@@ -29,7 +29,7 @@ NO_FLEET = 'There is no fleet yet. Start one with: kfm run "<task>"'
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="kfm", description="Run fleets of Kayden agents on tasks and duties.")
+        prog="kfm", description="Run fleets of Kadence agents on tasks and duties.")
     parser.add_argument("--home", type=Path, default=HOME,
                         help="where projects and settings are kept (default: ~/.kfm)")
     commands = parser.add_subparsers(dest="command", required=True)

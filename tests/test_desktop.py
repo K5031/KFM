@@ -144,6 +144,8 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
     assert form.heading.text() == "New fleet in Acme"  # the project is named, this is not
     assert form.name.placeholderText() == "Fleet name"
     assert shown.project_form.name.placeholderText() == "Project name"
+    assert "(optional)" in shown.project_form.does.placeholderText()  # both may stay empty
+    assert "(optional)" in form.task.placeholderText()
     assert form.duty.isChecked() and "until you stop" in form.hint.text()
     form.task_kind.setChecked(True)
     assert "Ends" in form.hint.text()

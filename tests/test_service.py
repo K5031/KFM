@@ -8,9 +8,11 @@ from pathlib import Path
 import pytest
 
 from kfm.config import FleetConfig
-from kfm.events import Delivered, Told
+from kfm.events import Delivered, Said, Told
 from kfm.fleet import Fleet, FleetError
 from kfm.local import LocalService
+from kfm.remote import RemoteService
+from kfm.server import Server
 from kfm.service import Happened, Listed, Update, Updated
 from tests.fakeharness import FakeHarness
 
@@ -130,3 +132,65 @@ async def test_settings_and_a_draft_through_the_service(tmp_path: Path):
         ("dev", "Build the game"), ("art", "Draw it")]
     assert await service.fleets(made.id) == []  # nothing was started
     await service.aclose()
+
+
+async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
+    harness = FakeHarness({
+        "K5 u1": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Tidy the docs"})]},
+                  {"when": "hello", "do": [("say", "Hi there.")]}],
+        "Scout": [{"do": [("say", "Tidying.")]}]})
+    (tmp_path / "work").mkdir()
+    home, socket = tmp_path / "home", tmp_path / "s"
+    server = Server(LocalService(home, harness=harness, config=FleetConfig()), socket,
+                    idle_s=0.3)
+    serving = asyncio.ensure_future(server.run())
+    await until(socket.exists)
+    with pytest.raises(RuntimeError, match="already runs"):
+        await Server(LocalService(home), socket).run()
+
+    first = await RemoteService.connect(home, socket=socket, start=False)
+    seen: list[Update] = []
+    first.subscribe(seen.append)
+    made = await first.create_project("Acme", str(tmp_path / "work"))
+    fleet = await first.add_fleet(made.id, "dev", "Tidy up", budget_usd=3.0)
+    await until(lambda: first.fleet(fleet) is not None and len(first.fleet(fleet).units) == 2)
+    await until(lambda: any(isinstance(u, Happened) and isinstance(u.event, Said)
+                            and u.event.unit.called == "Scout" for u in seen))
+    assert first.state(fleet).running and first.state(fleet).budget_usd == 3.0
+    assert Listed() in seen and Updated(fleet) in seen
+
+    # A second frontend finds the fleet, with what happened before it came.
+    second = await RemoteService.connect(home, socket=socket, start=False)
+    later: list[Update] = []
+    second.subscribe(later.append)
+    [listed] = await second.projects()
+    assert (listed.name, listed.fleets, listed.running) == ("Acme", 1, 1)
+    assert await second.fleets(made.id) == [fleet]
+    assert [u.called for u in second.fleet(fleet).units.values()] == ["K5 u1", "Scout"]
+    told = [type(event).__name__ for event in await second.history(fleet)]
+    assert "Instructed" in told
+
+    await second.say(fleet, "hello")  # what one says, both see
+    for watching in (seen, later):
+        await until(lambda w=watching: any(
+            isinstance(u, Happened) and isinstance(u.event, Said)
+            and u.event.text == "Hi there." for u in w))
+    assert sum(1 for u in seen if isinstance(u, Happened) and isinstance(u.event, Said)
+               and u.event.text == "Hi there.") == 1  # once
+    scout = second.fleet(fleet).units["u2"]
+    await second.rename_agent(fleet, "u2", "Tidier")
+    await until(lambda: scout.name == "Tidier" and first.fleet(fleet).units["u2"].name == "Tidier")
+    with pytest.raises(FleetError, match="no agent"):
+        await first.set_model(fleet, "u9", "x")
+    assert (await first.settings()).budget_usd == 10.0
+
+    # Letting go of a frontend leaves the fleet running; the service ends when none does.
+    await first.aclose()
+    await asyncio.sleep(0.5)
+    assert not serving.done() and second.state(fleet).running
+    await second.stop(fleet)
+    await until(lambda: not second.state(fleet).running)
+    await second.aclose()
+    await asyncio.wait_for(serving, 10)
+    assert not socket.exists()
+    assert Fleet.load(home / "projects" / made.id / "fleets" / fleet.split("/")[1]).name == "dev"

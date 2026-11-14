@@ -170,28 +170,52 @@ class Fleet:
 
     # ── fleet.json: for people, `kfm status` and `kfm resume` ────────────
 
-    def save(self, folder: Path) -> None:
-        data = {"format": FORMAT, "name": self.name, "top_rank": self.top_rank,
+    def record(self) -> dict[str, Any]:
+        """The fleet as fleet.json holds it."""
+        return {"format": FORMAT, "name": self.name, "top_rank": self.top_rank,
                 "max_units": self.max_units, "next": self._next,
                 "removed_usd": self.removed_usd,
                 "work": self.work, "settings": self.settings,
                 "manager_pid": self.manager_pid,
                 "units": [asdict(u) for u in self.units.values()]}
+
+    def update(self, data: dict[str, Any]) -> None:
+        """Make this fleet what the record says, in place: a unit it already has stays
+        the same object. ValueError for a record of another format."""
+        if data.get("format") != FORMAT:
+            raise ValueError(f"the record is of format {data.get('format')}, not {FORMAT}")
+        self.top_rank, self.max_units, self.name = (data["top_rank"], data["max_units"],
+                                                    data["name"])
+        self.work, self.settings = data["work"], data["settings"]
+        self.manager_pid = data["manager_pid"]
+        self._next, self.removed_usd = data["next"], data["removed_usd"]
+        units: dict[str, Unit] = {}
+        for record in data["units"]:
+            unit = self.units.get(record["id"])
+            if unit is None:
+                unit = Unit(**record)
+            else:
+                for key, value in record.items():
+                    setattr(unit, key, value)
+            units[unit.id] = unit
+        self.units = units
+
+    @classmethod
+    def of(cls, data: dict[str, Any]) -> Fleet:
+        """The fleet a record describes."""
+        fleet = cls(data.get("top_rank", 5))
+        fleet.update(data)
+        return fleet
+
+    def save(self, folder: Path) -> None:
         target = folder / RECORD
         partial = target.with_suffix(".tmp")
-        partial.write_text(json.dumps(data, indent=2))
+        partial.write_text(json.dumps(self.record(), indent=2))
         partial.replace(target)
 
     @classmethod
     def load(cls, folder: Path) -> Fleet:
-        data = json.loads((folder / RECORD).read_text())
-        if data.get("format") != FORMAT:
-            raise ValueError(f"{folder / RECORD} is of format {data.get('format')}, not {FORMAT}")
-        fleet = cls(data["top_rank"], data["max_units"], data["name"])
-        fleet.work, fleet.settings = data["work"], data["settings"]
-        fleet.manager_pid = data["manager_pid"]
-        for record in data["units"]:
-            unit = Unit(**record)
-            fleet.units[unit.id] = unit
-        fleet._next, fleet.removed_usd = data["next"], data["removed_usd"]
-        return fleet
+        try:
+            return cls.of(json.loads((folder / RECORD).read_text()))
+        except ValueError as e:
+            raise ValueError(f"{folder / RECORD}: {e}") from None

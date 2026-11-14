@@ -300,6 +300,10 @@ class LocalService(Service):
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
 
+    def watched(self) -> list[str]:
+        """The fleets this service holds."""
+        return list(self._held)
+
     def running(self) -> bool:
         """Whether any fleet runs or is stopping."""
         return any(held.manager is not None or held.stopping for held in self._held.values())

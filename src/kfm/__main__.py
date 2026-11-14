@@ -48,18 +48,34 @@ def main(argv: list[str] | None = None) -> int:
                         help="a new limit for agents started from now on")
     status = commands.add_parser("status", help="show a fleet's agents")
     status.add_argument("--fleet", type=Path, help="the fleet's folder (default: the newest)")
+    serve = commands.add_parser(
+        "serve", help="run KFM's service, which owns the fleets, until none runs and no "
+                      "frontend is attached; frontends start it by themselves")
+    serve.add_argument("--home", type=Path, default=HOME,
+                       help="where projects and settings are kept (default: ~/.kfm)")
+    serve.add_argument("--socket", type=Path, help="default: service.sock in the home")
     args = parser.parse_args(argv)
     try:
+        if args.command == "serve":
+            return asyncio.run(_serve(args))
         if args.command == "status":
             return _status(args.fleet)
         if args.command == "resume":
             return asyncio.run(_resume(args))
         return asyncio.run(_run(args))
-    except (ValueError, OSError) as e:
+    except (ValueError, OSError, RuntimeError) as e:
         print(f"kfm: {e}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 130
+
+
+async def _serve(args: argparse.Namespace) -> int:
+    from kfm.local import LocalService
+    from kfm.server import SOCKET, Server
+
+    await Server(LocalService(args.home), args.socket or args.home / SOCKET).run()
+    return 0
 
 
 async def _run(args: argparse.Namespace) -> int:

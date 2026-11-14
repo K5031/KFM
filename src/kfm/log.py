@@ -22,13 +22,32 @@ _KINDS = {kind.__name__: kind for kind in (events.Changed, events.Said, events.D
                                            events.Notice)}
 
 
-def line(event: events.FleetEvent, at: float) -> str:
-    """The event as its record: its kind, the time, and its fields, units by their ids."""
+def encode(event: events.FleetEvent, at: float) -> dict[str, Any]:
+    """The event as plain data: its kind, the time, and its fields, units by their ids."""
     data: dict[str, Any] = {"t": round(at, 3), "type": type(event).__name__}
     for field in fields(event):
         value = getattr(event, field.name)
         data[field.name] = value.id if isinstance(value, Unit) else value
-    return json.dumps(data, ensure_ascii=False)
+    return data
+
+
+def decode(data: dict[str, Any], fleet: Fleet) -> tuple[float, events.FleetEvent]:
+    """What `encode` made, with the units of `fleet`. ValueError, KeyError or TypeError
+    for what is not an event of this fleet (a unit it no longer has, a kind unknown)."""
+    data = dict(data)
+    kind = _KINDS[data.pop("type")]
+    at = data.pop("t")
+    for name in ("unit", "to", "by"):
+        if data.get(name) is not None:
+            data[name] = fleet.units[data[name]]
+    if "files" in data:
+        data["files"] = tuple(data["files"])
+    return at, kind(**data)
+
+
+def line(event: events.FleetEvent, at: float) -> str:
+    """The event as its line in the record."""
+    return json.dumps(encode(event, at), ensure_ascii=False)
 
 
 def read(folder: Path, fleet: Fleet) -> list[tuple[float, events.FleetEvent]]:
@@ -38,15 +57,7 @@ def read(folder: Path, fleet: Fleet) -> list[tuple[float, events.FleetEvent]]:
     with contextlib.suppress(FileNotFoundError):
         for text in (folder / FILE).read_text().splitlines():
             try:
-                data = json.loads(text)
-                kind = _KINDS[data.pop("type")]
-                at = data.pop("t")
-                for name in ("unit", "to", "by"):
-                    if data.get(name) is not None:
-                        data[name] = fleet.units[data[name]]
-                if "files" in data:
-                    data["files"] = tuple(data["files"])
-                found.append((at, kind(**data)))
+                found.append(decode(json.loads(text), fleet))
             except (ValueError, KeyError, TypeError):
                 continue
     return found

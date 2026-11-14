@@ -52,10 +52,16 @@ a good brief, not the history.
 
 **Watching is not a task.** Work that is itself ongoing ("watch the logs", "keep an eye
 on the inbox") needs an agent that stays, and such an agent has the cost described
-above. There should be as few as possible, ideally the lead alone, each kept cheap: a
-check that does almost nothing unless something changed (about 1.5 cents a check-in in
-the duty run of 2026-11-12, see [standing teams](2026-11-12-standing-teams.md)). A
-standing team is the role, its lead and what it knows; its workers come and go.
+above. A check that does almost nothing unless something changed is cheap (about 1.5
+cents a check-in in the duty run of 2026-11-12, see
+[standing teams](2026-11-12-standing-teams.md)). A standing team is the role, its lead
+and what it knows; its workers come and go.
+
+**None of this is a rule for agents.** These are observations about cost, for whoever
+designs KFM. What an agent gets is the ability (to dismiss), the facts (what an agent
+that stays costs) and the structure (notes a new worker starts with); what it does with
+them is its judgment. An instruction that says how many agents to keep, or when to
+dismiss, would cap what a capable model does by itself and go stale as models improve.
 
 ## Alternatives considered
 

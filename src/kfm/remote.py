@@ -268,7 +268,7 @@ async def _started(home: Path, path: Path) -> tuple[asyncio.StreamReader, asynci
     home.mkdir(parents=True, exist_ok=True)
     with (home / "service.log").open("ab") as out:
         subprocess.Popen(  # noqa: ASYNC220 - it outlives this process; nothing is awaited
-            [sys.executable, "-m", "kfm", "serve", "--home", str(home), "--socket", str(path)],
+            [sys.executable, "-m", "kfm", "--home", str(home), "serve", "--socket", str(path)],
             stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True)
     waited = 0.0
     while True:

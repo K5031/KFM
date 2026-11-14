@@ -8,6 +8,7 @@ import asyncio
 import contextlib
 import json
 import time
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -66,31 +67,36 @@ def read(folder: Path, upto: int | None = None) -> list[tuple[float, events.Flee
 
 
 class Log:
-    """Appends events to the record, in order, off the event loop."""
+    """Appends events to the record, in order, off the event loop. A record that cannot
+    be written is said once (`failed`) and not tried again until the log is closed."""
 
-    def __init__(self, folder: Path) -> None:
-        self._path = folder / FILE
+    def __init__(self, folder: Path,
+                 failed: Callable[[BaseException], None] = lambda error: None) -> None:
+        self._path, self._failed = folder / FILE, failed
         # A line to write, an event to set once everything before it is written, or
         # None: the close.
         self._lines: asyncio.Queue[str | asyncio.Event | None] = asyncio.Queue()
         self._writer: asyncio.Task[None] | None = None
 
     def add(self, event: events.FleetEvent) -> None:
-        self._lines.put_nowait(line(event, time.time()))
         if self._writer is None:
             self._writer = asyncio.create_task(self._write())
+            self._writer.add_done_callback(self._ended)
+        if not self._writer.done():
+            self._lines.put_nowait(line(event, time.time()))
 
     async def flush(self) -> None:
         """Return once every event added so far is in the record."""
-        if self._writer is not None:
+        if self._writer is not None and not self._writer.done():
             written = asyncio.Event()
             self._lines.put_nowait(written)
             await written.wait()
 
     async def aclose(self) -> None:
         if self._writer is not None:
-            self._lines.put_nowait(None)
-            await self._writer
+            if not self._writer.done():
+                self._lines.put_nowait(None)
+            await asyncio.gather(self._writer, return_exceptions=True)
             self._writer = None
 
     async def _write(self) -> None:
@@ -101,12 +107,21 @@ class Log:
                 batch.append(self._lines.get_nowait())
             if None in batch:  # the close: what came before it is still written
                 closed, batch = True, batch[: batch.index(None)]
-            if lines := [each for each in batch if isinstance(each, str)]:
-                await asyncio.to_thread(self._append, lines)
-            for each in batch:
-                if isinstance(each, asyncio.Event):
-                    each.set()
+            try:
+                if lines := [each for each in batch if isinstance(each, str)]:
+                    await asyncio.to_thread(self._append, lines)
+            finally:
+                for each in batch:
+                    if isinstance(each, asyncio.Event):
+                        each.set()
+
+    def _ended(self, writer: asyncio.Task[None]) -> None:
+        if not writer.cancelled() and (error := writer.exception()) is not None:
+            while not self._lines.empty():  # nobody waits for what will not be written
+                if isinstance(waiting := self._lines.get_nowait(), asyncio.Event):
+                    waiting.set()
+            self._failed(error)
 
     def _append(self, batch: list[str]) -> None:
-        with contextlib.suppress(OSError), self._path.open("a") as record:
+        with self._path.open("a") as record:
             record.write("".join(f"{text}\n" for text in batch))

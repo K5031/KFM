@@ -6,7 +6,6 @@ reports or asks reaches the person. Units never talk to each other directly."""
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
 import shutil
@@ -71,7 +70,8 @@ class Manager:
         self.finished = asyncio.Event()  # the lead reported, or the budget ran out
         self._own_harness, self._harness = harness, harness
         self._on_event, self._on_change = on_event, on_change
-        self._log = log.Log(folder)  # every event, for whoever opens the fleet later
+        # Every event, for whoever opens the fleet later.
+        self._log = log.Log(folder, self._failed)
         self.count = 0  # of the events so far: the newest one's number
         self._tools: ToolServer  # the fleet tools, made each time it starts
         self._switch = asyncio.Lock()  # one start or stop at a time
@@ -571,8 +571,11 @@ class Manager:
         async with self._saving:
             if self._unsaved:
                 self._unsaved = False
-                with contextlib.suppress(OSError):
+                try:
                     await asyncio.to_thread(records.write, self.folder, self.fleet.record())
+                except BaseException:
+                    self._unsaved = True  # the next one writes it
+                    raise
 
     def _emit(self, event: FleetEvent) -> None:
         self.count += 1
@@ -591,6 +594,9 @@ class Manager:
         """Work the manager started by itself ended: a failure nobody awaits is said."""
         self._tasks.discard(task)
         if not task.cancelled() and (error := task.exception()) is not None:
-            logger.error("the fleet's own work failed", exc_info=error)
-            self._emit(Notice(f"Something the fleet does by itself failed: "
-                              f"{type(error).__name__}: {error}"))
+            self._failed(error)
+
+    def _failed(self, error: BaseException) -> None:
+        logger.error("the fleet's own work failed", exc_info=error)
+        self._emit(Notice(f"Something the fleet does by itself failed: "
+                          f"{type(error).__name__}: {error}"))

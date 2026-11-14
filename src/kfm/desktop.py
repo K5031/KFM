@@ -100,9 +100,9 @@ FLEETS_ROLE = Qt.ItemDataRole.UserRole + 10  # how many fleets it has
 QUIET_STATES = ("starting", "working", "waiting", "done")  # shown by the agents list alone
 BAR = 48  # px, the bar on top
 COLUMN = 720  # px, the widest the timeline's entries get
-REFRESH_MS = 1000
+REFRESH_MS = 1000  # spending and states, while a fleet runs
 # What the service refuses, with words for the person (kfm.service).
-REFUSALS = (FleetError, UnitError, ValueError, OSError, RuntimeError)  # spending and states, while a fleet runs
+REFUSALS = (FleetError, UnitError, ValueError, OSError, RuntimeError)
 TITLE_CHARS = 90
 UNIT_ROLE = Qt.ItemDataRole.UserRole  # a tree row's unit id
 
@@ -1200,9 +1200,9 @@ class FleetView(QWidget):
             case Delivered():
                 self._add(DeliveryCard(event, self._called))
             case Instructed(unit=unit, by=by, text=text):
-                if text:  # the person's own is what they said; a supervisor's is a card
-                    self._add(YouEntry(text, unit) if by is None
-                              else InstructionCard(event, self._called))
+                # The person's own is what they said; a supervisor's is a card.
+                self._add(YouEntry(text, unit) if by is None
+                          else InstructionCard(event, self._called))
             case Approval():
                 card = ApprovalCard(event, self._called(event.unit))
                 card.allow.clicked.connect(lambda: self._run(self._answer(event, True)))
@@ -1274,10 +1274,8 @@ class FleetWindow(QMainWindow):
         self.agents.setHeaderHidden(True)
         self.agents.setRootIsDecorated(False)
         self.agents.setIndentation(16)
-        self.agents.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.agents.header().setStretchLastSection(False)  # the name has the room
         self.agents.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.agents.setColumnWidth(2, 0)
         for column in (1, 2):
             self.agents.header().setSectionResizeMode(
                 column, QHeaderView.ResizeMode.ResizeToContents)

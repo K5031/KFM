@@ -488,7 +488,17 @@ async def test_a_failure_in_the_managers_own_work_is_seen(tmp_path: Path, caplog
     manager._spawn(broken())
     await until(lambda: any(isinstance(e, Notice) and "disk on fire" in e.text for e in events))
     assert "disk on fire" in caplog.text  # with where it happened, for whoever reads the log
+
+    # A record that cannot be written is such a failure, not a silence.
+    (tmp_path / "fleet" / "fleet.tmp").mkdir()  # in the way of the next write
+    manager._changed()
+    await until(lambda: any(isinstance(e, Notice) and "IsADirectoryError" in e.text
+                            for e in events))
+    with pytest.raises(OSError):  # and whoever asked for the change is told
+        await manager.rename("watch")
+    (tmp_path / "fleet" / "fleet.tmp").rmdir()
     await manager.aclose()
+    assert Fleet.load(tmp_path / "fleet").name == "watch"
 
 
 async def until(predicate, timeout: float = 10.0) -> None:

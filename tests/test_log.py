@@ -75,6 +75,25 @@ async def test_the_log_appends_in_order_and_is_flushed_on_close(tmp_path: Path):
     assert texts == [f"line {index}" for index in range(5)]
 
 
+async def test_a_record_that_cannot_be_written_is_said_once_and_holds_nobody_up(tmp_path: Path):
+    (tmp_path / log.FILE).mkdir()  # where the record should be, something that is no file
+    failures: list[BaseException] = []
+    record = log.Log(tmp_path, failures.append)
+    record.add(events.Notice("one"))
+    await asyncio.wait_for(record.flush(), 5)
+    await asyncio.sleep(0.01)
+    assert [type(failure) for failure in failures] == [IsADirectoryError]
+    record.add(events.Notice("two"))  # not tried again, so not said again
+    await asyncio.wait_for(record.flush(), 5)
+    await asyncio.wait_for(record.aclose(), 5)
+    assert len(failures) == 1
+
+    (tmp_path / log.FILE).rmdir()  # once it is closed, it writes again
+    record.add(events.Notice("three"))
+    await asyncio.wait_for(record.aclose(), 5)
+    assert [event for _, event in log.read(tmp_path)] == [events.Notice("three")]
+
+
 async def test_closing_a_log_that_wrote_nothing_creates_no_file(tmp_path: Path):
     await asyncio.wait_for(log.Log(tmp_path).aclose(), 5)
     assert not (tmp_path / log.FILE).exists()

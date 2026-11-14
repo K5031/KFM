@@ -1,0 +1,132 @@
+"""The service a frontend talks to (kfm.service), in this process and over its socket."""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+
+import pytest
+
+from kfm.config import FleetConfig
+from kfm.events import Delivered, Told
+from kfm.fleet import Fleet, FleetError
+from kfm.local import LocalService
+from kfm.service import Happened, Listed, Update, Updated
+from tests.fakeharness import FakeHarness
+
+TEAM = {
+    "K5 u1": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Tidy the docs"})]},
+              {"when": "[Report from Scout", "do": [("report", "Docs are tidy.")]}],
+    "Scout": [{"do": [("report", "Tidied docs/")]}]}
+
+
+async def until(predicate, timeout: float = 10.0) -> None:
+    async def poll() -> None:
+        while not predicate():
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(poll(), timeout)
+
+
+def local(tmp_path: Path, scripts) -> tuple[LocalService, FakeHarness, list[Update]]:
+    harness = FakeHarness(scripts)
+    (tmp_path / "work").mkdir(exist_ok=True)
+    service = LocalService(tmp_path / "home", harness=harness, config=FleetConfig())
+    seen: list[Update] = []
+    service.subscribe(seen.append)
+    return service, harness, seen
+
+
+def reports(seen: list[Update]) -> list[tuple[str, str]]:
+    return [(u.event.unit.called, u.event.text) for u in seen
+            if isinstance(u, Happened) and isinstance(u.event, Delivered)]
+
+
+async def test_a_project_and_a_fleet_through_the_service(tmp_path: Path):
+    service, harness, seen = local(tmp_path, TEAM)
+    assert await service.projects() == []
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    assert (made.name, made.fleets, made.running) == ("Acme", 0, 0) and Listed() in seen
+    fleet = await service.add_fleet(made.id, "dev", "Tidy up", ongoing=False, budget_usd=3.0)
+    assert fleet.startswith(f"{made.id}/") and await service.fleets(made.id) == [fleet]
+    await until(lambda: reports(seen) == [("Scout", "Tidied docs/"), ("K5 u1", "Docs are tidy.")])
+    await until(lambda: service.state(fleet).finished)
+    record = service.fleet(fleet)
+    assert [(u.called, u.state) for u in record.units.values()] == [("K5 u1", "done"),
+                                                                     ("Scout", "done")]
+    assert service.state(fleet).running and service.state(fleet).budget_usd == 3.0
+    assert Updated(fleet) in seen
+    [listed] = await service.projects()
+    assert (listed.fleets, listed.running) == (1, 1)
+
+    await service.say(fleet, "Thanks")  # to the lead
+    await until(lambda: any("Thanks" in heard for heard in harness.heard["K5 u1"]))
+    await service.stop(fleet)
+    assert not service.state(fleet).running and (await service.projects())[0].running == 0
+    kinds = [type(event) for event in await service.history(fleet)]
+    assert Told in kinds and Delivered in kinds
+
+    await service.rename_project(made.id, "Globex")
+    await service.rename_fleet(fleet, "docs")
+    assert (await service.projects())[0].name == "Globex" and service.fleet(fleet).name == "docs"
+    with pytest.raises(ValueError):
+        await service.watch("../../etc")
+    await service.delete_fleet(fleet)
+    assert await service.fleets(made.id) == [] and service.fleet(fleet) is None
+    await service.delete_project(made.id)
+    assert await service.projects() == [] and (tmp_path / "work").is_dir()
+    await service.aclose()
+
+
+async def test_a_fleet_is_built_and_changed_through_the_service(tmp_path: Path):
+    service, harness, _ = local(tmp_path, {
+        "Chief": [{"do": [("say", "On watch.")]}],
+        "Writer": [{"do": [("say", "Writing.")]},
+                   {"when": "task was changed", "do": [("say", "Editing now.")]}]})
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    fleet = await service.add_fleet(made.id, "content", "")  # nothing it should do: by hand
+    assert not service.state(fleet).running and not service.fleet(fleet).units
+    chief = await service.add_agent(fleet, None, "Chief", "Run content", ongoing=True)
+    writer = await service.add_agent(fleet, chief, "Writer", "Write the posts")
+    await service.set_model(fleet, chief, "big-1")
+    await service.rename_agent(fleet, writer, "Author")
+    await service.rename_agent(fleet, writer, "Writer")
+    await service.set_task(fleet, writer, "Write the long posts")
+    assert not harness.models  # nothing has run
+    await service.start(fleet)
+    await until(lambda: harness.models == [("Chief", "big-1"), ("Writer", None)])
+    await until(lambda: harness.heard.get("Writer"))
+    assert "Your task: Write the long posts" in harness.heard["Writer"][0]
+
+    await service.set_task(fleet, writer, "Edit the posts")  # while it runs: it is told
+    await until(lambda: any("task was changed" in heard for heard in harness.heard["Writer"]))
+    with pytest.raises(FleetError, match="no agent"):
+        await service.set_model(fleet, "u9", "x")
+    await service.say(fleet, "Shorter ones", writer)
+    await until(lambda: any("Shorter ones" in heard for heard in harness.heard["Writer"]))
+    await service.remove_agent(fleet, writer)
+    assert list(service.fleet(fleet).units) == [chief]
+    await service.stop(fleet)
+    with pytest.raises(FleetError, match="has run"):
+        await service.set_task(fleet, chief, "Something else")
+    await service.say(fleet, "Still there?")  # a message starts a stopped fleet
+    await until(lambda: service.state(fleet).running)
+    await service.aclose()
+    assert list(Fleet.load(tmp_path / "home" / "projects" / made.id / "fleets"
+                           / fleet.split("/")[1]).units) == [chief]
+
+
+async def test_settings_and_a_draft_through_the_service(tmp_path: Path):
+    harness = FakeHarness({"Planner": [{"do": [("tool", "propose", {"teams": [
+        {"name": "dev", "does": "Build the game"}, {"name": "art", "does": "Draw it"}]})]}]})
+    (tmp_path / "work").mkdir()
+    service = LocalService(tmp_path / "home", harness=harness)  # settings from its home
+    assert (await service.settings()).budget_usd == 10.0
+    saved = await service.save_settings(budget_usd=25.0, models={"K5": "big-1"})
+    assert saved == await service.settings() and saved.models == {"K5": "big-1"}
+    made = await service.create_project("Studio", str(tmp_path / "work"))
+    proposed = await service.draft(made.id, "Run my game studio")
+    assert [(team.name, team.does) for team in proposed.teams] == [
+        ("dev", "Build the game"), ("art", "Draw it")]
+    assert await service.fleets(made.id) == []  # nothing was started
+    await service.aclose()

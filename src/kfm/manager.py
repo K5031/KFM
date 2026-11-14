@@ -447,13 +447,12 @@ class Manager:
     # ── What a unit says ─────────────────────────────────────────────────
 
     def _event(self, unit: Unit, event: UnitEvent) -> None:
+        if unit.id not in self._sessions and not isinstance(event, api.Spent):
+            return  # its process is being closed: what it still says changes nothing
         match event:
             case api.Working():
-                if unit.state != "stopped":
-                    self._set(unit, "working")
+                self._set(unit, "working")
             case api.Rested(carries_on=carries_on):
-                if unit.state == "stopped":
-                    return
                 if carries_on:  # between check-ins, or until its question is answered
                     self._set(unit, "waiting" if unit.question is not None else "working")
                 else:
@@ -474,11 +473,11 @@ class Manager:
                 self._emit(Approval(unit, request_id, tool, arguments))
             case api.Failed(message=message):
                 unit.failure = message
-                if unit.state != "stopped":
-                    self._set(unit, "failed")
-                    self._turn_ended(unit)
+                self._set(unit, "failed")
+                self._turn_ended(unit)
             case api.Exited(why=why):
-                if self._sessions.pop(unit.id, None) is not None and unit.active:
+                del self._sessions[unit.id]
+                if unit.active:
                     unit.failure = why
                     self._set(unit, "failed")
                     self._turn_ended(unit)

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from kfm import harnesses, log
+from kfm import api, harnesses, log
 from kfm.config import FleetConfig
 from kfm.events import Delivered, FleetEvent, Instructed, Notice, Told
 from kfm.fleet import Fleet, FleetError
@@ -450,6 +450,29 @@ async def test_an_agent_is_given_another_task_and_an_agent_is_removed(tmp_path: 
     kept = Fleet.load(tmp_path / "fleet")
     assert list(kept.units) == ["u1", "u4", "u5"]
     assert kept.spent_usd > sum(u.spent_usd for u in kept.units.values())  # and is kept
+
+
+async def test_what_a_unit_says_while_it_is_closed_changes_nothing_but_its_spending(
+        tmp_path: Path):
+    class Lingering(FakeHarness):  # keeps what its unit speaks through
+        async def open(self, spec, on_event, session=None):
+            self.emit = on_event
+            return await super().open(spec, on_event, session)
+
+    harness = Lingering({"Lead": [{"do": [("say", "On watch.")]}]})
+    manager, events = await run(tmp_path, harness)
+    lead = await manager.add(None, "Lead", "Keep watch", ongoing=True)
+    await until(lambda: len(events) > 3 and lead.spent_usd > 0)
+    await manager.stop_unit(lead)
+    before = list(events)
+    for late in (api.Working(), api.Said("Still here."), api.Reported("Late."),
+                 api.Rested(False), api.Failed("Broke."), api.Exited("Gone.")):
+        harness.emit(late)
+    assert (lead.state, lead.report, lead.failure) == ("stopped", None, None)
+    assert events == before
+    harness.emit(api.Spent(0.5))  # what it spent is still what it spent
+    assert lead.spent_usd == 0.5
+    await manager.aclose()
 
 
 async def test_a_failure_in_the_managers_own_work_is_seen(tmp_path: Path, caplog):

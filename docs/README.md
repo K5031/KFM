@@ -29,7 +29,7 @@ kfm run "Audit the docs in this repository and fix what is out of date" --budget
 | `--top-rank 3` | The lead's rank. 5 (the default) allows four levels below the lead; 1 means the lead works alone |
 | `--duty` | Standing work that never ends ("be the support team") instead of a task that finishes |
 | `--work PATH` | The folder the agents work in (default: the current one) |
-| `--fleet PATH` | Where the fleet keeps its files (default: a new folder in `~/.kfm/fleets/`) |
+| `--fleet PATH` | Where the fleet keeps its files (default: a new folder in `~/.kfm/fleets/`). A folder that already holds a fleet is refused: use `kfm resume --fleet` for that |
 
 While it runs, the terminal shows what happens:
 

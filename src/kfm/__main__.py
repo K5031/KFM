@@ -14,7 +14,7 @@ from pathlib import Path
 from kfm.api import UnitError
 from kfm.config import CONFIG_FILE, HOME, load
 from kfm.events import Approval, Changed, Delivered, FleetEvent, Notice, Said
-from kfm.fleet import Fleet, FleetError, Unit
+from kfm.fleet import RECORD, Fleet, FleetError, Unit
 from kfm.manager import Manager
 
 LINE_CHARS = 300  # of what an agent below the lead says, in the log
@@ -63,6 +63,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 async def _run(args: argparse.Namespace) -> int:
+    if args.fleet is not None and (args.fleet / RECORD).exists():
+        raise ValueError(f"{args.fleet} already holds a fleet: kfm resume --fleet "
+                         f"{args.fleet} carries it on")
     config = load(args.config, budget_usd=args.budget_usd,
                   unit_budget_usd=args.unit_budget_usd, top_rank=args.top_rank)
     folder = args.fleet or HOME / "fleets" / time.strftime("%Y%m%d-%H%M%S")

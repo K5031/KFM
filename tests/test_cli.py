@@ -61,3 +61,14 @@ def test_a_wrong_setting_ends_with_one_line(tmp_path: Path):
 def test_status_without_a_fleet_says_how_to_start_one(tmp_path: Path):
     shown = kfm("status", home=tmp_path)
     assert shown.returncode == 1 and "kfm run" in shown.stdout
+
+
+def test_run_does_not_overwrite_a_fleet_that_is_already_in_the_folder(tmp_path: Path):
+    fleet = tmp_path / "fleet"
+    fleet.mkdir()
+    record = fleet / "fleet.json"
+    record.write_text("{}")
+    ran = kfm("run", "x", "--fleet", str(fleet), home=tmp_path)
+    assert ran.returncode == 2
+    assert "kfm resume" in ran.stderr and ran.stderr.startswith("kfm:")
+    assert record.read_text() == "{}"

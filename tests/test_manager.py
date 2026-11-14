@@ -283,6 +283,22 @@ async def test_a_kadence_unit_is_given_another_task(fleet, tmp_path: Path):
     assert lead.session == session and lead.state == "working"
 
 
+async def test_a_kadence_unit_waits_for_the_person_before_a_real_world_action(
+        fleet, tmp_path: Path):
+    manager, events = await fleet({"Lead": [
+        call("mcp__fleet__request_approval", action="Post the release note",
+             details="On the public blog."),
+        {"text": "Posted."}]})
+    lead = await manager.lead("Publish the release note", name="Lead")
+    await until(lambda: any(isinstance(e, Approval) for e in events))
+    [asked] = [e for e in events if isinstance(e, Approval)]
+    assert asked.tool == "request_approval" and "Post the release note" in asked.arguments
+    await asyncio.sleep(1.0)
+    assert "Posted." not in said(events, "Lead")  # it waits
+    await manager.approve(lead, asked.request_id, True)
+    await until(lambda: "Posted." in said(events, "Lead"))
+
+
 async def test_a_running_fleet_is_not_resumed_again(fleet, tmp_path: Path):
     manager, _ = await fleet({"Lead": [{"text": "On watch."}]})
     await manager.lead("Keep watch", ongoing=True, name="Lead")

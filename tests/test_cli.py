@@ -3,6 +3,7 @@ it starts when none runs."""
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -54,6 +55,19 @@ def test_run_follows_a_fleet_and_the_other_commands_reach_it(tmp_path: Path):
     assert "K5 agent u1: done" in shown.stdout and "Scout (K4, u2): done" in shown.stdout
     again = kfm("resume", home=tmp_path)
     assert again.returncode == 1 and "nothing was at work" in again.stdout.lower()
+
+    told = kfm("report", home=tmp_path)  # what it did, for someone who was not watching
+    assert told.returncode == 0, told.stderr
+    assert told.stdout.startswith("# Report: fleet 1") and "of $1.00" in told.stdout
+    assert "Scout (K4, u2) → K5 u1: report: Found it." in told.stdout
+    assert "K5 u1 → you: report: All found." in told.stdout
+    saved = tmp_path / "report.json"
+    assert kfm("report", "fleet 1", "--format", "json", "-o", str(saved),
+               home=tmp_path).returncode == 0
+    timeline = json.loads(saved.read_text())["timeline"]
+    assert [(e["kind"], e["unit"], e["to"]) for e in timeline][:2] == [
+        ("task", None, "u1"), ("task", "u1", "u2")]  # from who gave it, to who got it
+    assert timeline[0]["at"] > 1_700_000_000
 
     # What the window can do, a terminal can: a fleet built by hand, changed and deleted.
     assert "work: 1 fleet, 0 running" in kfm("projects", home=tmp_path).stdout

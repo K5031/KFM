@@ -42,3 +42,18 @@ def test_settings_are_saved_beside_what_the_file_already_says(tmp_path: Path):
     with pytest.raises(ValueError, match="above zero"):
         config.save(path, budget_usd=0)
     assert config.load(path).budget_usd == 25.0  # nothing was written
+
+
+def test_real_world_actions_ask_unless_the_setting_grants_them(tmp_path: Path):
+    path = tmp_path / "fleet.toml"
+    assert load(path).real_world_approval is True
+    path.write_text("real_world_approval = false\n")
+    assert load(path).real_world_approval is False
+
+
+@pytest.mark.parametrize("text", ['real_world_approval = "no"', "real_world_approval = 0"])
+def test_a_real_world_setting_that_is_not_true_or_false_is_refused(tmp_path: Path, text: str):
+    path = tmp_path / "fleet.toml"
+    path.write_text(text)
+    with pytest.raises(ValueError, match="real_world_approval"):
+        load(path)

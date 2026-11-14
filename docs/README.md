@@ -42,7 +42,9 @@ While it runs, the terminal shows what happens:
 
 - **Type a message** and press Enter to tell the lead something.
 - **Approvals:** agents work freely inside the work folder. When one wants to do something
-  outside it, KFM asks you: answer `y` or `n`.
+  outside it, KFM asks you: answer `y` or `n`. An action with real-world effect (publishing,
+  a payment, an outbound message) is asked the same way, and the agent waits for your answer.
+  See [Real-world actions](#real-world-actions).
 - **Questions:** when the lead needs a decision only you can make, it asks and waits for
   your message. Agents below ask their supervisor, not you.
 - **Ctrl+C** stops the fleet. A task that finishes ends the run by itself.
@@ -58,6 +60,21 @@ in the other, and both can follow it at once.
   stopped, finishes, or reaches its spending limit. `kfm status` shows what runs.
 - **A reboot stops every fleet;** `kfm resume` starts one again where it was.
 
+## Real-world actions
+
+An agent that is about to publish something, make a payment or send a message to someone
+outside the fleet asks you first. It appears as an approval (in the window, in `kfm watch`)
+with what it wants to do; you answer, and it carries on only if you allow it. A denial
+comes back to the agent with the reason, and the fleet does not do the action.
+
+To let agents do these without asking, set this in `fleet.toml`:
+
+```toml
+real_world_approval = false
+```
+
+It is on by default (`true`).
+
 ## The command line
 
 Everything the window does has a command. A fleet is named by its name, by
@@ -66,6 +83,7 @@ Everything the window does has a command. A fleet is named by its name, by
 | Command | Does |
 |---|---|
 | `kfm status [FLEET]` | Projects, their fleets and each fleet's agents: state, spending, task |
+| `kfm report [FLEET] [--format md\|json] [--since SECONDS] [-o FILE]` | What a fleet did and why, for someone who was not watching: agents, questions and approvals, reports and failures, spending |
 | `kfm watch [FLEET]` | Follow a running fleet and talk to its lead; Ctrl+C lets go of it |
 | `kfm stop [FLEET]` | Stop a fleet |
 | `kfm resume [FLEET] [--budget N]` | Start a stopped fleet again and follow it |

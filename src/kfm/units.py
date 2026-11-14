@@ -121,6 +121,9 @@ def brief(unit: Unit, supervisor: Unit | None, placed: list[Unit], words: Vocabu
                      f"started on it; one with none waits for you to give it one with "
                      f"{words.tool('message')}:")
         lines += [f"  - {each.label}: {each.task or 'no task yet'}" for each in placed]
+    lines.append(f"- Before an action with real-world effect (publishing, a payment, an outbound "
+                 f"message), ask the person with {words.tool('request_approval')} and do it "
+                 "only if approved.")
     lines.append("- Every agent works in the same folder. Say in each task which files it "
                  "owns, and do not change files that belong to another agent's task.")
     return "\n".join(lines)

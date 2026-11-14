@@ -111,6 +111,20 @@ def fleet_tools(manager: Manager) -> MCPServer:
             await manager.message(me, unit, text)
         return f"Sent to {unit.label}."
 
+    @server.tool(description=(
+        "Ask the person before an action with real-world effect: publishing, a payment, an "
+        "outbound message (email, a post, a call to an outside service that changes "
+        "something). Say what it is and its details. Waits for the answer and returns "
+        "'approved', or 'denied: <reason>', which you must respect."))
+    async def request_approval(
+        action: Annotated[str, Field(min_length=1, description="What you want to do.")],
+        ctx: Context,
+        details: Annotated[str, Field(description="Where, to whom, how much, what it says.")]
+        = "",
+    ) -> str:
+        with _refusals():
+            return await manager.request_approval(caller(ctx), action, details)
+
     @server.tool(description="Your agents: what each is doing, what it reported or asked, "
                              "and what it has spent.")
     async def status(ctx: Context) -> str:

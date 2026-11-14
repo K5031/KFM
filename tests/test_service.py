@@ -65,7 +65,7 @@ async def test_a_project_and_a_fleet_through_the_service(tmp_path: Path):
     await until(lambda: any("Thanks" in heard for heard in harness.heard["K5 u1"]))
     await service.stop(fleet)
     assert not service.state(fleet).running and (await service.projects())[0].running == 0
-    kinds = [type(event) for event in await service.history(fleet)]
+    kinds = [type(event) for _, event in await service.history(fleet)]
     assert Told in kinds and Delivered in kinds
 
     await service.rename_project(made.id, "Globex")
@@ -167,8 +167,9 @@ async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
     assert (listed.name, listed.fleets, listed.running) == ("Acme", 1, 1)
     assert await second.fleets(made.id) == [fleet]
     assert [u.called for u in second.fleet(fleet).units.values()] == ["K5 u1", "Scout"]
-    told = [type(event).__name__ for event in await second.history(fleet)]
-    assert "Instructed" in told
+    told = await second.history(fleet)
+    assert "Instructed" in [type(event).__name__ for _, event in told]
+    assert all(at > 1_700_000_000 for at, _ in told)  # with when each happened
 
     await second.say(fleet, "hello")  # what one says, both see
     for watching in (seen, later):

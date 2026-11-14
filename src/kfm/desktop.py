@@ -1036,7 +1036,7 @@ class FleetView(QWidget):
             return
         self._loading = True
         await self.service.watch(self.id)
-        history = await self.service.history(self.id)
+        history = [event for _, event in await self.service.history(self.id)]
         early, self._early = self._early or [], None
         # What happened while the history was fetched may be at its end too.
         both = max((n for n in range(1, min(len(history), len(early)) + 1)

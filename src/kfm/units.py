@@ -62,13 +62,6 @@ def hired_note(unit: Unit, words: Vocabulary) -> str:
             f"started on that. Its reports and questions come to you; {message} reaches it.]")
 
 
-def answer_note(supervisor: Unit | None, words: Vocabulary) -> str:
-    """What a unit is told with a message that reaches it after its goal ended."""
-    reader = "the person" if supervisor is None else supervisor.name or "your supervisor"
-    return ("(Your task had ended, so there is no goal to finish now: what you write last "
-            f"in this turn goes to {reader} as your report.)")
-
-
 def brief(unit: Unit, supervisor: Unit | None, under: list[Unit], words: Vocabulary) -> str:
     """The unit's standing instruction: who it is in the fleet, its task, and how the fleet
     works from where it stands. `under`: the agents it has when this is written."""

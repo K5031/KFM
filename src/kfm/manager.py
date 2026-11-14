@@ -75,12 +75,6 @@ class Manager:
         self._switch = asyncio.Lock()  # one start or stop at a time
         self._sessions: dict[str, Session] = {}
         self._opening: dict[str, asyncio.Lock] = {}  # one start of a unit's process at a time
-        # Whether a unit's instruction stood when its last turn ended.
-        self._carries_on: dict[str, bool] = {}
-        # Units told more after their goal ended, and what each wrote last since: with no
-        # goal left to finish, that is its report.
-        self._answering: set[str] = set()
-        self._last_said: dict[str, str] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         self._saving = asyncio.Lock()
 
@@ -250,9 +244,7 @@ class Manager:
         await self.stop_unit(unit)
         gone = self.fleet.remove(unit)
         for each in gone:
-            for kept in (self._carries_on, self._last_said, self._opening):
-                kept.pop(each.id, None)
-            self._answering.discard(each.id)
+            self._opening.pop(each.id, None)
         await self._save()
         await asyncio.to_thread(_forget, self.folder, gone)
         self._emit(Notice(f"You removed {unit.called}"
@@ -287,9 +279,9 @@ class Manager:
     async def tell(self, unit: Unit, text: str, *, files: Sequence[str] = (),
                    spoken: bool = False) -> None:
         """Put a message into the conversation of a unit that has begun, starting its
-        process if it is not up: it then works on what the message says. `files` and
-        `spoken` are the session's (api.Session.send). FleetError or UnitError when it
-        cannot be."""
+        process if it is not up: it then works on what the message says. One whose goal
+        has ended has it again, and ends it again with a report. `files` and `spoken` are
+        the session's (api.Session.send). FleetError or UnitError when it cannot be."""
         if self.fleet.units.get(unit.id) is not unit:
             raise FleetError(f"{unit.label} is not in the fleet.")
         if not self.up:
@@ -298,16 +290,13 @@ class Manager:
             raise FleetError(f"{unit.label} has not begun.")
         session = await self._session(unit)
         unit.question = None  # this is its answer
+        ended = unit.state in ("done", "idle")  # its instruction stands no more
         if unit.state in _OVER:
-            ended = unit.state in ("done", "idle")  # its goal is reached or gone
             unit.report = unit.failure = None
             self._set(unit, "working")
-            if ended and not self._carries_on.get(unit.id, False):
-                self._answering.add(unit.id)
-                self._last_said.pop(unit.id, None)
-                note = units.answer_note(self.fleet.supervisor_of(unit), self._words)
-                text = f"{text}\n\n{note}"
         await session.send(text, files, spoken=spoken)
+        if ended:  # the message is what it takes its turn on, with its goal to end again
+            await session.instruct(self._instruction(unit))
 
     async def message(self, supervisor: Unit, unit: Unit, text: str) -> None:
         """A supervisor's message to one of its agents."""
@@ -354,8 +343,6 @@ class Manager:
             await self._launch([unit])
         else:
             unit.report = unit.failure = unit.question = None
-            self._carries_on[unit.id] = True
-            self._answering.discard(unit.id)
             self._set(unit, "working")
             if self.up:  # else `start` opens it on its instruction as it then is
                 session = await self._session(unit)
@@ -404,14 +391,12 @@ class Manager:
         except UnitError as e:
             await self._could_not_start(unit, e)
             return
-        self._carries_on[unit.id] = True
         if unit.state == "starting":
             self._set(unit, "working")
 
     async def _reopen(self, unit: Unit) -> bool:
         """Open a unit that was at work when the fleet stopped, on its session, with its
         instruction as the fleet now has it. False: it could not be."""
-        self._carries_on[unit.id] = True
         unit.question = None  # an open question does not outlive the unit's process
         self._emit(Changed(unit, unit.state))
         try:
@@ -467,11 +452,6 @@ class Manager:
                 if unit.state != "stopped":
                     self._set(unit, "working")
             case api.Rested(carries_on=carries_on):
-                self._carries_on[unit.id] = carries_on
-                if unit.id in self._answering:
-                    self._answering.discard(unit.id)
-                    if unit.report is None and not carries_on:
-                        unit.report = self._last_said.get(unit.id)
                 if unit.state == "stopped":
                     return
                 if carries_on:  # between check-ins, or until its question is answered
@@ -481,7 +461,6 @@ class Manager:
                 if unit.state != "working":
                     self._turn_ended(unit)
             case api.Said(text=text):
-                self._last_said[unit.id] = text
                 self._emit(Said(unit, text))
             case api.Reported(text=text):
                 unit.report = text

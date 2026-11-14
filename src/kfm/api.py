@@ -157,8 +157,9 @@ class Session(abc.ABC):
 
     @abc.abstractmethod
     async def instruct(self, instruction: Instruction) -> None:
-        """Replace the standing instruction of the conversation `begin` started, which
-        carries on: the agent has another task from now, and takes no turn for it."""
+        """The standing instruction of the conversation `begin` started, from now: another
+        one, or the same again after a goal ended. The conversation carries on. A message
+        is sent with it, before or after: the instruction alone need not start a turn."""
 
     @abc.abstractmethod
     async def send(self, text: str, files: Sequence[str] = (), *,

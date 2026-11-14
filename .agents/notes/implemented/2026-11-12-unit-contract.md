@@ -17,7 +17,7 @@ head what they cannot express.
 - **A harness opens units.** `Harness.open(spec, on_event, session)` starts a unit's
   process from a `UnitSpec` (its data folder, the fleet's work folder, model, permissions,
   spending limit, the fleet tools' address) and returns a `Session`: `begin(instruction)`,
-  `send(text)`, `approve(request_id, allow)`, `close(grace_s)`.
+  `instruct(instruction)`, `send(text)`, `approve(request_id, allow)`, `close(grace_s)`.
 - **A unit says what it does** in nine events: `Working`, `Rested(carries_on)`, `Said`,
   `Reported`, `Asked`, `Spent`, `ApprovalNeeded`, `Failed`, `Exited`. The manager keeps a
   unit's state from these and nothing else.

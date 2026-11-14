@@ -115,35 +115,32 @@ async def test_a_question_goes_to_the_supervisor_and_its_answer_back(fleet):
     assert "waiting" in states
 
 
-async def test_a_finished_agent_that_is_told_more_answers_with_one_report(fleet):
-    manager, events = await fleet({
+async def test_a_finished_agent_that_is_told_more_has_its_goal_again_and_finishes(
+        fleet, tmp_path: Path):
+    scripts = {
         "Lead": [call("mcp__fleet__delegate", name="Scout", task="Count the files"),
-                 {"when": "] 3 files", **call("mcp__fleet__message", agent="u2",
-                                              text="Count again")},
+                 {"when": "go on", **call("mcp__fleet__message", agent="u2",
+                                          text="Count again")},
                  finish("Confirmed: 3.", when="] Still 3")],
-        "Scout": [finish("3 files"), {"when": "Count again", "text": "Still 3 files."}]})
+        "Scout": [finish("3 files")]}
+    manager, events = await fleet(scripts)
     await manager.add(None, "Lead", "Find out how many files there are")
+    await until(lambda: delivered(events) == [("Scout", "Lead", "report", "3 files")])
+    scout = manager.fleet.units["u2"]
+    await until(lambda: scout.state == "done" and "u2" not in manager._sessions)
+
+    # Its process has ended. Opened again (the scripted model starts its script anew), it
+    # takes its turn on the message, and has its goal by then to finish with.
+    scripts["Scout"] = [finish("Still 3 files.", when="Count again")]
+    (tmp_path / "kadence.toml").write_text(tomli_w.dumps({
+        "core": {"factory": "tests.fakecore:factory", "options": {"scripts": scripts}},
+        "runtime": {"model": "fake-1"}}))
+    await manager.say("go on")
     await asyncio.wait_for(manager.finished.wait(), 30)
     assert delivered(events) == [("Scout", "Lead", "report", "3 files"),
                                  ("Scout", "Lead", "report", "Still 3 files."),
                                  ("Lead", None, "report", "Confirmed: 3.")]
-    assert manager.fleet.units["u2"].state == "done"
-
-
-async def test_finishing_a_goal_that_has_ended_is_not_a_report(fleet):
-    manager, events = await fleet({
-        "Lead": [call("mcp__fleet__delegate", name="Scout", task="Count the files"),
-                 {"when": "] 3 files", **call("mcp__fleet__message", agent="u2",
-                                              text="Count again")},
-                 finish("Confirmed.", when="] Counted twice")],
-        "Scout": [finish("3 files"),
-                  {"when": "Count again", **call("finish_goal", report="Again 3")},
-                  {"text": "Counted twice: 3."}]})
-    await manager.add(None, "Lead", "Find out how many files there are")
-    await asyncio.wait_for(manager.finished.wait(), 30)
-    assert [d for d in delivered(events) if d[0] == "Scout"] == [
-        ("Scout", "Lead", "report", "3 files"),
-        ("Scout", "Lead", "report", "Counted twice: 3.")]
+    assert scout.state == "done"
 
 
 async def test_the_lowest_rank_is_told_it_cannot_delegate(fleet):

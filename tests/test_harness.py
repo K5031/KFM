@@ -285,6 +285,29 @@ async def test_an_agent_with_no_task_takes_its_first_message_as_its_task(tmp_pat
     await manager.aclose()
 
 
+async def test_a_finished_agent_that_is_told_more_has_its_goal_again(tmp_path: Path):
+    harness = FakeHarness({"Lead": [
+        {"do": [("report", "3 files")]},
+        {"when": "Count again", "do": [("say", "Counting."), ("report", "Still 3.")]},
+        {"when": "And the folders", "do": [("say", "Two folders.")]}]})
+    manager, events = await run(tmp_path, harness)
+    lead = await manager.add(None, "Lead", "Count the files")
+    await until(lambda: lead.state == "done")
+    await manager.say("Count again")
+    assert [name for name, _ in harness.instructed] == ["Lead"]  # with the message
+    assert "Your task: Count the files" in harness.instructed[0][1]
+    await until(lambda: delivered(events) == [("Lead", None, "report", "3 files"),
+                                              ("Lead", None, "report", "Still 3.")])
+    assert harness.heard["Lead"][1] == "Count again"  # the message, and no note with it
+    await until(lambda: lead.state == "done")
+
+    await manager.say("And the folders")  # it answers and does not finish
+    await until(lambda: len(harness.heard["Lead"]) == 3 and lead.spent_usd == pytest.approx(0.03))
+    assert len(delivered(events)) == 2 and lead.report is None  # its words are no report
+    assert lead.state == "working"  # its goal stands
+    await manager.aclose()
+
+
 async def test_a_renamed_agent_is_known_by_its_new_name(tmp_path: Path):
     harness = FakeHarness({
         "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]}],

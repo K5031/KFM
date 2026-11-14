@@ -23,7 +23,7 @@ from kfm.draft import Draft
 from kfm.events import FleetEvent
 from kfm.fleet import Fleet
 
-VERSION = 2  # of this contract; a service and a client of different versions do not talk
+VERSION = 3  # of this contract; a service and a client of different versions do not talk
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,12 +37,17 @@ class ProjectInfo:
 
 @dataclass(frozen=True, slots=True)
 class FleetState:
-    """How a fleet stands apart from its record."""
+    """How a fleet stands, worked out once, for every frontend to show."""
 
     running: bool = False
     stopping: bool = False  # its processes are ending
-    finished: bool = False  # its lead reported, or its money ran out, while it ran
+    finished: bool = False  # its lead reported, or its money ran out, when it last ran
     budget_usd: float = 0.0  # the most it may spend
+    # In a word: running, stopping, stopped, "not started" (no agent has begun), or
+    # finished (it runs, its lead has reported and nothing is at work).
+    status: str = "not started"
+    can_start: bool = False  # it is stopped, with agents that would carry on or begin
+    has_run: bool = False  # one of its agents has begun
 
 
 @dataclass(frozen=True, slots=True)

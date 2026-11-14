@@ -193,12 +193,10 @@ async def _resume(service: Service, args: argparse.Namespace) -> int:
     fleet = await _one_fleet(service, args.fleet)
     if fleet is None:
         return 1
-    record = service.fleet(fleet)
-    assert record is not None
     if service.state(fleet).running:
         print(f"{fleet} is running: kfm watch follows it.")
         return 1
-    if not any(unit.active or unit.state == "planned" for unit in record.units.values()):
+    if not service.state(fleet).can_start:
         print(f"Nothing was at work in {fleet}: every agent had finished or was stopped.")
         return 1
     await service.start(fleet, budget_usd=args.budget_usd)
@@ -370,8 +368,7 @@ def _print_fleet(service: Service, fleet: str, indent: str) -> None:
     if record is None:
         return
     state = service.state(fleet)
-    how = "running" if state.running else "stopping" if state.stopping else "stopped"
-    print(f"{indent}{record.name} ({fleet}): {how}, {len(record.units)} agents, "
+    print(f"{indent}{record.name} ({fleet}): {state.status}, {len(record.units)} agents, "
           f"${record.spent_usd:.2f} of ${state.budget_usd:.2f}")
     if (lead := record.lead) is not None:
         for unit in record.subtree(lead):

@@ -133,8 +133,18 @@ class LocalService(Service):
         manager = self._managers.get(fleet_id)
         if manager is None:
             return FleetState()
-        return FleetState(manager.up, manager.stopping, manager.finished.is_set(),
-                          manager.config.budget_usd)
+        units = manager.fleet.units.values()
+        at_work = any(unit.active for unit in units)
+        has_run = any(unit.session is not None for unit in units)
+        finished = manager.finished.is_set()
+        status = ("stopping" if manager.stopping
+                  else "finished" if manager.running and finished and not at_work
+                  else "running" if manager.running
+                  else "stopped" if has_run else "not started")
+        can_start = not manager.running and (
+            at_work or any(unit.state == "planned" for unit in units))
+        return FleetState(manager.up, manager.stopping, finished, manager.config.budget_usd,
+                          status, can_start, has_run)
 
     async def history(self, fleet_id: str) -> tuple[list[FleetEvent], int]:
         manager = self._get(fleet_id)

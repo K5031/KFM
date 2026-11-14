@@ -59,6 +59,7 @@ async def test_a_project_and_a_fleet_through_the_service(tmp_path: Path):
     assert [(u.called, u.state) for u in record.units.values()] == [("K5 u1", "done"),
                                                                      ("Scout", "done")]
     assert service.state(fleet).running and service.state(fleet).budget_usd == 3.0
+    assert service.state(fleet).status == "finished"  # its lead reported, nothing is at work
     assert Updated(fleet) in seen
     [listed] = await service.projects()
     assert (listed.fleets, listed.running) == (1, 1)
@@ -67,6 +68,8 @@ async def test_a_project_and_a_fleet_through_the_service(tmp_path: Path):
     await until(lambda: any("Thanks" in heard for heard in harness.heard["K5 u1"]))
     await service.stop(fleet)
     assert not service.state(fleet).running and (await service.projects())[0].running == 0
+    stopped = service.state(fleet)  # every agent had finished: there is nothing to start
+    assert (stopped.status, stopped.can_start, stopped.has_run) == ("stopped", False, True)
     history, upto = await service.history(fleet)
     kinds = [type(event) for event in history]
     assert Told in kinds and Delivered in kinds
@@ -94,7 +97,10 @@ async def test_a_fleet_is_built_and_changed_through_the_service(tmp_path: Path):
     made = await service.create_project("Acme", str(tmp_path / "work"))
     fleet = await service.add_fleet(made.id, "content", "")  # nothing it should do: by hand
     assert not service.state(fleet).running and not service.fleet(fleet).units
+    empty = service.state(fleet)
+    assert (empty.status, empty.can_start, empty.has_run) == ("not started", False, False)
     chief = await service.add_agent(fleet, None, "Chief", "Run content", ongoing=True)
+    assert service.state(fleet).can_start and service.state(fleet).status == "not started"
     writer = await service.add_agent(fleet, chief, "Writer", "Write the posts")
     await service.set_model(fleet, chief, "big-1")
     await service.rename_agent(fleet, writer, "Author")
@@ -103,6 +109,8 @@ async def test_a_fleet_is_built_and_changed_through_the_service(tmp_path: Path):
     assert not harness.models  # nothing has run
     await service.start(fleet)
     await until(lambda: harness.models == [("Chief", "big-1"), ("Writer", None)])
+    running = service.state(fleet)
+    assert (running.status, running.can_start, running.has_run) == ("running", False, True)
     await until(lambda: harness.heard.get("Writer"))
     assert "Your task: Write the long posts" in harness.heard["Writer"][0]
 
@@ -119,6 +127,7 @@ async def test_a_fleet_is_built_and_changed_through_the_service(tmp_path: Path):
     assert history and not any(writer in units(event) for event in history)
     assert upto > len(history)  # the events keep their numbers
     await service.stop(fleet)
+    assert service.state(fleet).status == "stopped" and service.state(fleet).can_start
     await service.set_task(fleet, chief, "Run the blog")  # one that has run, while stopped
     assert service.fleet(fleet).units[chief].task == "Run the blog" and not harness.instructed[1:]
     await service.say(fleet, "Still there?")  # a message starts a stopped fleet
@@ -172,6 +181,7 @@ async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
     await until(lambda: any(isinstance(u, Happened) and isinstance(u.event, Said)
                             and u.event.unit == "u2" for u in seen))
     assert first.state(fleet).running and first.state(fleet).budget_usd == 3.0
+    assert first.state(fleet).status == "running" and first.state(fleet).has_run
     assert Listed() in seen and Updated(fleet) in seen
 
     # A second frontend finds the fleet, with what happened before it came.

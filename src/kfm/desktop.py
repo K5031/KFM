@@ -72,7 +72,7 @@ from PySide6.QtWidgets import (
 
 from kfm import app_menu, draft
 from kfm.api import Harness, UnitError
-from kfm.chart import Chart, ChartFleet
+from kfm.chart import Chart, ChartFleet, state_tone
 from kfm.config import HOME, FleetConfig
 from kfm.events import (
     Answered,
@@ -1007,16 +1007,10 @@ class FleetView(QWidget):
         return self.fleet.name if self.fleet is not None else ""
 
     @property
-    def can_resume(self) -> bool:
-        return (not self.running and not self.stopping and self.fleet is not None
-                and any(unit.active or unit.state == "planned"
-                        for unit in self.fleet.units.values()))
-
-    @property
-    def started(self) -> bool:
-        """Whether any of its agents has ever run."""
-        return self.fleet is not None and any(
-            unit.session is not None for unit in self.fleet.units.values())
+    def start_word(self) -> str:
+        """What its button says while it can be started: "Start", "Resume"; else ""."""
+        how = self.service.state(self.id)
+        return "" if not how.can_start else "Resume" if how.has_run else "Start"
 
     @property
     def status(self) -> str:
@@ -1025,11 +1019,7 @@ class FleetView(QWidget):
         if fleet is None:
             return ""
         how = self.service.state(self.id)
-        state = ("running" if how.running else "stopping" if how.stopping
-                 else "stopped" if self.started else "not started")
-        if how.running and how.finished and not any(u.active for u in fleet.units.values()):
-            state = "finished"  # its task is done; the lead still takes messages
-        return f"{state} · ${fleet.spent_usd:.2f} of ${how.budget_usd:.2f}"
+        return f"{how.status} · ${fleet.spent_usd:.2f} of ${how.budget_usd:.2f}"
 
     def load(self) -> asyncio.Future[None]:
         """Watch the fleet and show what happened in it so far: once, however often it is
@@ -1988,8 +1978,8 @@ class FleetWindow(QMainWindow):
         self._bar_gap.setVisible(opened is None)
         self.status.setVisible(view is not None or on_chart)
         self.stop_button.setVisible(view is not None and view.running)
-        self.resume_button.setVisible(view is not None and view.can_resume)
-        self.resume_button.setText("Resume" if view is None or view.started else "Start")
+        self.resume_button.setVisible(view is not None and bool(view.start_word))
+        self.resume_button.setText(view.start_word if view is not None else "")
         self.agents_section.setVisible(view is not None)
         self.projects_label.setVisible(self.projects.count() > 0)
         for i in range(self.projects.count()):
@@ -2009,9 +1999,7 @@ class FleetWindow(QMainWindow):
                                                    shown.status, shown.fleet,
                                                    running=shown.running,
                                                    editable=not shown.stopping,
-                                                   start="" if not shown.can_resume
-                                                   else "Resume" if shown.started
-                                                   else "Start")
+                                                   start=shown.start_word)
                                         for shown in fleets])
             return
         chosen = view.chosen
@@ -2046,12 +2034,7 @@ class FleetWindow(QMainWindow):
             row.setText(0, f"{unit.name}  K{unit.rank}" if unit.name else f"K{unit.rank}")
             row.setText(1, unit.state)
             row.setText(2, f"${unit.spent_usd:.2f}")
-            # What an agent was doing when its fleet stopped is not what it does now.
-            tone = {"working": colors.accent, "starting": colors.accent,
-                    "waiting": colors.warning}.get(unit.state, colors.muted)
-            tone = {"failed": colors.error, "done": colors.ok}.get(
-                unit.state, tone if view.running else colors.muted)
-            row.setForeground(1, QColor(tone))
+            row.setForeground(1, QColor(state_tone(unit.state, view.running)))
             row.setForeground(2, QColor(colors.muted))
             row.setToolTip(0, unit.task)
         # As tall as its agents, up to a part of the sidebar: the projects have the rest.

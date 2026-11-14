@@ -71,6 +71,15 @@ def slots(fleet: Fleet) -> tuple[dict[str, tuple[float, int]], float]:
     return at, place(lead, 0.0) if lead is not None else 1.0
 
 
+def state_tone(state: str, running: bool) -> str:
+    """The colour an agent's state is written in. What it was doing when its fleet
+    stopped is not what it does now: working and waiting are muted then."""
+    colors = theme.current()
+    at_work = {"working": colors.accent, "starting": colors.accent, "waiting": colors.warning}
+    return {"failed": colors.error, "done": colors.ok}.get(
+        state, at_work.get(state, colors.muted) if running else colors.muted)
+
+
 def _text(role: str | None = None, tone: str | None = None) -> QLabel:
     made = QLabel()
     made.setTextFormat(Qt.TextFormat.PlainText)
@@ -141,12 +150,7 @@ class Node(_Box):
             unit.name or f"K{unit.rank}", Qt.TextElideMode.ElideRight, room))
         self.rank.setText(f"K{unit.rank}" if unit.name else "")  # a nameless one is its rank
         self.state.setText(unit.state)
-        colors = theme.current()
-        # What an agent was doing when its fleet stopped is not what it does now.
-        tone = {"working": colors.accent, "starting": colors.accent,
-                "waiting": colors.warning}.get(unit.state, colors.muted) if running else colors.muted
-        tone = {"failed": colors.error, "done": colors.ok}.get(unit.state, tone)
-        self.state.setStyleSheet(f"color: {tone};")
+        self.state.setStyleSheet(f"color: {state_tone(unit.state, running)};")
         self.spent.setText(f"${unit.spent_usd:.2f}")
         self.setToolTip(f"{unit.task}\n{unit.model}" if unit.model else unit.task)
 

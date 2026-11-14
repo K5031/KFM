@@ -26,9 +26,6 @@ class FleetConfig:
     budget_usd: float = 10.0  # the whole fleet; reaching it stops every unit
     unit_budget_usd: float = 2.0  # each unit's own limit, unless its supervisor sets less
     permissions: str = "allow_workspace"  # Kadence's level for every unit
-    # Whether an action with real-world effect (publishing, payments, outbound messages)
-    # waits for the person. False grants them all: request_approval then answers at once.
-    real_world_approval: bool = True
     models: Mapping[str, str] = field(default_factory=dict)
     teams: Mapping[str, str] = field(default_factory=dict)
     harness: str = "kadence"
@@ -82,8 +79,6 @@ def _config(data: dict[str, Any], source: str, overrides: Mapping[str, Any]) -> 
     config = FleetConfig(**data)
     if not 1 <= config.top_rank <= 5:
         raise ValueError("top_rank is between 1 and 5")
-    if not isinstance(config.real_world_approval, bool):
-        raise ValueError("real_world_approval is true or false")  # noqa: TRY004
     if config.max_units < 1 or config.budget_usd <= 0 or config.unit_budget_usd <= 0:
         raise ValueError("max_units, budget_usd and unit_budget_usd are above zero")
     low, high = config.check_in_s

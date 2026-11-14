@@ -7,7 +7,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
-import json
 import os
 import signal
 import stat
@@ -16,7 +15,6 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from kfm import report
 from kfm.api import UnitError
 from kfm.config import HOME
 from kfm.draft import DraftError
@@ -60,14 +58,6 @@ def main(argv: list[str] | None = None) -> int:
                                  help="a new limit for the whole fleet, in US dollars")
     status = commands.add_parser("status", help="show projects, fleets and their agents")
     status.add_argument("fleet", nargs="?", help="one fleet's name or id (default: all)")
-    report = commands.add_parser(
-        "report", help="what a fleet did and why, for someone who was not watching")
-    report.add_argument("fleet", nargs="?", help="its name or id (default: the newest)")
-    report.add_argument("--format", choices=("md", "json"), default="md")
-    report.add_argument("--since", type=float, metavar="SECONDS",
-                        help="only what happened after this many seconds into the log")
-    report.add_argument("-o", "--output", type=Path,
-                        help="write the report to this file instead of printing it")
 
     commands.add_parser("projects", help="list the projects")
     project = commands.add_parser("project", help="make, rename or delete a project")
@@ -241,38 +231,6 @@ async def _status(service: Service, args: argparse.Namespace) -> int:
     return 0
 
 
-async def _report(service: Service, args: argparse.Namespace) -> int:
-    fleet = await _one_fleet(service, args.fleet)
-    if fleet is None:
-        return 1
-    record = service.fleet(fleet)
-    assert record is not None
-    history = await service.history(fleet)
-    times = [at for at, _ in history]
-    started = times[0] if times else None
-    ended = times[-1] if times else None
-    since = (started + args.since) if args.since is not None and started is not None else None
-    budget = service.state(fleet).budget_usd
-    if args.format == "json":
-        data = report.build(record, history, state=_status_word(service, fleet),
-                            budget_usd=budget, started=started, ended=ended, since=since)
-        text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-    else:
-        text = report.render(record, history, state=_status_word(service, fleet),
-                             budget_usd=budget, started=started, ended=ended, since=since)
-    if args.output is not None:
-        args.output.write_text(text)
-        print(f"Report of {fleet} written to {args.output}.")
-    else:
-        print(text, end="")
-    return 0
-
-
-def _status_word(service: Service, fleet: str) -> str:
-    state = service.state(fleet)
-    return "running" if state.running else "stopping" if state.stopping else "stopped"
-
-
 async def _projects(service: Service, args: argparse.Namespace) -> int:
     for each in await service.projects():
         fleets = "1 fleet" if each.fleets == 1 else f"{each.fleets} fleets"
@@ -371,8 +329,7 @@ async def _settings(service: Service, args: argparse.Namespace) -> int:
 
 _COMMANDS: dict[str, Callable[[Service, argparse.Namespace], Awaitable[int]]] = {
     "run": _run, "watch": _watch, "resume": _resume, "stop": _stop, "status": _status,
-    "report": _report, "projects": _projects, "project": _project, "fleet": _fleet,
-    "agent": _agent,
+    "projects": _projects, "project": _project, "fleet": _fleet, "agent": _agent,
     "say": _say, "approve": _approve, "settings": _settings}
 
 

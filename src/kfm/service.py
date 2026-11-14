@@ -23,7 +23,7 @@ from kfm.draft import Draft
 from kfm.events import FleetEvent
 from kfm.fleet import Fleet
 
-VERSION = 2  # of this contract; a service and a client of different versions do not talk
+VERSION = 1  # of this contract; a service and a client of different versions do not talk
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,9 +121,8 @@ class Service(abc.ABC):
     def state(self, fleet: str) -> FleetState: ...
 
     @abc.abstractmethod
-    async def history(self, fleet: str) -> list[tuple[float, FleetEvent]]:
-        """What happened in a watched fleet so far, oldest first, each with when it did
-        (seconds since the epoch)."""
+    async def history(self, fleet: str) -> list[FleetEvent]:
+        """What happened in a watched fleet so far, oldest first."""
 
     @abc.abstractmethod
     async def start(self, fleet: str, *, budget_usd: float | None = None) -> None:

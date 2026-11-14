@@ -56,13 +56,3 @@ def test_the_brief_says_where_the_unit_stands_in_its_harnesss_words():
     other = brief(worker, lead, [], Vocabulary(finish="done", ask="ask_boss", tools="fleet."))
     assert "call done with a report" in other and "call ask_boss with" in other
     assert "finish_goal" not in other and "mcp__" not in other
-
-
-def test_every_unit_is_told_to_ask_before_a_real_world_action():
-    fleet = Fleet(top_rank=2)
-    lead = fleet.add("Lead", "Ship the site", None)
-    worker = fleet.add("Builder", "Build the page", lead)
-    for unit in (lead, worker):
-        text = brief(unit, lead if unit is worker else None, [], kadence.WORDS)
-        assert "mcp__fleet__request_approval" in text
-        assert "real-world effect" in text

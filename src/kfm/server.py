@@ -170,7 +170,7 @@ class Server:
             case "watch":
                 return self._record(args[0])
             case "history":
-                return [log.encode(event, at) for at, event in result]
+                return [log.encode(event, 0.0) for event in result]
             case "settings" | "save_settings":
                 return settings.record(result)
         return result

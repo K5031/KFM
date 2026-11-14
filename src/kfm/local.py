@@ -154,11 +154,12 @@ class LocalService(Service):
             manager.config.budget_usd if manager is not None
             else held.fleet.settings.get("budget_usd", 0.0))
 
-    async def history(self, fleet_id: str) -> list[tuple[float, FleetEvent]]:
+    async def history(self, fleet_id: str) -> list[FleetEvent]:
         held = self._get(fleet_id)
         if held.manager is not None:
             await held.manager.flush()
-        return await asyncio.to_thread(log.read, held.folder, held.fleet)
+        return [event for _, event in await asyncio.to_thread(
+            log.read, held.folder, held.fleet)]
 
     async def start(self, fleet_id: str, *, budget_usd: float | None = None) -> None:
         held = self._get(fleet_id)

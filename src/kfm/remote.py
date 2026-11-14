@@ -132,14 +132,14 @@ class RemoteService(Service):
     def state(self, fleet: str) -> FleetState:
         return self._states.get(fleet, FleetState())
 
-    async def history(self, fleet: str) -> list[tuple[float, FleetEvent]]:
+    async def history(self, fleet: str) -> list[FleetEvent]:
         record = self._fleets.get(fleet)
         if record is None:
             raise ValueError(f"The fleet {fleet} is not being watched.")
         found = []
         for data in await self._request("history", fleet):
             with contextlib.suppress(ValueError, KeyError, TypeError):  # a unit since removed
-                found.append(log.decode(data, record))
+                found.append(log.decode(data, record)[1])
         return found
 
     async def start(self, fleet: str, *, budget_usd: float | None = None) -> None:

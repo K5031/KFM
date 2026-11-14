@@ -8,7 +8,6 @@ import asyncio
 import contextlib
 import logging
 import os
-import secrets
 import shutil
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -95,9 +94,6 @@ class Manager:
         self._tasks: set[asyncio.Task[None]] = set()
         self._over_budget = False
         self._saving = asyncio.Lock()
-        # Real-world actions waiting for the person, by request id: who asked, and the
-        # answer as that unit will read it.
-        self._pending: dict[str, tuple[str, asyncio.Future[str]]] = {}
 
     @classmethod
     def resumed(cls, folder: Path, *, harness: Harness | None = None,
@@ -154,7 +150,6 @@ class Manager:
         `resumed` knows which were at work."""
         closing = [self._close(unit) for unit in self.fleet.units.values()]
         await asyncio.gather(*closing, return_exceptions=True)
-        self._refuse_pending()
         for task in list(self._tasks):
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
@@ -277,30 +272,9 @@ class Manager:
         await self._save()
 
     async def approve(self, unit: Unit, request_id: str, allow: bool) -> None:
-        if (asked := self._pending.pop(request_id, None)) is not None:
-            asked[1].set_result("approved" if allow else "denied: the person did not allow it")
-            self._emit(Answered(unit, request_id, allow))
-        elif (session := self._sessions.get(unit.id)) is not None:
+        if (session := self._sessions.get(unit.id)) is not None:
             await session.approve(request_id, allow)
             self._emit(Answered(unit, request_id, allow))
-
-    async def request_approval(self, unit: Unit, action: str, details: str) -> str:
-        """A unit's real-world action, asked of the person: waits for the answer, which
-        arrives as `approve`. 'approved', or 'denied: <reason>'. Granted by the settings
-        it is 'approved' at once."""
-        if not self.config.real_world_approval:
-            return "approved"
-        if self._over_budget:
-            return "denied: the fleet has reached its spending limit"
-        request_id = secrets.token_hex(8)
-        waiting: asyncio.Future[str] = asyncio.get_running_loop().create_future()
-        self._pending[request_id] = (unit.id, waiting)
-        self._emit(Approval(unit, request_id, "request_approval",
-                            f"{action}\n{details}".strip()))
-        try:
-            return await waiting
-        finally:
-            self._pending.pop(request_id, None)
 
     # ── What units do, through the fleet tools ───────────────────────────
 
@@ -369,16 +343,6 @@ class Manager:
             if each.active:
                 self._set(each, "stopped")
             await self._close(each)
-        self._refuse_pending({each.id for each in self.fleet.subtree(unit)})
-
-    def _refuse_pending(self, units: set[str] | None = None) -> None:
-        """Real-world actions still waiting are refused: whoever asked is not there to
-        act. `units`: only what these asked; None: everything."""
-        for request_id, (unit_id, waiting) in list(self._pending.items()):
-            if units is None or unit_id in units:
-                del self._pending[request_id]
-                if not waiting.done():
-                    waiting.set_result("denied: stopped before the person answered")
 
     # ── Units ────────────────────────────────────────────────────────────
 

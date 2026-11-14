@@ -57,6 +57,9 @@ in the other, and both can follow it at once.
 - **Closing the window, or a terminal, does not stop a fleet.** It runs until it is
   stopped, finishes, or reaches its spending limit. `kfm status` shows what runs.
 - **A reboot stops every fleet;** `kfm resume` starts one again where it was.
+- **After an update** the service still running may be the old one. `kfm` and the window
+  then say so and do not attach. It ends by itself once no fleet runs and nothing is
+  attached to it, or with the command the message names; its fleets can be resumed.
 
 ## The command line
 

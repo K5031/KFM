@@ -214,7 +214,7 @@ async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
     assert Fleet.load(home / "projects" / made.id / "fleets" / fleet.split("/")[1]).name == "dev"
 
 
-async def test_a_service_of_another_version_is_waited_out_or_named(tmp_path: Path):
+async def test_a_service_of_another_version_is_refused_and_named(tmp_path: Path):
     socket = tmp_path / "s"
 
     async def old(reader, writer):  # speaks a version this program does not
@@ -223,16 +223,9 @@ async def test_a_service_of_another_version_is_waited_out_or_named(tmp_path: Pat
         writer.close()
 
     server = await asyncio.start_unix_server(old, path=str(socket))
+    started = asyncio.get_running_loop().time()
     with pytest.raises(ServiceError, match="kill 4242") as refused:
-        await RemoteService.connect(tmp_path, socket=socket, start=False, wait_s=0.4)
+        await RemoteService.connect(tmp_path, socket=socket, start=False)
+    assert asyncio.get_running_loop().time() - started < 1.0  # at once: it is not waited out
     assert "version 0" in str(refused.value) and "can be resumed" in str(refused.value)
-
-    async def ends() -> None:  # one with nothing to do ends by itself
-        await asyncio.sleep(0.3)
-        server.close()
-        socket.unlink(missing_ok=True)
-
-    ending = asyncio.ensure_future(ends())
-    with pytest.raises(ServiceError, match="No KFM service runs"):  # it looked again
-        await RemoteService.connect(tmp_path, socket=socket, start=False, wait_s=5.0)
-    await ending
+    server.close()

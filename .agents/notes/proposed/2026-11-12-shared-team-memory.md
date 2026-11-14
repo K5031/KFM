@@ -15,6 +15,11 @@ A fleet passes everything through messages. In the runs of 2026-11-12:
 - Each agent has a private memory. What it worked out about the project is gone when it
   finishes, and the next agent starts cold.
 
+In the run of 2026-11-14 each worker hired for a feature was told to read about eight
+files before it began. Keeping workers alive to save that reading costs more than it
+saves ([short-lived workers](2026-11-14-short-lived-workers.md)), which leaves notes a
+new worker starts with as the way to spare it.
+
 If passing information around costs more than it saves, a fleet is less efficient than
 one agent. For a team that holds a role for weeks, what it remembers together is most of
 what makes it a team.

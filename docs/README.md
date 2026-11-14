@@ -24,12 +24,12 @@ kfm run "Audit the docs in this repository and fix what is out of date" --budget
 
 | Option | Does |
 |---|---|
-| `--budget 5` | The most the whole fleet may spend, in US dollars (default 10) |
-| `--unit-budget 1` | The most one agent may spend (default 2) |
-| `--top-rank 3` | The lead's rank. 5 (the default) allows four levels below the lead; 1 means the lead works alone |
+| `--budget 5` | The most the whole fleet may spend, in US dollars (default: the settings', 10) |
 | `--duty` | Standing work that never ends ("be the support team") instead of a task that finishes |
 | `--work PATH` | The folder the agents work in (default: the current one) |
-| `--fleet PATH` | Where the fleet keeps its files (default: a new folder in `~/.kfm/fleets/`). A folder that already holds a fleet is refused: use `kfm resume --fleet` for that |
+| `--project NAME` | The project the fleet belongs to (default: the one whose folder this is, made if there is none) |
+| `--name NAME` | What the fleet is called |
+| `--detach` | Start it and return: the fleet keeps running, and `kfm watch` follows it |
 
 While it runs, the terminal shows what happens:
 
@@ -45,30 +45,55 @@ While it runs, the terminal shows what happens:
   outside it, KFM asks you: answer `y` or `n`.
 - **Questions:** when the lead needs a decision only you can make, it asks and waits for
   your message. Agents below ask their supervisor, not you.
-- **Ctrl+C** stops every agent. A task that finishes ends the run by itself.
+- **Ctrl+C** stops the fleet. A task that finishes ends the run by itself.
 
-```bash
-kfm status
-```
+## Fleets run in the background
 
-shows the newest fleet: whether it is running, its agents, what each did and what it
-spent.
+Fleets belong to KFM's service, a program that starts by itself the first time `kfm` or
+the window needs it and ends when no fleet runs and nothing is attached to it. The
+terminal and the window are two ways of talking to it: a fleet started in one shows up
+in the other, and both can follow it at once.
+
+- **Closing the window, or a terminal, does not stop a fleet.** It runs until it is
+  stopped, finishes, or reaches its spending limit. `kfm status` shows what runs.
+- **A reboot stops every fleet;** `kfm resume` starts one again where it was.
+
+## The command line
+
+Everything the window does has a command. A fleet is named by its name, by
+`project/name`, or by the id `kfm status` shows; with none, the newest is meant.
+
+| Command | Does |
+|---|---|
+| `kfm status [FLEET]` | Projects, their fleets and each fleet's agents: state, spending, task |
+| `kfm watch [FLEET]` | Follow a running fleet and talk to its lead; Ctrl+C lets go of it |
+| `kfm stop [FLEET]` | Stop a fleet |
+| `kfm resume [FLEET] [--budget N]` | Start a stopped fleet again and follow it |
+| `kfm say FLEET "text" [--to u2] [--file F]` | A message to the lead, or to one agent, with files |
+| `kfm approve FLEET UNIT REQUEST yes\|no` | Answer what an agent asked to do |
+| `kfm projects` | List the projects |
+| `kfm project new NAME [--work PATH]`, `rename`, `delete` | Make, rename or delete a project |
+| `kfm fleet new PROJECT NAME ["task"]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
+| `kfm agent add FLEET [--under u1] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
+| `kfm agent remove\|rename\|task\|model FLEET UNIT [...]` | Change an agent |
+| `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID]` | Show or change what new fleets get |
+| `kfm serve` | Run the service in this terminal instead of in the background |
 
 ## Stop a fleet and start it again
 
-A fleet that was stopped (Ctrl+C, a closed terminal, a reboot, or its spending limit)
-carries on where it was:
+A fleet that was stopped (`kfm stop`, Ctrl+C in `kfm run`, a reboot, or its spending
+limit) carries on where it was:
 
 ```bash
 kfm resume
 ```
 
-starts the newest fleet again; `--fleet PATH` names another. Every agent that was at work
-gets its conversation, plan and role back, is told that the fleet was down, and looks at
-what changed meanwhile. Agents that had finished stay finished.
+starts the newest fleet again; a name or an id chooses another. Every agent that was at
+work gets its conversation, plan and role back, is told that the fleet was down, and
+looks at what changed meanwhile. Agents that had finished stay finished.
 
 - **More money:** a fleet that stopped at its limit needs a higher one:
-  `kfm resume --budget 20`. `--unit-budget` applies to agents started from then on.
+  `kfm resume --budget 20`.
 - **What is lost:** commands that were running when the fleet stopped, and a question an
   agent had asked without getting an answer; it asks again.
 
@@ -80,8 +105,7 @@ kfm-desktop
 
 ![A project's chart](images/window-light.png)
 
-opens a window that does what `kfm run`, `kfm status` and `kfm resume` do, without a
-terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"`.
+opens a window on the same service the commands talk to, without a terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"`.
 
 - **A project** is an organisation of fleets: a company, with a fleet for each team
   ("marketing", "dev"). Make one with **New project**: give it a name and choose the
@@ -167,7 +191,7 @@ terminal. It needs the `desktop` extra: `uv tool install --editable ".[desktop]"
   to maximize, and resize it at its edges; minimize, maximize and close are at the top
   right.
 - **Stop** ends the open fleet's processes; **Resume** carries it on. Closing the window
-  stops every fleet: none runs in the background.
+  leaves fleets running: stop the ones you do not want to keep paying for.
 - **Your name, at the bottom left**, opens the app's menu: Settings, Quit and, on Linux
   until it is done, **Add to App Menu**, which puts KFM in your app menu with its own
   icon so it starts without a terminal.
@@ -233,7 +257,8 @@ in `src/kfm/api.py`, and `tests/fakeharness.py` is a small complete example.
 
 ## Not there yet
 
-- Fleets run only while the window or `kfm run` does.
-- A fleet started with `kfm run` belongs to no project and is not shown in the window.
+- A fleet that reached its limit can be given more money from the terminal
+  (`kfm resume --budget`), not yet from the window.
+- The service uses a Unix socket: Linux and macOS, not Windows.
 - Fleets of a project do not talk to each other.
 - Agents share one folder, and nothing stops two from editing the same file.

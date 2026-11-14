@@ -125,9 +125,10 @@ class Service(abc.ABC):
         """What happened in a watched fleet so far, oldest first."""
 
     @abc.abstractmethod
-    async def start(self, fleet: str) -> None:
+    async def start(self, fleet: str, *, budget_usd: float | None = None) -> None:
         """Start a fleet that is not running: every agent that was at work carries on,
-        and every agent placed meanwhile starts."""
+        and every agent placed meanwhile starts. `budget_usd`: a new limit for it, which
+        one that stopped at its limit needs."""
 
     @abc.abstractmethod
     async def stop(self, fleet: str) -> None:

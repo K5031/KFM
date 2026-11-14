@@ -68,13 +68,22 @@ class Log:
 
     def __init__(self, folder: Path) -> None:
         self._path = folder / FILE
-        self._lines: asyncio.Queue[str | None] = asyncio.Queue()
+        # A line to write, an event to set once everything before it is written, or
+        # None: the close.
+        self._lines: asyncio.Queue[str | asyncio.Event | None] = asyncio.Queue()
         self._writer: asyncio.Task[None] | None = None
 
     def add(self, event: events.FleetEvent) -> None:
         self._lines.put_nowait(line(event, time.time()))
         if self._writer is None:
             self._writer = asyncio.create_task(self._write())
+
+    async def flush(self) -> None:
+        """Return once every event added so far is in the record."""
+        if self._writer is not None:
+            written = asyncio.Event()
+            self._lines.put_nowait(written)
+            await written.wait()
 
     async def aclose(self) -> None:
         if self._writer is not None:
@@ -90,8 +99,11 @@ class Log:
                 batch.append(self._lines.get_nowait())
             if None in batch:  # the close: what came before it is still written
                 closed, batch = True, batch[: batch.index(None)]
-            if batch:
-                await asyncio.to_thread(self._append, [line for line in batch if line])
+            if lines := [each for each in batch if isinstance(each, str)]:
+                await asyncio.to_thread(self._append, lines)
+            for each in batch:
+                if isinstance(each, asyncio.Event):
+                    each.set()
 
     def _append(self, batch: list[str]) -> None:
         with contextlib.suppress(OSError), self._path.open("a") as record:

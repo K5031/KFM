@@ -53,6 +53,9 @@ def main(argv: list[str] | None = None) -> int:
                        ("stop", "stop a fleet; it can be resumed")):
         command = commands.add_parser(name, help=text)
         command.add_argument("fleet", nargs="?", help="its name or id (default: the newest)")
+        if name == "resume":
+            command.add_argument("--budget", type=float, dest="budget_usd",
+                                 help="a new limit for the whole fleet, in US dollars")
     status = commands.add_parser("status", help="show projects, fleets and their agents")
     status.add_argument("fleet", nargs="?", help="one fleet's name or id (default: all)")
 
@@ -198,7 +201,7 @@ async def _resume(service: Service, args: argparse.Namespace) -> int:
     if not any(unit.active or unit.state == "planned" for unit in record.units.values()):
         print(f"Nothing was at work in {fleet}: every agent had finished or was stopped.")
         return 1
-    await service.start(fleet)
+    await service.start(fleet, budget_usd=args.budget_usd)
     return await _follow(service, fleet, ends=True)
 
 

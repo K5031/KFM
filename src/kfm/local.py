@@ -156,15 +156,18 @@ class LocalService(Service):
 
     async def history(self, fleet_id: str) -> list[FleetEvent]:
         held = self._get(fleet_id)
+        if held.manager is not None:
+            await held.manager.flush()
         return [event for _, event in await asyncio.to_thread(
             log.read, held.folder, held.fleet)]
 
-    async def start(self, fleet_id: str) -> None:
+    async def start(self, fleet_id: str, *, budget_usd: float | None = None) -> None:
         held = self._get(fleet_id)
         if held.manager is not None or held.stopping:
             return
         manager = await asyncio.to_thread(lambda: Manager.resumed(
-            held.folder, harness=self._harness, on_event=self._listener(fleet_id)))
+            held.folder, harness=self._harness, on_event=self._listener(fleet_id),
+            budget_usd=budget_usd))
         held.manager, held.fleet = manager, manager.fleet
         self._tell(Updated(fleet_id))
         await manager.start()

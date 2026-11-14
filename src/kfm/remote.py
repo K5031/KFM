@@ -135,8 +135,8 @@ class RemoteService(Service):
                 found.append(log.decode(data, record)[1])
         return found
 
-    async def start(self, fleet: str) -> None:
-        await self._request("start", fleet)
+    async def start(self, fleet: str, *, budget_usd: float | None = None) -> None:
+        await self._request("start", fleet, budget_usd=budget_usd)
 
     async def stop(self, fleet: str) -> None:
         await self._request("stop", fleet)

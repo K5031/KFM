@@ -141,6 +141,10 @@ class Manager:
                     self._spawn(self._tell_quietly(
                         supervisor, units.hired_note(unit, self._words)))
 
+    async def flush(self) -> None:
+        """Return once everything that happened so far is in the fleet's record."""
+        await self._log.flush()
+
     async def aclose(self) -> None:
         """Stop the fleet's processes. The record keeps every unit's state, so that
         `resumed` knows which were at work."""

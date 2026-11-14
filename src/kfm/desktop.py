@@ -12,7 +12,6 @@ import sys
 import tempfile
 import time
 from collections.abc import Coroutine, Sequence
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +57,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMenu,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -70,11 +70,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kfm import app_menu, draft, harnesses, log, project
-from kfm import fleet as fleet_record
+from kfm import app_menu, draft
 from kfm.api import Harness, UnitError
 from kfm.chart import Chart, ChartFleet
-from kfm.config import CONFIG_FILE, HOME, FleetConfig, load, save
+from kfm.config import HOME, FleetConfig
 from kfm.events import (
     Answered,
     Approval,
@@ -87,8 +86,10 @@ from kfm.events import (
     Told,
 )
 from kfm.fleet import Fleet, FleetError, Unit
-from kfm.manager import Manager, forget, lay_out, place
+from kfm.local import LocalService
 from kfm.project import Project
+from kfm.remote import RemoteService, ServiceError
+from kfm.service import Happened, Listed, ProjectInfo, Service, Update, Updated
 
 SIDEBAR = 280  # px
 FORM = 760  # px, the start screen's width
@@ -100,7 +101,9 @@ FLEETS_ROLE = Qt.ItemDataRole.UserRole + 10  # how many fleets it has
 QUIET_STATES = ("starting", "working", "waiting", "done")  # shown by the agents list alone
 BAR = 48  # px, the bar on top
 COLUMN = 720  # px, the widest the timeline's entries get
-REFRESH_MS = 1000  # spending and states, while a fleet runs
+REFRESH_MS = 1000
+# What the service refuses, with words for the person (kfm.service).
+REFUSALS = (FleetError, UnitError, ValueError, OSError, RuntimeError)  # spending and states, while a fleet runs
 TITLE_CHARS = 90
 UNIT_ROLE = Qt.ItemDataRole.UserRole  # a tree row's unit id
 
@@ -642,14 +645,18 @@ class DraftPage(QWidget):
         outer.addWidget(scroll)
         self._show()
 
-    def run(self, config: FleetConfig, harness: Harness | None) -> None:
+    def run(self, service: Service) -> None:
         """Have an agent draft the fleets."""
-        self._work = asyncio.ensure_future(self._draft(config, harness))
+        self._service = service
+        self._work = asyncio.ensure_future(self._draft(service))
 
     def cancel(self) -> None:
         """Drop the draft; an agent still at it is stopped."""
-        if self._work is not None:
+        if self._work is not None and not self._work.done():
             self._work.cancel()
+            dropped = asyncio.ensure_future(
+                self._service.cancel_draft(self.project.folder.name))
+            dropped.add_done_callback(lambda task: task.cancelled() or task.exception())
         self.over.emit()
 
     def add_row(self, name: str = "", does: str = "", ongoing: bool = True) -> DraftRow:
@@ -663,14 +670,10 @@ class DraftPage(QWidget):
         self.note.setText(text)
         theme.mark(self.note, "tone", "error")
 
-    async def _draft(self, config: FleetConfig, harness: Harness | None) -> None:
+    async def _draft(self, service: Service) -> None:
         try:
-            harness = harness or await asyncio.to_thread(
-                harnesses.load, config.harness, config.harness_options)
-            made = await draft.draft(self.description, config=config, harness=harness,
-                                     folder=self.project.folder / "planner",
-                                     work=self.project.work)
-        except (draft.DraftError, UnitError, ValueError, OSError) as e:
+            made = await service.draft(self.project.folder.name, self.description)
+        except (draft.DraftError, *REFUSALS) as e:
             self.busy = False
             self._show()
             self.warn(f"No draft: {e}")
@@ -766,14 +769,13 @@ class DeleteDialog(QDialog):
 
 
 class SettingsDialog(QDialog):
-    """What new fleets get: the model of each rank and the limits. `saved` carries the
-    settings once they are written."""
+    """What new fleets get: the model of each rank and the limits. `save_asked` when the
+    person wants them kept; `changes` is what they set."""
 
-    saved = Signal(object)
+    save_asked = Signal()
 
-    def __init__(self, parent: QWidget, path: Path, config: FleetConfig) -> None:
+    def __init__(self, parent: QWidget, config: FleetConfig) -> None:
         super().__init__(parent)
-        self._path = path
         self.setWindowTitle("Settings")
         self.setMinimumWidth(420)
         rows = QVBoxLayout(self)
@@ -797,7 +799,7 @@ class SettingsDialog(QDialog):
         self.warning.hide()
         self.save = QPushButton("Save")
         self.save.setProperty("primary", True)
-        self.save.clicked.connect(self._save)
+        self.save.clicked.connect(self.save_asked)
         cancel = QPushButton("Cancel")
         cancel.clicked.connect(self.reject)
         foot = QHBoxLayout()
@@ -817,18 +819,14 @@ class SettingsDialog(QDialog):
         field.setValue(value)
         return field
 
-    def _save(self) -> None:
-        try:
-            made = save(self._path, budget_usd=self.budget.value(),
-                        unit_budget_usd=self.each.value(), max_units=self.agents.value(),
-                        models={rank: field.text().strip()
-                                for rank, field in self.models.items()})
-        except (ValueError, OSError) as e:
-            self.warning.setText(str(e))
-            self.warning.show()
-            return
-        self.saved.emit(made)
-        self.accept()
+    def changes(self) -> dict[str, Any]:
+        return {"budget_usd": self.budget.value(), "unit_budget_usd": self.each.value(),
+                "max_units": self.agents.value(),
+                "models": {rank: field.text().strip() for rank, field in self.models.items()}}
+
+    def warn(self, text: str) -> None:
+        self.warning.setText(text)
+        self.warning.setVisible(bool(text))
 
 
 class TaskDialog(QDialog):
@@ -902,19 +900,20 @@ def _dropped_files(source: QMimeData) -> list[str]:
 
 
 class FleetView(QWidget):
-    """One fleet: its timeline, the box for messages to its lead, and its manager while it
-    runs. While it does not run, agents the person adds go into its record and start with it. `changed` after anything that alters how it stands."""
+    """One fleet of the service: its timeline and the box for messages to its lead.
+    `folder` is where its record is kept, which tells fleets apart in the window.
+    `changed` after anything that alters how it stands."""
 
     changed = Signal()
 
-    def __init__(self, folder: Path, harness: Harness | None) -> None:
+    def __init__(self, service: Service, fleet_id: str, folder: Path) -> None:
         super().__init__()
-        self.folder, self._harness = folder, harness
-        self.manager: Manager | None = None  # while it runs
-        self.fleet: Fleet | None = None
+        self.service, self.id, self.folder = service, fleet_id, folder
         self.entries: list[QWidget] = []
         self.shown: str | None = None  # the agent whose entries are shown; None: all
-        self.stopping = False  # its processes are ending
+        self.loaded = False  # its history is shown
+        self._early: list[FleetEvent] | None = []  # what happens until then
+        self._loading = False
         self._approvals: dict[str, ApprovalCard] = {}
         self._tasks: set[asyncio.Task[None]] = set()
 
@@ -989,8 +988,17 @@ class FleetView(QWidget):
         self._enable()
 
     @property
+    def fleet(self) -> Fleet | None:
+        """Its record, as the service keeps it current."""
+        return self.service.fleet(self.id)
+
+    @property
     def running(self) -> bool:
-        return self.manager is not None
+        return self.service.state(self.id).running
+
+    @property
+    def stopping(self) -> bool:
+        return self.service.state(self.id).stopping
 
     @property
     def name(self) -> str:
@@ -1014,125 +1022,78 @@ class FleetView(QWidget):
         fleet = self.fleet
         if fleet is None:
             return ""
-        budget = (self.manager.config.budget_usd if self.manager is not None
-                  else fleet.settings.get("budget_usd", 0.0))
-        state = ("running" if self.running else "stopping" if self.stopping
+        how = self.service.state(self.id)
+        state = ("running" if how.running else "stopping" if how.stopping
                  else "stopped" if self.started else "not started")
-        if (self.manager is not None and self.manager.finished.is_set()
-                and not any(unit.active for unit in fleet.units.values())):
+        if how.running and how.finished and not any(u.active for u in fleet.units.values()):
             state = "finished"  # its task is done; the lead still takes messages
-        return f"{state} · ${fleet.spent_usd:.2f} of ${budget:.2f}"
-
-    async def start(self, config: FleetConfig, name: str, task: str, *, ongoing: bool,
-                    work: Path) -> None:
-        """A new fleet on the task. ValueError or OSError when it cannot be made."""
-        manager = Manager(config, self.folder, work, harness=self._harness,
-                          on_event=self._on_event, name=name)
-        self.manager, self.fleet = manager, manager.fleet
-        self._enable()
-        await manager.start()
-        self.changed.emit()
-        await manager.lead(task, ongoing=ongoing)
+        return f"{state} · ${fleet.spent_usd:.2f} of ${how.budget_usd:.2f}"
 
     async def load(self) -> None:
-        """The fleet as it was left, with what happened in it. ValueError, OSError or
+        """Watch the fleet and show what happened in it so far. ValueError, OSError or
         KeyError when its record cannot be read."""
-        fleet = await asyncio.to_thread(Fleet.load, self.folder)
-        history = await asyncio.to_thread(log.read, self.folder, fleet)
-        self.fleet = fleet
-        for _, event in history:
+        if self._loading:
+            return
+        self._loading = True
+        await self.service.watch(self.id)
+        history = await self.service.history(self.id)
+        early, self._early = self._early or [], None
+        # What happened while the history was fetched may be at its end too.
+        both = max((n for n in range(1, min(len(history), len(early)) + 1)
+                    if history[-n:] == early[:n]), default=0)
+        for event in (*history, *early[both:]):
             self._show(event)
+        self.loaded = True
         self._enable()
 
     async def resume(self) -> None:
         if self.running or self.fleet is None:
             return
         try:
-            manager = await asyncio.to_thread(
-                lambda: Manager.resumed(self.folder, harness=self._harness,
-                                        on_event=self._on_event))
-        except (ValueError, OSError) as e:  # FleetError: it runs elsewhere, or is out of money
+            await self.service.start(self.id)
+        except REFUSALS as e:  # it is out of money, or its record cannot be read
             self.say(str(e), tone="error")
-            return
-        self.manager, self.fleet = manager, manager.fleet
-        self._enable()
-        await manager.start()
-        self.changed.emit()
 
     async def add_agent(self, supervisor: Unit | None, name: str, task: str, *,
                         ongoing: bool, model: str | None) -> None:
         """An agent under `supervisor`, or the lead of a fleet with none. FleetError or
         UnitError when it cannot be."""
-        if self.manager is not None and supervisor is not None:
-            await self.manager.hire(supervisor, name, task, ongoing=ongoing, model=model)
-        elif self.fleet is not None and not self.running:
-            await asyncio.to_thread(place, self.fleet, self.folder, supervisor, name, task,
-                                    ongoing=ongoing, model=model)
-        self._enable()
-        self.changed.emit()
+        await self.service.add_agent(self.id, supervisor.id if supervisor else None, name,
+                                     task, ongoing=ongoing, model=model)
 
     async def retask(self, unit: Unit, task: str) -> None:
         """Another task for the agent. FleetError or UnitError when it cannot be."""
-        if self.manager is not None:
-            await self.manager.retask(unit, task)
-        elif self.fleet is not None and unit.session is None and task.strip():
-            unit.task = task.strip()
-            unit.state = "planned"  # one that waited for a task starts with the fleet now
-            await asyncio.to_thread(self.fleet.save, self.folder)
-        self.changed.emit()
+        await self.service.set_task(self.id, unit.id, task)
 
     async def remove(self, unit: Unit) -> None:
         """Take the agent and everything under it out of the fleet."""
         gone = {each.id for each in self.fleet.subtree(unit)} if self.fleet is not None else set()
-        if self.manager is not None:
-            await self.manager.remove(unit)
-        elif self.fleet is not None:
-            removed = self.fleet.remove(unit)
-            await asyncio.to_thread(self.fleet.save, self.folder)
-            await asyncio.to_thread(forget, self.folder, removed)
+        await self.service.remove_agent(self.id, unit.id)
         if self.shown in gone:
             self.choose(None)
         for entry in [e for e in self.entries if e.concerns and e.concerns <= gone]:
             self.entries.remove(entry)  # what was only theirs goes with them
             entry.setParent(None)
             entry.deleteLater()
-        self._enable()
-        self.changed.emit()
 
     async def rename(self, name: str, unit: Unit | None = None) -> None:
         """Another name for the agent, or for the fleet."""
-        if self.manager is not None:
-            await self.manager.rename(name, unit)
-        elif self.fleet is not None:
-            if unit is not None:
-                unit.name = name
-            else:
-                self.fleet.name = name
-            await asyncio.to_thread(self.fleet.save, self.folder)
-        self.changed.emit()
+        if unit is not None:
+            await self.service.rename_agent(self.id, unit.id, name)
+        else:
+            await self.service.rename_fleet(self.id, name)
 
     async def set_model(self, unit: Unit, model: str) -> None:
-        if self.manager is not None:
-            await self.manager.set_model(unit, model)
-        elif self.fleet is not None:
-            unit.model = model or None
-            await asyncio.to_thread(self.fleet.save, self.folder)
-        self.changed.emit()
+        await self.service.set_model(self.id, unit.id, model)
 
     async def stop(self) -> None:
         """Stop the fleet's processes; it can be resumed."""
-        if (manager := self.manager) is None:
-            return
-        self.manager = None
-        self.stopping = True
+        await self.service.stop(self.id)
+
+    def updated(self) -> None:
+        """Its record or state changed in the service."""
         self._enable()
         self.changed.emit()
-        try:
-            await manager.aclose()
-        finally:
-            self.stopping = False
-            self._enable()
-            self.changed.emit()
 
     def choose(self, unit_id: str | None) -> None:
         """Show only what concerns the agent; None: everything."""
@@ -1201,28 +1162,27 @@ class FleetView(QWidget):
             self._run(self._tell(text, files))
 
     async def _tell(self, text: str, files: list[str]) -> None:
-        if self.manager is None:
-            await self.resume()
-        if self.manager is None:  # it could not start, and has said why
-            self.input.setPlainText(text)
-            self.attachments.add(files)
-            return
-        try:
-            await self.manager.say(text, self.chosen, files=files)
-        except (FleetError, UnitError) as e:
+        chosen = self.chosen
+        try:  # a fleet that is not running is started for it
+            await self.service.say(self.id, text, chosen.id if chosen else None, files=files)
+        except REFUSALS as e:
             self.say(str(e), tone="error")
+            if not self.running:  # it could not start: what was written is not lost
+                self.input.setPlainText(text)
+                self.attachments.add(files)
 
     async def _answer(self, event: Approval, allow: bool) -> None:
-        if self.manager is not None:
-            try:
-                await self.manager.approve(event.unit, event.request_id, allow)
-            except UnitError as e:
-                self.say(str(e), tone="error")
+        try:
+            await self.service.approve(self.id, event.unit.id, event.request_id, allow)
+        except REFUSALS as e:
+            self.say(str(e), tone="error")
 
-    def _on_event(self, event: FleetEvent) -> None:
+    def happened(self, event: FleetEvent) -> None:
+        """Something happened in the fleet."""
+        if self._early is not None:
+            self._early.append(event)
+            return
         self._show(event)
-        # After the manager has finished with the event: it may end the fleet's task.
-        asyncio.get_running_loop().call_soon(self.changed.emit)
         QTimer.singleShot(0, lambda: self.scroll.verticalScrollBar().setValue(
             self.scroll.verticalScrollBar().maximum()))
 
@@ -1278,10 +1238,15 @@ class FleetWindow(QMainWindow):
     """`home`: where projects and the settings are kept (~/.kfm). `harness` and `config`
     replace what the settings name, for tests."""
 
-    def __init__(self, home: Path = HOME, *, harness: Harness | None = None,
-                 config: FleetConfig | None = None) -> None:
+    def __init__(self, home: Path = HOME, *, service: Service | None = None,
+                 harness: Harness | None = None, config: FleetConfig | None = None) -> None:
         super().__init__()
-        self.home, self._harness, self._config = home, harness, config
+        self.home = home
+        # Everything goes through the service; with none given, one in this process.
+        self.service = service or LocalService(home, harness=harness, config=config)
+        self.service.subscribe(self._update)
+        self._by_id: dict[str, FleetView] = {}
+        self._listed: dict[str, ProjectInfo] = {}  # by project id, as last listed
         self.project: Project | None = None  # the one shown
         self.views: dict[Path, FleetView] = {}  # every fleet read so far, by its folder
         self.view: FleetView | None = None  # the fleet opened; None: the chart
@@ -1304,6 +1269,7 @@ class FleetWindow(QMainWindow):
         self._refresh()
         self._run(self._offer_app_menu())
         self._run(self._open_newest())
+        self._run(self._show_settings())
 
     def _build(self) -> None:
         self.agents = QTreeWidget()
@@ -1450,7 +1416,6 @@ class FleetWindow(QMainWindow):
         self.project_form.submitted.connect(self._create_clicked)
         self.start_form = StartForm()
         self.start_form.submitted.connect(self._start_clicked)
-        self.start_form.budget.setValue((self._config or FleetConfig()).budget_usd)
         self.chart = Chart()
         self.chart.opened.connect(self._chart_clicked)
         self.chart.add_button.clicked.connect(self.add_fleet)
@@ -1499,9 +1464,9 @@ class FleetWindow(QMainWindow):
     async def create_project(self, name: str, work: Path, description: str = "") -> None:
         """A new project; with a description, an agent drafts its fleets."""
         try:
-            made = await asyncio.to_thread(project.create, self.home, name, work)
-            config = self._config or await asyncio.to_thread(load, self.home / CONFIG_FILE)
-        except (ValueError, OSError) as e:
+            made = self._project(await self.service.create_project(name, str(work)))
+            config = await self.service.settings()
+        except REFUSALS as e:
             self.project_form.warn(f"The project could not be made: {e}")
             return
         self.project_form.name.clear()
@@ -1513,7 +1478,7 @@ class FleetWindow(QMainWindow):
             page.start_asked.connect(lambda: self._run(self.start_draft(page)))
             page.over.connect(lambda: self._drop_draft(page))
             self.draft_pages.addWidget(page)
-            page.run(config, self._harness)
+            page.run(self.service)
         await self.open_project(made)
 
     async def start_draft(self, page: DraftPage) -> None:
@@ -1544,19 +1509,32 @@ class FleetWindow(QMainWindow):
     async def open_project(self, opened: Project) -> None:
         """Show the project's chart, which is empty until it has a fleet."""
         self.project, self.view = opened, None
-        folders = await asyncio.to_thread(opened.fleets)
-        for folder in folders:
-            if folder in self.views:
-                continue
-            view = self._view(folder)
-            try:
-                await view.load()
-            except (ValueError, OSError, KeyError):
-                self._drop(view)  # not a fleet this version reads
+        await self._sync(opened)
         if self.project is opened:
             self.adding = False
             self._prepare_start()
         await self.list_projects()
+
+    async def _sync(self, opened: Project) -> None:
+        """Have a page for each of the project's fleets, and none for one that is gone."""
+        try:
+            found = await self.service.fleets(opened.folder.name)
+        except REFUSALS:
+            found = []
+        for fleet_id in found:
+            if fleet_id in self._by_id:
+                continue
+            view = self._view(fleet_id)
+            try:
+                await view.load()
+            except (*REFUSALS, KeyError):
+                self._drop(view)  # not a fleet this version reads
+        mine = f"{opened.folder.name}/"
+        for fleet_id, view in list(self._by_id.items()):
+            if fleet_id.startswith(mine) and fleet_id not in found and view.loaded:
+                if self.view is view:
+                    self.view = None
+                self._drop(view)
 
     def new_project(self) -> None:
         """The form for a project; fleets that run keep running."""
@@ -1590,29 +1568,21 @@ class FleetWindow(QMainWindow):
         opened = opened or self.project
         assert opened is not None
         try:
-            config = self._config or await asyncio.to_thread(load, self.home / CONFIG_FILE)
-            config = replace(config, budget_usd=budget)
-            view = self._view(await asyncio.to_thread(opened.new_fleet))
-            if not task:
-                await asyncio.to_thread(lay_out, config, view.folder, work, name)
-                await view.load()
-                self.start_form.name.clear()
-                self.show_chart()
-                await self.list_projects()
-                return
-            started = asyncio.ensure_future(
-                view.start(config, name, task, ongoing=ongoing, work=work))
-            await asyncio.sleep(0)  # the manager is made, or could not be
-            if started.done():
-                started.result()
-        except (ValueError, OSError) as e:
+            fleet_id = await self.service.add_fleet(
+                opened.folder.name, name, task, ongoing=ongoing, work=str(work),
+                budget_usd=budget)
+            view = self._by_id.get(fleet_id) or self._view(fleet_id)
+            await view.load()
+        except (*REFUSALS, KeyError) as e:
             self.start_form.warn(f"The fleet could not start: {e}")
             return
         if show:
             self.start_form.name.clear()
             self.start_form.task.clear()
-            self.open_fleet(view)
-        await started
+            if task:
+                self.open_fleet(view)
+            else:
+                self.show_chart()
         await self.list_projects()
 
     async def resume(self) -> None:
@@ -1624,27 +1594,65 @@ class FleetWindow(QMainWindow):
             await self.view.stop()
 
     async def shut(self) -> None:
-        """Stop every fleet and close the window."""
+        """Let go of the service and close the window. The service in this process stops
+        its fleets; the one `kfm serve` runs keeps them running."""
         for page in list(self.drafts.values()):
             page.cancel()
-        await asyncio.gather(*(view.stop() for view in self.views.values()))
+        with contextlib.suppress(*REFUSALS):
+            await self.service.aclose()
         for task in list(self._tasks):
             if task is not asyncio.current_task():
                 task.cancel()
         self.closed.set()
         self.close()
 
-    def _view(self, folder: Path) -> FleetView:
-        view = FleetView(folder, self._harness)
+    def _project(self, info: ProjectInfo) -> Project:
+        """A listed project as the window holds it."""
+        self._listed[info.id] = info
+        return Project(self.home / "projects" / info.id, info.name, Path(info.work))
+
+    def _view(self, fleet_id: str) -> FleetView:
+        owner, _, name = fleet_id.partition("/")
+        folder = self.home / "projects" / owner / "fleets" / name
+        view = FleetView(self.service, fleet_id, folder)
         view.changed.connect(self._refresh)
-        self.views[folder] = view
+        self.views[folder] = self._by_id[fleet_id] = view
         self.fleet_pages.addWidget(view)
         return view
 
     def _drop(self, view: FleetView) -> None:
-        del self.views[view.folder]
+        self.views.pop(view.folder, None)
+        self._by_id.pop(view.id, None)
         self.fleet_pages.removeWidget(view)
         view.deleteLater()
+
+    def _update(self, update: Update) -> None:
+        """What the service says happened."""
+        match update:
+            case Happened(fleet=fleet_id, event=event):
+                if (view := self._by_id.get(fleet_id)) is not None:
+                    view.happened(event)
+            case Updated(fleet=fleet_id):
+                if (view := self._by_id.get(fleet_id)) is not None:
+                    view.updated()
+            case Listed():
+                self._run(self._relist())
+
+    async def _relist(self) -> None:
+        """A project or a fleet was added, renamed or removed, here or by another
+        frontend."""
+        await self.list_projects()
+        opened = self.project
+        if opened is None:
+            return
+        if (info := self._listed.get(opened.folder.name)) is None:  # deleted elsewhere
+            self.project = self.view = None
+            self.adding = False
+            return await self._open_newest()
+        if info.name != opened.name:
+            self.project = self._project(info)
+        await self._sync(self.project)
+        self._refresh()
 
     def _prepare_start(self) -> None:
         if self.project is not None:
@@ -1677,28 +1685,32 @@ class FleetWindow(QMainWindow):
 
     async def _open_newest(self) -> None:
         """The window opens on the project made last."""
-        found = await asyncio.to_thread(project.every, self.home)
-        if found and self.project is None and not self.views:
-            await self.open_project(found[0])
+        try:
+            found = await self.service.projects()
+        except REFUSALS:
+            found = []
+        if found and self.project is None and self.view is None:
+            await self.open_project(self._project(found[0]))
         else:
             await self.list_projects()
 
     async def list_projects(self) -> None:
         """Fill the sidebar's list of projects."""
-        found = await asyncio.to_thread(project.every, self.home)
-        counts = await asyncio.to_thread(lambda: [len(p.fleets()) for p in found])
+        try:
+            found = await self.service.projects()
+        except REFUSALS:
+            return
+        self._listed = {info.id: info for info in found}
         self.projects.clear()
-        for listed, fleets in zip(found, counts, strict=True):
-            item = QListWidgetItem(listed.name)
-            running = sum(1 for folder, view in self.views.items()
-                          if view.running and folder.parent.parent == listed.folder)
-            preview = "1 fleet" if fleets == 1 else f"{fleets} fleets"
-            item.setData(PREVIEW_ROLE, f"{preview} · {running} running" if running
+        for info in found:
+            item = QListWidgetItem(info.name)
+            preview = "1 fleet" if info.fleets == 1 else f"{info.fleets} fleets"
+            item.setData(PREVIEW_ROLE, f"{preview} · {info.running} running" if info.running
                          else preview)
-            item.setData(DATE_ROLE, _when(listed.folder.name))
-            item.setData(FOLDER_ROLE, str(listed.folder))
-            item.setData(FLEETS_ROLE, fleets)
-            item.setToolTip(str(listed.work))
+            item.setData(DATE_ROLE, _when(info.id))
+            item.setData(FOLDER_ROLE, str(self.home / "projects" / info.id))
+            item.setData(FLEETS_ROLE, info.fleets)
+            item.setToolTip(info.work)
             self.projects.addItem(item)
         self._refresh()
 
@@ -1718,12 +1730,9 @@ class FleetWindow(QMainWindow):
         async def rename() -> None:
             if not (name := dialog.line.text().strip()):
                 return
-            with contextlib.suppress(ValueError, KeyError, OSError):
-                renamed = await asyncio.to_thread(
-                    lambda: project.rename(project.load(folder), name))
-                if self.project is not None and self.project.folder == folder:
-                    self.project = renamed
-            await self.list_projects()
+            with contextlib.suppress(*REFUSALS):
+                await self.service.rename_project(folder.name, name)
+            await self._relist()
 
         dialog.accepted.connect(lambda: self._run(rename()))
         dialog.open()
@@ -1789,34 +1798,31 @@ class FleetWindow(QMainWindow):
         dialog.open()
 
     async def delete_fleet(self, view: FleetView) -> None:
-        """Stop the fleet and remove its folder; the work folder stays."""
-        await view.stop()
+        """Stop the fleet and remove its record; the work folder stays."""
+        with contextlib.suppress(*REFUSALS):
+            await self.service.delete_fleet(view.id)
         if self.view is view:
             self.view = None
-        if view.folder in self.views:
+        if view.id in self._by_id:
             self._drop(view)
-        with contextlib.suppress(ValueError, OSError):
-            await asyncio.to_thread(fleet_record.delete, view.folder)
         await self.list_projects()
 
     async def delete_project(self, folder: Path) -> None:
-        """Stop the project's fleets and remove its folder; the work folder stays."""
-        for path, view in list(self.views.items()):
-            if path.parent.parent == folder:
-                await view.stop()
-                if self.view is view:
-                    self.view = None
-                self._drop(view)
+        """Stop the project's fleets and remove its records; the work folder stays."""
         if (page := self.drafts.pop(folder, None)) is not None:
             page.cancel()
             self.draft_pages.removeWidget(page)
             page.deleteLater()
-        with contextlib.suppress(ValueError, OSError):
-            await asyncio.to_thread(project.delete, folder)
+        with contextlib.suppress(*REFUSALS):
+            await self.service.delete_project(folder.name)
+        for fleet_id, view in list(self._by_id.items()):
+            if fleet_id.startswith(f"{folder.name}/"):
+                if self.view is view:
+                    self.view = None
+                self._drop(view)
         if self.project is not None and self.project.folder == folder:
             self.project, self.adding = None, False
-            if left := await asyncio.to_thread(project.every, self.home):
-                return await self.open_project(left[0])
+            return await self._open_newest()
         await self.list_projects()
 
     def _project_chosen(self, item: QListWidgetItem) -> None:
@@ -1825,11 +1831,9 @@ class FleetWindow(QMainWindow):
             self._run(self._open_folder(folder))
 
     async def _open_folder(self, folder: Path) -> None:
-        try:
-            opened = await asyncio.to_thread(project.load, folder)
-        except (ValueError, KeyError, OSError):
+        if (info := self._listed.get(folder.name)) is None:
             return await self.list_projects()
-        await self.open_project(opened)
+        await self.open_project(self._project(info))
 
     async def _offer_app_menu(self) -> None:
         """The button is there until the app menu starts this install."""
@@ -1844,19 +1848,30 @@ class FleetWindow(QMainWindow):
         self.app_menu_action.setVisible(False)
 
     def open_settings(self) -> None:
-        """What new fleets get, from the settings file in the app's home."""
-        path = self.home / CONFIG_FILE
+        """What new fleets get."""
+        self._run(self._open_settings())
+
+    async def _open_settings(self) -> None:
         try:
-            current = load(path)
-        except (ValueError, OSError):
-            current = FleetConfig()  # a file that cannot be read is written anew
-        dialog = self.dialog = SettingsDialog(self, path, current)
-        dialog.saved.connect(self._settings_saved)
+            current = await self.service.settings()
+        except REFUSALS:
+            current = FleetConfig()  # settings that cannot be read are written anew
+        dialog = self.dialog = SettingsDialog(self, current)
+
+        async def save() -> None:
+            try:
+                made = await self.service.save_settings(**dialog.changes())
+            except REFUSALS as e:
+                return dialog.warn(str(e))
+            dialog.accept()
+            self.start_form.budget.setValue(made.budget_usd)
+
+        dialog.save_asked.connect(lambda: self._run(save()))
         dialog.open()
 
-    def _settings_saved(self, made: FleetConfig) -> None:
-        if self._config is None:
-            self.start_form.budget.setValue(made.budget_usd)
+    async def _show_settings(self) -> None:
+        with contextlib.suppress(*REFUSALS):
+            self.start_form.budget.setValue((await self.service.settings()).budget_usd)
 
     def _create_clicked(self) -> None:
         form = self.project_form
@@ -2040,14 +2055,19 @@ def main() -> None:
     app.setApplicationName("KFM")
     app.setDesktopFileName(app_menu.APP_ID)  # the app menu's entry: its icon and its name
     app.setWindowIcon(QIcon(str(app_menu.ICON)))
-    app.setQuitOnLastWindowClosed(False)  # the fleet is stopped first
+    app.setQuitOnLastWindowClosed(False)  # the service is let go of first
     theme.apply(app)
     loop = QtEventLoop(app)
     asyncio.set_event_loop(loop)
-    window = FleetWindow()
-    window.resize(1180, 760)
-    window.show()
     with loop:
+        try:  # the service that owns the fleets, started if none runs
+            service = loop.run_until_complete(RemoteService.connect())
+        except ServiceError as e:
+            QMessageBox.critical(None, "KFM", str(e))
+            return
+        window = FleetWindow(service=service)
+        window.resize(1180, 760)
+        window.show()
         loop.run_until_complete(window.closed.wait())
 
 

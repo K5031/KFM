@@ -32,6 +32,9 @@ from kfm.desktop import (
     YouEntry,
 )
 from kfm.fleet import Fleet
+from kfm.local import LocalService
+from kfm.remote import RemoteService
+from kfm.server import Server
 from tests.fakeharness import FakeHarness
 
 TEAM = {
@@ -154,7 +157,7 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
     await asyncio.sleep(0.05)
     assert not shown.views
     view = await start(shown, tmp_path, "Tidy up", name="dev")
-    await until(lambda: view.manager is not None and view.manager.finished.is_set())
+    await until(lambda: shown.service.state(view.id).finished)
     await until(lambda: len(cards(view)) == 3)
     assert view.isVisibleTo(shown) and shown.agents_section.isVisibleTo(shown)
     assert agents(shown) == [(0, "K5", "done"), (1, "Scout  K4", "done")]
@@ -164,7 +167,7 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
     assert shown.title.text() == "dev"
     await until(lambda: "finished" in shown.status.text())
     assert "of $3.00" in shown.status.text()
-    assert view.manager.fleet.work == str(tmp_path / "work")
+    assert view.fleet.work == str(tmp_path / "work")
     assert view.folder.parent == shown.project.folder / "fleets"
 
 
@@ -207,7 +210,7 @@ async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: P
 async def test_the_window_opens_on_the_chart_of_the_newest_project(window, tmp_path: Path):
     first, _ = window(TEAM)
     view = await start(first, tmp_path, "Tidy up", name="dev")
-    await until(lambda: view.manager.finished.is_set() and len(cards(view)) == 3)
+    await until(lambda: first.service.state(view.id).finished and len(cards(view)) == 3)
     await first.shut()
 
     again, _ = window({})
@@ -561,13 +564,15 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         assert [a.text() for a in shown.profile_button.menu().actions() if a.text()][1:] == [
             "Settings", "Add to App Menu", "Quit"]
         shown.gear_button.click()
+        await until(lambda: shown.dialog is not None and shown.dialog.isVisible())
         dialog = shown.dialog
-        assert dialog.isVisible() and dialog.budget.value() == 10.0
+        assert dialog.budget.value() == 10.0
         dialog.models["K5"].setText("big-1")
         dialog.budget.setValue(25.0)
         dialog.agents.setValue(0)  # no fleet has no agents
         dialog.save.click()
-        assert dialog.isVisible() and "above zero" in dialog.warning.text()
+        await until(lambda: "above zero" in dialog.warning.text())
+        assert dialog.isVisible()
         dialog.agents.setValue(6)
         dialog.save.click()
         await until(lambda: not dialog.isVisible())
@@ -575,6 +580,7 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         assert (saved.models, saved.budget_usd, saved.max_units) == ({"K5": "big-1"}, 25.0, 6)
         await until(lambda: shown.start_form.budget.value() == 25.0)  # what a new fleet gets
         shown.gear_button.click()
+        await until(lambda: shown.dialog is not dialog and shown.dialog.isVisible())
         assert shown.dialog.models["K5"].text() == "big-1"
         shown.dialog.reject()
     finally:
@@ -614,6 +620,48 @@ async def test_an_agents_task_is_changed_and_an_agent_is_removed_on_the_chart(
     shown.dialog.delete.click()
     await until(lambda: chart(shown) == {"dev": []} and key in shown.chart.firsts)
     assert not Fleet.load(view.folder).units
+
+
+async def test_a_fleet_outlives_the_window_that_started_it(tmp_path: Path, qapp: QApplication):
+    """The window on the service `kfm serve` runs: closing it lets go of the fleet, which
+    keeps running, and another window finds it with what happened meanwhile."""
+    harness = FakeHarness({"K5 u1": [{"do": [("say", "On watch.")]},
+                                     {"when": "anything new", "do": [("say", "All quiet.")]}]})
+    (tmp_path / "work").mkdir()
+    home, socket = tmp_path / "home", tmp_path / "s"
+    owner = LocalService(home, harness=harness, config=FleetConfig())
+    serving = asyncio.ensure_future(Server(owner, socket, idle_s=0.3).run())
+    await until(socket.exists)
+
+    first = FleetWindow(home, service=await RemoteService.connect(home, socket=socket,
+                                                                 start=False))
+    first.show()
+    view = await start(first, tmp_path, "Keep watch", duty=True)
+    await until(lambda: "running" in first.status.text())
+    await until(lambda: any(isinstance(e, SaidEntry) for e in view.entries))
+    await first.shut()
+    assert owner.state(view.id).running  # nobody is watching, and it runs
+
+    again = FleetWindow(home, service=await RemoteService.connect(home, socket=socket,
+                                                                 start=False))
+    again.show()
+    try:
+        await until(lambda: chart(again) == {"dev": ["K5"]})
+        [head] = again.chart.heads.values()
+        assert "running" in head.status.text() and not head.start.isVisibleTo(again)
+        head.clicked.emit()
+        opened = again.view
+        await until(lambda: [e.body.toPlainText() for e in opened.entries
+                             if isinstance(e, SaidEntry)] == ["On watch."])
+        opened.input.setPlainText("anything new?")
+        opened.send_button.click()
+        await until(lambda: [e.body.toPlainText() for e in opened.entries
+                             if isinstance(e, SaidEntry)] == ["On watch.", "All quiet."])
+        again.stop_button.click()
+        await until(lambda: "stopped" in again.status.text())
+    finally:
+        await again.shut()
+    await asyncio.wait_for(serving, 10)
 
 
 async def test_a_project_needs_a_folder_that_is_there(window, tmp_path: Path, monkeypatch):

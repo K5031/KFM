@@ -22,8 +22,10 @@ every report, question, update and failure with who sent it to whom, every appro
 asked for and its answer, and what the person said (`events.Told`, `events.Answered`). A
 frontend that opens a fleet later shows its history from this file.
 
-**A window on the manager.** `kfm-desktop` (`desktop.py`) is a second frontend beside the
-terminal's `Console`, on the same `Manager`: its events in, its methods out. Nothing
+**A window on the service.** `kfm-desktop` (`desktop.py`) is a frontend beside the
+command line, on the same service ([one API, many
+frontends](2026-11-14-one-api-many-frontends.md)): a fleet's events in, the service's
+calls out. Nothing
 about units or harnesses is in it. It is built with PySide6 on Kayden's desktop code: its
 event loop, its theme, its Markdown view.
 
@@ -44,8 +46,8 @@ event loop, its theme, its Markdown view.
   empty window and read as a settings page.
 - **Fleets belong to projects**, and a project's chart is where a fleet is opened from
   ([note](2026-11-13-projects.md)); the sidebar lists the projects under the agents.
-- The window runs the fleets: closing it stops them, and one is resumed from the window
-  or with `kfm resume`.
+- The service runs the fleets: closing the window leaves them running, and one is
+  stopped or resumed from the window or the command line.
 
 ## Alternatives considered
 
@@ -64,7 +66,7 @@ event loop, its theme, its Markdown view.
   show a fleet. Checked beyond them, without a screen: on the Qt event loop with real
   Kayden units on a scripted model, a fleet started from the form, delegated, reported
   and was closed. Not checked: on a real display, and with a real model.
-- The window is the fleet's process: a fleet cannot run with the window closed.
+- Closing the window leaves its fleets running in the service.
 - KFM's window depends on Kayden's desktop code (`theme`, `QtEventLoop`,
   `MarkdownView`, `DragArea`, `WindowEdges`, `RoundedCorners`), which Kayden may change for its own needs; the manager stays free of
   it. The `desktop` extra brings all of Kayden's, its speech libraries included.

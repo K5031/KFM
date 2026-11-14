@@ -105,14 +105,15 @@ def brief(unit: Unit, supervisor: Unit | None, placed: list[Unit], words: Vocabu
                  "a message.")
     if unit.rank > 1:
         lines.append(
-            f"- You can hand work to K{unit.rank - 1} agents with {words.tool('delegate')}. Give each "
-            "a complete, self-contained task: it sees nothing of your conversation. Their "
+            f"- You supervise: the agents under you do the work, and your own work is to "
+            f"judge what the task needs, plan it, hand its parts to K{unit.rank - 1} agents "
+            f"with {words.tool('delegate')}, check what comes back and keep everyone on the "
+            "goal. Use as many agents as the work needs and no more, and do a thing yourself "
+            "only where handing it over would cost more than doing it. Give each agent a "
+            "complete, self-contained task: it sees nothing of your conversation. Their "
             f"reports and questions arrive as messages; answer with {words.tool('message')}, and see "
-            f"them all with {words.tool('status')}. Delegate what is big enough to be worth another "
-            "agent and do small things yourself. Your job is then to coordinate: plan, "
-            "split the work, check what comes back, and keep everyone on the goal. If an "
-            "agent fails or stalls, give it the task again, hand it to another, or ask your "
-            "own supervisor.")
+            f"them all with {words.tool('status')}. If an agent fails or stalls, give it the task "
+            "again, hand it to another, or ask your own supervisor.")
     else:
         lines.append("- You are the lowest rank: do the work yourself.")
     if placed:

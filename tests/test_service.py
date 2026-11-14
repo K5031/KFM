@@ -11,7 +11,7 @@ from kfm.config import FleetConfig
 from kfm.events import Delivered, Said, Told
 from kfm.fleet import Fleet, FleetError
 from kfm.local import LocalService
-from kfm.remote import RemoteService
+from kfm.remote import RemoteService, ServiceError
 from kfm.server import Server
 from kfm.service import Happened, Listed, Update, Updated
 from tests.fakeharness import FakeHarness
@@ -195,3 +195,27 @@ async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
     await asyncio.wait_for(serving, 10)
     assert not socket.exists()
     assert Fleet.load(home / "projects" / made.id / "fleets" / fleet.split("/")[1]).name == "dev"
+
+
+async def test_a_service_of_another_version_is_waited_out_or_named(tmp_path: Path):
+    socket = tmp_path / "s"
+
+    async def old(reader, writer):  # speaks a version this program does not
+        writer.write(b'{"kfm": 0, "pid": 4242}\n')
+        await reader.read()
+        writer.close()
+
+    server = await asyncio.start_unix_server(old, path=str(socket))
+    with pytest.raises(ServiceError, match="kill 4242") as refused:
+        await RemoteService.connect(tmp_path, socket=socket, start=False, wait_s=0.4)
+    assert "version 0" in str(refused.value) and "can be resumed" in str(refused.value)
+
+    async def ends() -> None:  # one with nothing to do ends by itself
+        await asyncio.sleep(0.3)
+        server.close()
+        socket.unlink(missing_ok=True)
+
+    ending = asyncio.ensure_future(ends())
+    with pytest.raises(ServiceError, match="No KFM service runs"):  # it looked again
+        await RemoteService.connect(tmp_path, socket=socket, start=False, wait_s=5.0)
+    await ending

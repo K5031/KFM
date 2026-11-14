@@ -3,7 +3,8 @@ socket, for any number of frontends. One JSON object a line, as Kadence's headle
 speaks: the first line names the contract's version; a request {"id", "method", "args",
 "kwargs"} is answered by {"id", "result"} or {"id", "error": {"type", "message"}}; what
 happens arrives as lines with "update" and no id. It ends when no fleet runs and no
-frontend is attached."""
+frontend is attached. The first line also carries the service's process id, for a
+frontend of another version to name."""
 
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -115,7 +117,7 @@ class Server:
     async def _attached(self, reader: asyncio.StreamReader,
                         writer: asyncio.StreamWriter) -> None:
         mine: set[asyncio.Task[None]] = set()
-        writer.write(json.dumps({"kfm": VERSION}).encode() + b"\n")
+        writer.write(json.dumps({"kfm": VERSION, "pid": os.getpid()}).encode() + b"\n")
         self._writers.add(writer)
         try:
             while line := await reader.readline():

@@ -22,7 +22,7 @@ from kfm.config import HOME, FleetConfig
 from kfm.draft import Draft, DraftError, Team
 from kfm.events import FleetEvent
 from kfm.fleet import Fleet, FleetError
-from kfm.server import LINE_LIMIT, SOCKET
+from kfm.server import IDLE_S, LINE_LIMIT, SOCKET
 from kfm.service import (
     VERSION,
     FleetState,
@@ -56,9 +56,11 @@ class RemoteService(Service):
 
     @classmethod
     async def connect(cls, home: Path = HOME, *, socket: Path | None = None,
-                      start: bool = True) -> RemoteService:
-        """The service of `home`, started if none runs (`start`). ServiceError when it
-        cannot be reached, or speaks another version of the contract."""
+                      start: bool = True, wait_s: float = IDLE_S + 4.0) -> RemoteService:
+        """The service of `home`, started if none runs (`start`). A service of another
+        version of the contract is given `wait_s` to end, which one with nothing to do
+        does by itself, and the service is then looked for again. ServiceError when it
+        cannot be reached, or one of another version stays."""
         path = socket or home / SOCKET
         try:
             reader, writer = await asyncio.open_unix_connection(str(path), limit=LINE_LIMIT)
@@ -72,9 +74,14 @@ class RemoteService(Service):
             raise ServiceError(f"The KFM service did not answer: {e}") from None
         if hello.get("kfm") != VERSION:
             writer.close()
+            if await _gone(path, wait_s):
+                return await cls.connect(home, socket=socket, start=start, wait_s=0.0)
+            end = f"kill {hello['pid']}" if "pid" in hello else "pkill -f 'kfm.*serve'"
             raise ServiceError(
-                f"The KFM service that runs speaks version {hello.get('kfm')} and this "
-                f"program version {VERSION}: stop its fleets and end it, then start again.")
+                f"A KFM service of another version is running (it speaks version "
+                f"{hello.get('kfm')}, this program version {VERSION}) and is not ending, so "
+                f"it still runs fleets or another KFM window is open. Close the other "
+                f"windows, or end it with: {end}\nIts fleets stop and can be resumed.")
         return cls(reader, writer)
 
     # ── Projects ─────────────────────────────────────────────────────────
@@ -261,6 +268,18 @@ class RemoteService(Service):
     def _tell(self, update: Update) -> None:
         for listener in list(self._listeners):
             listener(update)
+
+
+async def _gone(path: Path, wait_s: float) -> bool:
+    """Whether the service on the socket ends within `wait_s`: it takes its socket with
+    it. Looking does not attach to it, which would keep it alive."""
+    waited = 0.0
+    while path.exists():
+        if waited >= wait_s:
+            return False
+        await asyncio.sleep(0.2)
+        waited += 0.2
+    return True
 
 
 async def _started(home: Path, path: Path) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:

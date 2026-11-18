@@ -1041,11 +1041,12 @@ class FleetView(QWidget):
             self.happened(event, number)
         self._enable()
 
-    async def resume(self) -> None:
+    async def resume(self, budget_usd: float | None = None) -> None:
+        """Start it again where it was; `budget_usd` is a new limit for it."""
         if self.running or self.fleet is None:
             return
         try:
-            await self.service.start(self.id)
+            await self.service.start(self.id, budget_usd=budget_usd)
         except REFUSALS as e:  # it is out of money, or its record cannot be read
             self.say(str(e), tone="error")
 
@@ -1378,8 +1379,11 @@ class FleetWindow(QMainWindow):
         self.resume_button.setProperty("primary", True)
         self.stop_button.clicked.connect(lambda: self._run(self.stop()))
         self.resume_button.clicked.connect(lambda: self._run(self.resume()))
+        self.limit = Budget()  # a stopped fleet's limit, to raise before it carries on
+        self._limit_of: tuple[str, float] | None = None  # the fleet and limit it shows
         self.bar = DragArea()
         self.bar.setFixedHeight(BAR)
+        self.bar.setStyleSheet(BOX_STYLE.format(line=theme.current().line))
         bar = QHBoxLayout(self.bar)
         bar.setContentsMargins(20, 0, 0, 0)  # the controls reach the window's corner
         bar.setSpacing(4)
@@ -1390,6 +1394,7 @@ class FleetWindow(QMainWindow):
         bar.addWidget(self.status)
         bar.addSpacing(8)
         bar.addWidget(self.stop_button)
+        bar.addWidget(self.limit)
         bar.addWidget(self.resume_button)
         bar.addSpacing(16)
         self.window_buttons: dict[str, QToolButton] = {}
@@ -1574,7 +1579,9 @@ class FleetWindow(QMainWindow):
 
     async def resume(self) -> None:
         if self.view is not None:
-            await self.view.resume()
+            limit = self.limit.value()
+            changed = limit != self.service.state(self.view.id).budget_usd
+            await self.view.resume(limit if changed else None)
 
     async def stop(self) -> None:
         if self.view is not None:
@@ -1950,6 +1957,11 @@ class FleetWindow(QMainWindow):
         self.stop_button.setVisible(view is not None and view.running)
         self.resume_button.setVisible(view is not None and bool(view.start_word))
         self.resume_button.setText(view.start_word if view is not None else "")
+        self.limit.setVisible(self.resume_button.isVisibleTo(self))
+        limit = (view.id, self.service.state(view.id).budget_usd) if view is not None else None
+        if limit is not None and limit != self._limit_of:  # not over what is being typed
+            self.limit.setValue(limit[1])
+        self._limit_of = limit
         self.agents_section.setVisible(view is not None)
         self.projects_label.setVisible(self.projects.count() > 0)
         for i in range(self.projects.count()):

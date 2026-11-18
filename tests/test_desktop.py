@@ -208,6 +208,16 @@ async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: P
     await until(lambda: ("K5 u1", "session-u1") in harness.opened)
     await until(lambda: "running" in shown.status.text() and view.input.isEnabled())
 
+    # A stopped fleet shows its limit beside Resume; a new amount there is its new limit,
+    # which a fleet that stopped at its limit needs.
+    shown.stop_button.click()
+    await until(lambda: "stopped" in shown.status.text())
+    assert shown.limit.isVisibleTo(shown) and shown.limit.value() == 3.0
+    shown.limit.setValue(7.5)
+    shown.resume_button.click()
+    await until(lambda: "running" in shown.status.text() and "of $7.50" in shown.status.text())
+    assert not shown.limit.isVisibleTo(shown)
+
     shown.stop_button.click()  # a message to a stopped fleet starts it again
     await until(lambda: "stopped" in shown.status.text() and view.input.isEnabled())
     view.input.setPlainText("still there?")
@@ -517,8 +527,9 @@ async def test_the_chosen_agent_is_the_one_messaged(window, tmp_path: Path):
     assert view.input.placeholderText() == "Message Scout"
     # Its page is a conversation with it: its task from its lead, then what it wrote,
     # without its name on every line.
+    await until(lambda: [type(e).__name__ for e in view.entries if e.isVisibleTo(shown)]
+                == ["InstructionCard", "SaidEntry"])
     seen = [e for e in view.entries if e.isVisibleTo(shown)]
-    assert [type(e).__name__ for e in seen] == ["InstructionCard", "SaidEntry"]
     assert seen[0].header.text() == "K5 u1 → Scout · task"
     assert seen[0].body.toPlainText() == "Map the docs" and not seen[1].header.isVisibleTo(shown)
     assert shown.title.text() == "dev › Scout" and "working" in shown.status.text()

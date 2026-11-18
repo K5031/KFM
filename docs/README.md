@@ -96,7 +96,7 @@ work gets its conversation, plan and role back, is told that the fleet was down,
 looks at what changed meanwhile. Agents that had finished stay finished.
 
 - **More money:** a fleet that stopped at its limit needs a higher one:
-  `kfm resume --budget 20`.
+  `kfm resume --budget 20`, or in the window the amount beside **Resume**.
 - **What is lost:** commands that were running when the fleet stopped, and a question an
   agent had asked without getting an answer; it asks again.
 
@@ -274,8 +274,6 @@ in `src/kfm/api.py`, and `tests/fakeharness.py` is a small complete example.
 
 ## Not there yet
 
-- A fleet that reached its limit can be given more money from the terminal
-  (`kfm resume --budget`), not yet from the window.
 - The service uses a Unix socket: Linux and macOS, not Windows.
 - Fleets of a project do not talk to each other.
 - Agents share one folder, and nothing stops two from editing the same file.

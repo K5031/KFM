@@ -244,6 +244,19 @@ marketing = "claude-sonnet-5-5"
 
 Without `[models]`, every agent uses the model in your Kadence configuration.
 
+### A project that needs another folder
+
+Agents run commands in a sandbox that sees the work folder and not the rest of your home
+folder. A project that needs something beside it (a library it is installed with, shared
+data) cannot run its tests there, and nobody answers an agent that asks to leave the
+sandbox while you are away. Name such folders in your Kadence configuration
+(`~/.kadence/config.toml`) and every agent can read them, and not change them:
+
+```toml
+[tools.options]
+readable = ["~/Projects/shared-library"]
+```
+
 ## Another agent program
 
 Every agent of a fleet is a Kadence unless the settings name another program:

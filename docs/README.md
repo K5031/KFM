@@ -244,14 +244,6 @@ marketing = "claude-sonnet-5-5"
 
 Without `[models]`, every agent uses the model in your Kadence configuration.
 
-### A project that needs another folder
-
-Agents run commands in a sandbox that sees the work folder and not the rest of your home
-folder. A project that needs something beside it (a library it is installed with, shared
-data) cannot run its tests there. An agent that finds this out asks for that folder, and
-the question reaches you as an approval. Once allowed, that agent reads the folder
-without asking again, and cannot change it. Each agent asks for itself.
-
 ## Another agent program
 
 Every agent of a fleet is a Kadence unless the settings name another program:

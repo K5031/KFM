@@ -5,7 +5,14 @@ task. You tell the lead agent what you want; it plans, hands parts of the work t
 below it, checks what comes back and reports to you. The fleet works without supervision,
 inside the spending limit and permissions you set.
 
-It is an early version: one fleet at a time, followed from a terminal.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/window-dark.png">
+  <img src="docs/images/window-light.png" alt="The KFM window on a project with three running fleets, one of them a tree of six agents">
+</picture>
+
+A project's fleets in the window.
+
+It is an early version.
 
 ```bash
 kfm run "Audit this repository's docs and fix what is out of date" --budget 5

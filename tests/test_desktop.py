@@ -770,16 +770,23 @@ async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QA
     await asyncio.wait_for(shown.closed.wait(), 5)
 
 
-async def test_the_window_has_rounded_corners_unless_maximized(window, qapp: QApplication):
+async def test_the_window_has_rounded_corners_and_a_shadow_unless_maximized(
+        window, qapp: QApplication):
+    from kadence.frontends.desktop.window import RoundedCorners
+
     shown, _ = window({})
-    shown.resize(900, 600)
+    shown.resize(1100, 720)
     shown.show()
     qapp.processEvents()
+    s = RoundedCorners.SHADOW  # the margin around the frame, where the shadow is drawn
+    assert shown.contentsRect().getRect() == (s, s, 1100 - 2 * s, 720 - 2 * s)
     image = shown.grab().toImage()
-    for x, y in ((0, 0), (899, 0), (0, 599), (899, 599)):
+    for x, y in ((0, 0), (1099, 0), (0, 719), (1099, 719)):
         assert image.pixelColor(x, y).alpha() == 0  # the desktop shows through
-    assert image.pixelColor(450, 300).alpha() == 255
-    assert image.pixelColor(880, 592).alpha() == 255  # the window's own background
+    assert 0 < image.pixelColor(550, 721 - s).alpha() < 255  # the shadow under the frame
+    assert image.pixelColor(550, 360).alpha() == 255
+    assert image.pixelColor(1080 - s, 712 - s).alpha() == 255  # the window's own background
     shown.showMaximized()
     qapp.processEvents()
     assert shown.grab().toImage().pixelColor(0, 0).alpha() == 255
+    assert shown.contentsRect() == shown.rect()

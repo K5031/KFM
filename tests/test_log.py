@@ -32,6 +32,7 @@ def test_events_round_trip_through_the_record_in_order(tmp_path: Path):
         events.Instructed("u2", "u1", "message", "more"),
         events.Approval("u2", "r1", "shell", "rm -rf x"),
         events.Answered("u2", "r1", False),
+        events.Answered("u2", "r2", True, always=True),
         events.Told("start", to="u1", files=("a.txt", "b.txt")),
         events.Told("hello"),
         events.Notice("saved"),
@@ -43,8 +44,8 @@ def test_events_round_trip_through_the_record_in_order(tmp_path: Path):
     read = log.read(tmp_path)
     assert [at for at, _ in read] == [float(i) for i in range(len(sent))]
     assert [event for _, event in read] == sent
-    assert read[6][1].files == ("a.txt", "b.txt")  # a tuple again, not a list
-    assert [events.units(event) for event in sent[2:4] + sent[7:]] == [
+    assert read[7][1].files == ("a.txt", "b.txt")  # a tuple again, not a list
+    assert [events.units(event) for event in sent[2:4] + sent[8:]] == [
         {"u2", "u1"}, {"u2", "u1"}, set(), set()]
 
 

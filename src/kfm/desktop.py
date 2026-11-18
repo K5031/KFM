@@ -228,18 +228,22 @@ class ApprovalCard(QFrame):
         buttons = QHBoxLayout()
         self.allow = QPushButton("Allow")
         self.allow.setProperty("primary", True)
+        self.always = QPushButton("Always allow")
+        self.always.setToolTip(f"{called} no longer asks to run {event.tool}")
         self.deny = QPushButton("Deny")
         buttons.addWidget(self.allow)
+        buttons.addWidget(self.always)
         buttons.addWidget(self.deny)
         buttons.addStretch()
         layout.addWidget(self.question)
         layout.addLayout(buttons)
 
-    def answered(self, allow: bool) -> None:
-        self.allow.hide()
-        self.deny.hide()
+    def answered(self, allow: bool, always: bool = False) -> None:
+        for button in (self.allow, self.always, self.deny):
+            button.hide()
         asked = self.asked
         self.question.setText(
+            f"Always allowed: {self.called} ran {asked.tool} {asked.arguments}" if always else
             f"Allowed: {self.called} ran {asked.tool} {asked.arguments}" if allow else
             f"Denied: {self.called} wanted to run {asked.tool} {asked.arguments}")
 
@@ -1167,9 +1171,10 @@ class FleetView(QWidget):
                 self.input.setPlainText(text)
                 self.attachments.add(files)
 
-    async def _answer(self, event: Approval, allow: bool) -> None:
+    async def _answer(self, event: Approval, allow: bool, always: bool = False) -> None:
         try:
-            await self.service.approve(self.id, event.unit, event.request_id, allow)
+            await self.service.approve(self.id, event.unit, event.request_id, allow,
+                                       always=always)
         except REFUSALS as e:
             self.say(str(e), tone="error")
 
@@ -1207,12 +1212,14 @@ class FleetView(QWidget):
             case Approval():
                 card = ApprovalCard(event, self._called(event.unit))
                 card.allow.clicked.connect(lambda: self._run(self._answer(event, True)))
+                card.always.clicked.connect(
+                    lambda: self._run(self._answer(event, True, always=True)))
                 card.deny.clicked.connect(lambda: self._run(self._answer(event, False)))
                 self._approvals[event.request_id] = card
                 self._add(card)
-            case Answered(request_id=request_id, allow=allow):
+            case Answered(request_id=request_id, allow=allow, always=always):
                 if (card := self._approvals.pop(request_id, None)) is not None:
-                    card.answered(allow)
+                    card.answered(allow, always)
             case Told(text=text, to=to, files=files):
                 self._add(YouEntry(text, to, files))
             case Notice(text=text):

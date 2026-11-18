@@ -168,8 +168,9 @@ class RemoteService(Service):
                   files: Sequence[str] = (), spoken: bool = False) -> None:
         await self._request("say", fleet, text, unit, files=list(files), spoken=spoken)
 
-    async def approve(self, fleet: str, unit: str, request_id: str, allow: bool) -> None:
-        await self._request("approve", fleet, unit, request_id, allow)
+    async def approve(self, fleet: str, unit: str, request_id: str, allow: bool, *,
+                      always: bool = False) -> None:
+        await self._request("approve", fleet, unit, request_id, allow, always=always)
 
     # ── Settings, and what happens ───────────────────────────────────────
 

@@ -204,9 +204,10 @@ class LocalService(Service):
         to = self._unit(manager, unit_id) if unit_id else None
         await manager.say(text, to, files=files, spoken=spoken)
 
-    async def approve(self, fleet_id: str, unit_id: str, request_id: str, allow: bool) -> None:
+    async def approve(self, fleet_id: str, unit_id: str, request_id: str, allow: bool, *,
+                      always: bool = False) -> None:
         manager = self._get(fleet_id)
-        await manager.approve(self._unit(manager, unit_id), request_id, allow)
+        await manager.approve(self._unit(manager, unit_id), request_id, allow, always=always)
 
     # ── Settings, and what happens ───────────────────────────────────────
 

@@ -59,6 +59,7 @@ class Answered:
     unit: str
     request_id: str
     allow: bool
+    always: bool = False  # allowed, and the unit no longer asks for actions of that kind
 
 
 @dataclass(frozen=True, slots=True)

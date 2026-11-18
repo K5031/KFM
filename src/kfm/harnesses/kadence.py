@@ -154,9 +154,9 @@ class _Session(Session):
                    spoken: bool = False) -> None:
         await self._request("send", text=text, files=list(files), spoken=spoken)
 
-    async def approve(self, request_id: str, allow: bool) -> None:
-        await self._request("resolve_permission", request_id=request_id,
-                            decision="allow_once" if allow else "deny")
+    async def approve(self, request_id: str, allow: bool, *, always: bool = False) -> None:
+        decision = "deny" if not allow else "allow_conversation" if always else "allow_once"
+        await self._request("resolve_permission", request_id=request_id, decision=decision)
 
     async def close(self, grace_s: float) -> None:
         self._closed = True

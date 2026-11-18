@@ -42,7 +42,8 @@ While it runs, the terminal shows what happens:
 
 - **Type a message** and press Enter to tell the lead something.
 - **Approvals:** agents work freely inside the work folder. When one wants to do something
-  outside it, KFM asks you: answer `y` or `n`.
+  outside it, KFM asks you: answer `y` or `n`, or `a` (always) to allow it and stop that
+  agent asking for the same kind of action, such as running commands outside its sandbox.
 - **Questions:** when the lead needs a decision only you can make, it asks and waits for
   your message. Agents below ask their supervisor, not you.
 - **Ctrl+C** stops the fleet. A task that finishes ends the run by itself.
@@ -73,7 +74,7 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm stop [FLEET]` | Stop a fleet |
 | `kfm resume [FLEET] [--budget N]` | Start a stopped fleet again and follow it |
 | `kfm say FLEET "text" [--to u2] [--file F]` | A message to the lead, or to one agent, with files |
-| `kfm approve FLEET UNIT REQUEST yes\|no` | Answer what an agent asked to do |
+| `kfm approve FLEET UNIT REQUEST yes\|no\|always` | Answer what an agent asked to do |
 | `kfm projects` | List the projects |
 | `kfm project new NAME [--work PATH]`, `rename`, `delete` | Make, rename or delete a project |
 | `kfm fleet new PROJECT NAME ["task"]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
@@ -175,7 +176,8 @@ opens a window on the same service the commands talk to, without a terminal. It 
   state and what it has spent. Click one to see only what concerns it; **Show all**
   brings everything back.
 - **The timeline** shows what the lead says and every report, question and update in
-  full, with who sent it to whom. An approval is a card with **Allow** and **Deny**.
+  full, with who sent it to whom. An approval is a card with **Allow**, **Always allow** (that agent no longer asks
+  for that kind of action) and **Deny**.
 - **Message the lead** in the box at the bottom; Enter sends, Shift+Enter starts a new
   line. A message to a stopped fleet starts it again.
 - **An agent's page is a conversation with it.** Choose an agent in the agents list (or

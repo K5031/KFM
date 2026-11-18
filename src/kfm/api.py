@@ -170,8 +170,9 @@ class Session(abc.ABC):
         and hears the reply read."""
 
     @abc.abstractmethod
-    async def approve(self, request_id: str, allow: bool) -> None:
-        """Answer an ApprovalNeeded, for that one action."""
+    async def approve(self, request_id: str, allow: bool, *, always: bool = False) -> None:
+        """Answer an ApprovalNeeded, for that one action. `always` with `allow`: the unit
+        no longer asks for actions of that kind, for as long as its conversation lasts."""
 
     @abc.abstractmethod
     async def close(self, grace_s: float) -> None:

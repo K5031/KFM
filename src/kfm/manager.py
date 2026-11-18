@@ -271,10 +271,12 @@ class Manager:
         self._changed()
         await self._save()
 
-    async def approve(self, unit: Unit, request_id: str, allow: bool) -> None:
+    async def approve(self, unit: Unit, request_id: str, allow: bool, *,
+                      always: bool = False) -> None:
         if (session := self._sessions.get(unit.id)) is not None:
-            await session.approve(request_id, allow)
-            self._emit(Answered(unit.id, request_id, allow))
+            always = allow and always
+            await session.approve(request_id, allow, always=always)
+            self._emit(Answered(unit.id, request_id, allow, always))
 
     # ── What units do, through the fleet tools ───────────────────────────
 

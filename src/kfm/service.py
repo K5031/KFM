@@ -184,8 +184,10 @@ class Service(abc.ABC):
         not running is started for it."""
 
     @abc.abstractmethod
-    async def approve(self, fleet: str, unit: str, request_id: str, allow: bool) -> None:
-        """Answer an `events.Approval`."""
+    async def approve(self, fleet: str, unit: str, request_id: str, allow: bool, *,
+                      always: bool = False) -> None:
+        """Answer an `events.Approval`. `always` with `allow`: that agent no longer asks
+        for actions of that kind."""
 
     # ── Settings, and what happens ───────────────────────────────────────
 

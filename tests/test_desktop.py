@@ -226,6 +226,20 @@ async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: P
     assert view.running and "running" in shown.status.text()
 
 
+async def test_an_approval_can_be_given_for_the_rest_of_an_agents_work(window, tmp_path: Path):
+    shown, harness = window({"K5 u1": [
+        {"do": [("approval", "r1", "shell", "{'command': 'uv run pytest'}")]}]})
+    view = await start(shown, tmp_path, "Keep watch", duty=True)
+    await until(lambda: any(isinstance(e, ApprovalCard) for e in view.entries))
+    [card] = [e for e in view.entries if isinstance(e, ApprovalCard)]
+    assert [b.text() for b in (card.allow, card.always, card.deny)] == [
+        "Allow", "Always allow", "Deny"]
+    card.always.click()
+    await until(lambda: harness.approved == [("r1", True)] and harness.always == ["r1"])
+    await until(lambda: not card.always.isVisibleTo(shown)
+                and card.question.text().startswith("Always allowed"))
+
+
 async def test_the_window_opens_on_the_chart_of_the_newest_project(window, tmp_path: Path):
     first, _ = window(TEAM)
     view = await start(first, tmp_path, "Tidy up", name="dev")

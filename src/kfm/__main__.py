@@ -119,7 +119,8 @@ def main(argv: list[str] | None = None) -> int:
     approve.add_argument("fleet")
     approve.add_argument("unit")
     approve.add_argument("request")
-    approve.add_argument("answer", choices=("yes", "no"))
+    approve.add_argument("answer", choices=("yes", "no", "always"),
+                         help="always: yes, and that agent no longer asks for this kind")
 
     settings = commands.add_parser("settings", help="show or change what new fleets get")
     settings.add_argument("--budget", type=float, dest="budget_usd")
@@ -306,7 +307,8 @@ async def _approve(service: Service, args: argparse.Namespace) -> int:
     fleet = await _one_fleet(service, args.fleet)
     if fleet is None:
         return 1
-    await service.approve(fleet, args.unit, args.request, args.answer == "yes")
+    await service.approve(fleet, args.unit, args.request, args.answer != "no",
+                          always=args.answer == "always")
     return 0
 
 
@@ -455,7 +457,7 @@ class Console:
                 print(f"[{tag(by)} → {called(unit)}] {kind}: {_clip(text)}")
             case Approval(unit=unit, tool=tool, arguments=arguments):
                 self.approvals.append(event)
-                print(f"[{tag(unit)}] wants to run {tool} {_clip(arguments)}. Allow? (y/n)")
+                print(f"[{tag(unit)}] wants to run {tool} {_clip(arguments)}. Allow? (y/n/a: always)")
             case Notice(text=text):
                 print(f"! {text}")
         sys.stdout.flush()
@@ -477,10 +479,11 @@ class Console:
 
     async def _typed(self, text: str) -> None:
         try:
-            if self.approvals and text.lower() in ("y", "yes", "n", "no"):
+            if self.approvals and text.lower() in ("y", "yes", "n", "no", "a", "always"):
                 approval = self.approvals.popleft()
+                answer = text.lower()[0]
                 await self.service.approve(self.fleet, approval.unit, approval.request_id,
-                                           text.lower().startswith("y"))
+                                           answer != "n", always=answer == "a")
             else:
                 await self.service.say(self.fleet, text)
         except (ValueError, UnitError, ServiceError, OSError) as e:

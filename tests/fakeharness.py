@@ -43,6 +43,7 @@ class FakeHarness(Harness):
         self.opened: list[tuple[str, str | None]] = []  # (unit name, session)
         self.models: list[tuple[str, str | None]] = []  # (unit name, model), as opened
         self.approved: list[tuple[str, bool]] = []  # (request id, allow)
+        self.always: list[str] = []  # request ids allowed for the rest of the unit's work
         self.files: list[tuple[str, list[str], bool]] = []  # (unit name, files, spoken)
         self.instructed: list[tuple[str, str]] = []  # (unit name, its new instruction)
 
@@ -81,8 +82,10 @@ class FakeSession(Session):
             self.harness.files.append((self.spec.name, list(files), spoken))
         self._turn(text)
 
-    async def approve(self, request_id: str, allow: bool) -> None:
+    async def approve(self, request_id: str, allow: bool, *, always: bool = False) -> None:
         self.harness.approved.append((request_id, allow))
+        if always:
+            self.harness.always.append(request_id)
         self.answers[request_id].set()
 
     async def close(self, grace_s: float) -> None:

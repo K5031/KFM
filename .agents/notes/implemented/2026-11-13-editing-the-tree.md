@@ -3,7 +3,7 @@
 Status: implemented — the person builds a fleet agent by agent on the chart and starts it, or adds agents and sets models in a fleet a lead built
 
 Follows [Projects](2026-11-13-projects.md) and
-[drafting a project](2026-11-13-drafting-a-project.md).
+[a project's secretary](2026-11-19-a-projects-secretary.md).
 
 ## Problem
 

@@ -73,10 +73,11 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm watch [FLEET]` | Follow a running fleet and talk to its lead; Ctrl+C lets go of it |
 | `kfm stop [FLEET]` | Stop a fleet |
 | `kfm resume [FLEET] [--budget N]` | Start a stopped fleet again and follow it |
-| `kfm say FLEET "text" [--to u2] [--file F]` | A message to the lead, or to one agent, with files |
+| `kfm say FLEET "text" [--to u2] [--file F]` | A message to the lead, or to one agent, with files. `PROJECT/Secretary` as the fleet reaches a project's secretary |
 | `kfm approve FLEET UNIT REQUEST yes\|no\|always` | Answer what an agent asked to do |
 | `kfm projects` | List the projects |
-| `kfm project new NAME [--work PATH]`, `rename`, `delete` | Make, rename or delete a project |
+| `kfm project new NAME [--work PATH] [--does "text"]`, `rename`, `delete` | Make, rename or delete a project. With `--does`, its secretary proposes its teams |
+| `kfm proposal PROJECT [--start\|--drop]` | The teams its secretary proposed; start them all, or drop the proposal |
 | `kfm fleet new PROJECT NAME ["task"]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
 | `kfm agent add FLEET [--under u1] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
 | `kfm agent remove\|rename\|task\|model FLEET UNIT [...]` | Change an agent |
@@ -118,14 +119,27 @@ opens a window on the same service the commands talk to, without a terminal. It 
   left; click one to switch to it. Right-click one to **delete** it: its fleets are
   stopped and their records and logs removed, after you confirm. The folder the agents
   worked in, and everything in it, is kept.
-- **Describe the project** in the box under its name to have its fleets drafted: one
-  agent reads what you want and proposes the teams, each with a name and what it is
-  there to do. You can rename them, rewrite what they do, leave some out or add your
-  own. Nothing runs until you press **Start**, which starts them all, each with the
-  limit shown beside it. Leave the box empty to add the fleets yourself: the project
-  opens on its chart, empty, with **Add fleet**.
+- **Describe the project** in the box under its name and its secretary proposes the
+  teams, each with a name and what it is there to do. You can rename them, rewrite what
+  they do, leave some out or add your own. Nothing runs until you press **Start**, which
+  starts them all, each with the limit shown beside it. Leave the box empty to add the
+  fleets yourself: the project opens on its chart, empty, with **Add fleet**.
 
-  ![A draft](images/draft-light.png)
+  ![A proposal](images/draft-light.png)
+
+- **The secretary** is the one agent you talk to about the whole project. Click
+  **Secretary** at the top of the chart and write to her:
+  - *How is it going?* She looks at what each team has reported, asked and been told,
+    your own messages to a lead included, and answers.
+  - *A small change.* She writes to the lead it concerns.
+  - *A change of teams.* She puts a proposal to you, on the same page as the first one,
+    and nothing changes until you start it.
+
+  She is not a manager: every lead still answers to you, and you can write to any of
+  them yourself. She can read the project's folder and change nothing in it. Between
+  your messages she is asleep and costs nothing.
+
+  ![The secretary](images/secretary-light.png)
 
 - **The chart** is a project's main screen: its fleets side by side, each as the tree of
   who supervises whom, the K5 lead on top. Each agent shows its rank, its state and what
@@ -166,7 +180,8 @@ opens a window on the same service the commands talk to, without a terminal. It 
 - **Delete a fleet** by right-clicking its name on the chart. It is stopped and its
   record and log are removed, after you confirm; the folder it worked in is kept.
 - **Several fleets run at once.** Each has its own limit, and is stopped and resumed by
-  itself. Fleets do not talk to each other: each lead reports to you.
+  itself. A team's lead can write to another team's lead, and to the secretary; such a
+  message shows in both teams' feeds. A team that is stopped is not started by one.
 - **Open a fleet** by clicking its name on the chart, or an agent to see only what
   concerns it. The arrow at the top left leads back to the chart.
 
@@ -264,5 +279,6 @@ in `src/kfm/api.py`, and `tests/fakeharness.py` is a small complete example.
 ## Not there yet
 
 - The service uses a Unix socket: Linux and macOS, not Windows.
-- Fleets of a project do not talk to each other.
+- The secretary proposes new teams; ending a team or rewriting what one does is yours
+  to do, or hers to ask its lead.
 - Agents share one folder, and nothing stops two from editing the same file.

@@ -101,6 +101,7 @@ PROJECT_ROLE = Qt.ItemDataRole.UserRole  # a project row's id
 FLEETS_ROLE = Qt.ItemDataRole.UserRole + 10  # how many fleets it has
 QUIET_STATES = ("starting", "working", "waiting", "done")  # shown by the agents list alone
 OVER = ("done", "idle", "failed", "stopped")  # an agent that is at nothing
+SAYING = 90  # characters of what the secretary last wrote, in a line under "Drafting…"
 BAR = 48  # px, the bar on top
 COLUMN = 720  # px, the widest the timeline's entries get
 REFRESH_MS = 1000  # spending and states, while a fleet runs
@@ -666,10 +667,35 @@ class DraftPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidget(page)
+        # While the secretary is at it: the word for that, what she last wrote, and a way out.
+        self.waiting = QWidget()
+        centre = QVBoxLayout(self.waiting)
+        centre.setSpacing(0)
+        centre.addStretch(2)
+        waiting = label("Drafting…", wrap=False)
+        waiting.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        waiting.setStyleSheet("font-size: 22px; font-weight: 600;")
+        self.saying = label("", role="small", tone="muted", wrap=False)
+        self.saying.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.stop = QPushButton("Cancel")
+        self.stop.clicked.connect(self.cancel)
+        centre.addWidget(waiting)
+        centre.addSpacing(10)
+        centre.addWidget(self.saying, 0, Qt.AlignmentFlag.AlignHCenter)
+        centre.addSpacing(22)
+        centre.addWidget(self.stop, 0, Qt.AlignmentFlag.AlignHCenter)
+        centre.addStretch(3)
+        self._proposal = scroll
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(self.waiting)
         outer.addWidget(scroll)
         self._show()
+
+    def said(self, text: str) -> None:
+        """What the secretary wrote while she is waited for."""
+        text = " ".join(text.split())
+        self.saying.setText(text if len(text) <= SAYING else text[:SAYING] + "…")
 
     def cancel(self) -> None:
         """Drop the proposal, or stop waiting for one."""
@@ -710,10 +736,9 @@ class DraftPage(QWidget):
         row.deleteLater()
 
     def _show(self) -> None:
-        self.heading.setText("Drafting…" if self.busy else "Proposal")
-        for part in (self.add_button, self.budget, self.start):
-            part.setVisible(not self.busy)
-        self.discard.setText("Cancel" if self.busy else "Discard")
+        self.heading.setText("Proposal")
+        self.waiting.setVisible(self.busy)
+        self._proposal.setVisible(not self.busy)
 
 
 class AgentDialog(QDialog):
@@ -1560,6 +1585,8 @@ class FleetWindow(QMainWindow):
 
     def _drop_draft(self, page: DraftPage) -> None:
         if self.drafts.pop(page.project.id, None) is page:
+            if page.busy:  # she is still at it: cancelled
+                self._run(self._stop_secretary(page.project))
             self._run(self._settle(page.project.id))
             self.draft_pages.removeWidget(page)
             page.deleteLater()
@@ -1567,6 +1594,10 @@ class FleetWindow(QMainWindow):
                 self.adding = False
                 self._prepare_start()
             self._refresh()
+
+    async def _stop_secretary(self, opened: ProjectInfo) -> None:
+        with contextlib.suppress(*REFUSALS):
+            await self.service.stop(opened.secretary)
 
     async def _settle(self, project_id: str) -> None:
         with contextlib.suppress(*REFUSALS):
@@ -1598,6 +1629,12 @@ class FleetWindow(QMainWindow):
             if await self.service.proposal(opened.id):
                 await self._proposed(opened.id)
         self._waited(opened.id)
+        page = self.drafts.get(opened.id)
+        if page is not None and page.busy and not page.saying.text():
+            with contextlib.suppress(*REFUSALS):  # what she wrote before this page was
+                history, _ = await self.service.history(opened.secretary)
+                if said := [event.text for event in history if isinstance(event, Said)]:
+                    page.said(said[-1])
 
     def new_project(self) -> None:
         """The form for a project; fleets that run keep running."""
@@ -1695,6 +1732,10 @@ class FleetWindow(QMainWindow):
             case Happened(fleet=fleet_id, event=event, number=number):
                 if (view := self.views.get(fleet_id)) is not None:
                     view.happened(event, number)
+                page = self.drafts.get(fleet_id.partition("/")[0])
+                if (page is not None and page.busy and isinstance(event, Said)
+                        and fleet_id.endswith(f"/{SECRETARY}")):
+                    page.said(event.text)
             case Updated(fleet=fleet_id):
                 if (view := self.views.get(fleet_id)) is not None:
                     view.updated()

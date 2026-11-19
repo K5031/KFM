@@ -369,6 +369,28 @@ async def test_a_described_project_is_drafted_and_started_by_the_person(window,
     assert not shown.drafts
 
 
+async def test_waiting_for_a_proposal_shows_what_she_writes_and_can_be_cancelled(
+        window, tmp_path: Path):
+    shown, _ = window({"Secretary": [
+        {"do": [("say", "Looking at the folder."), ("approval", "r1", "shell", "ls")]}]})
+    form = shown.project_form
+    form.name.setText("Studio")
+    form.does.setPlainText("Run my game studio")
+    form.set_folder(tmp_path / "work")
+    form.create.click()
+    await until(lambda: shown.drafts)
+    [page] = shown.drafts.values()
+    await until(lambda: page.waiting.isVisibleTo(shown))
+    assert page.busy
+    assert not page.start.isVisibleTo(shown) and page.stop.text() == "Cancel"
+    await until(lambda: page.saying.text() == "Looking at the folder.")
+    secretary = shown.project.secretary
+    await until(lambda: shown.service.state(secretary).running)
+    page.stop.click()  # she is stopped, and the project stays, with its chart
+    await until(lambda: not shown.service.state(secretary).running)
+    assert not shown.drafts and shown.chart.isVisibleTo(shown)
+
+
 async def test_a_draft_that_fails_or_is_discarded_leaves_the_project(window, tmp_path: Path):
     shown, _ = window({"Secretary": [{"do": [("say", "A plan in words.")]}]})
     form = shown.project_form

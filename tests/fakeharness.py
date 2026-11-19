@@ -43,6 +43,7 @@ class FakeHarness(Harness):
         self.opened: list[tuple[str, str | None]] = []  # (unit name, session)
         self.models: list[tuple[str, str | None]] = []  # (unit name, model), as opened
         self.approved: list[tuple[str, bool]] = []  # (request id, allow)
+        self.conversations: list[str] = []  # units begun on a conversation, not a goal
         self.permissions: list[tuple[str, str]] = []  # (unit name, permissions), as opened
         self.results: list[tuple[str, str, str]] = []  # (unit name, tool, what it answered)
         self.always: list[str] = []  # request ids allowed for the rest of the unit's work
@@ -70,14 +71,16 @@ class FakeSession(Session):
 
     async def begin(self, instruction: Instruction) -> str:
         self.session = f"session-{self.spec.id}"
-        self.harness.standing[self.session] = True
+        self.harness.standing[self.session] = not instruction.conversation
+        if instruction.conversation:
+            self.harness.conversations.append(self.spec.name)
         self._turn(instruction.text)
         return self.session
 
     async def instruct(self, instruction: Instruction) -> None:
         assert self.session is not None
         self.harness.instructed.append((self.spec.name, instruction.text))
-        self.harness.standing[self.session] = True
+        self.harness.standing[self.session] = not instruction.conversation
 
     async def send(self, text: str, files: Sequence[str] = (), *,
                    spoken: bool = False) -> None:

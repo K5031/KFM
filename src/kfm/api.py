@@ -14,6 +14,10 @@ What a unit must do, beyond the methods below:
 - **End a goal with a report.** An instruction that is not `ongoing` is a goal: the agent
   declares it reached with a report (`Reported`), and the instruction then no longer
   stands. An `ongoing` one stands until the unit is closed.
+- **Answer in a conversation.** An instruction that is a `conversation` is no work to
+  carry on or end: its text is what the agent is told once, when it begins. The agent
+  takes a turn on it and on each `send`, and its turn ending (`Rested(False)`) is all
+  that follows; it reports nothing and does not wake itself.
 - **Ask when blocked.** When only its supervisor can unblock it, the agent asks one
   question (`Asked`) and ends its turn. It does not wake itself while the question is
   open; the next `send` is the answer.
@@ -66,6 +70,9 @@ class Instruction:
     text: str  # the unit's brief: who it is in the fleet, its task, how the fleet works
     ongoing: bool  # standing work that never ends, instead of a goal
     check_in_s: tuple[float, float]  # the shortest and the longest time between two turns
+    # A conversation and no work to end: the text is said once, when the unit begins; it
+    # answers each message and stops, and nothing is reported. `ongoing` means nothing.
+    conversation: bool = False
 
 
 @dataclass(frozen=True, slots=True)

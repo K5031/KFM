@@ -31,7 +31,7 @@ def across(service: LocalService, seen: list[Update], fleet: str) -> list[tuple[
 
 async def test_a_described_project_gets_its_teams_from_its_secretary(tmp_path: Path):
     service, harness, seen = local(tmp_path, {"Secretary": [
-        {"do": [("tool", "propose", {"teams": TEAMS}), ("report", "Proposed.")]}]})
+        {"do": [("tool", "propose", {"teams": TEAMS}), ("say", "Three teams, as proposed.")]}]})
     made = await service.create_project("Studio", str(tmp_path / "work"), "Run my game studio")
     assert made.secretary == f"{made.id}/secretary" and (made.fleets, made.running) == (0, 0)
     await until(lambda: Proposed(made.id) in seen)
@@ -48,7 +48,13 @@ async def test_a_described_project_gets_its_teams_from_its_secretary(tmp_path: P
                         "your job", "always", "never"):
         assert instruction not in told.lower(), instruction
     assert harness.permissions == [("Secretary", "allow_read_only")]
+    # She is a conversation: she answers and stops. Nothing is finished or reported, so
+    # what she wrote is the one answer the person reads.
     await until(lambda: service.fleet(made.secretary).lead.state == "done")
+    assert "ask_boss" not in told and harness.conversations == ["Secretary"]
+    history, _ = await service.history(made.secretary)
+    assert [type(e).__name__ for e in history if type(e).__name__ in ("Said", "Delivered")] \
+        == ["Said"]
     await service.settle_proposal(made.id)
     assert await service.proposal(made.id) is None
     [listed] = await service.projects()
@@ -59,11 +65,11 @@ async def test_a_described_project_gets_its_teams_from_its_secretary(tmp_path: P
 async def test_a_secretary_sleeps_until_she_is_written_to(tmp_path: Path):
     service, harness, seen = local(tmp_path, {
         "Secretary": [{"when": "How is it going", "do": [("tool", "teams", {}),
-                                                         ("report", "All well.")]},
+                                                         ("say", "All well.")]},
                       {"when": "Tell dev", "do": [
                           ("tool", "message", {"team": "dev", "text": "Ship on Friday."}),
                           ("tool", "message", {"team": "art", "text": "Hello."}),
-                          ("report", "Told.")]}],
+                          ("say", "Told.")]}],
         "K5 u1": [{"do": [("report", "The build is green.")]},
                   {"when": "Ship on Friday", "do": [("say", "Noted.")]}]})
     made = await service.create_project("Studio", str(tmp_path / "work"))
@@ -105,7 +111,7 @@ async def test_leads_reach_each_other_and_the_secretary(tmp_path: Path):
                       ("tool", "message", {"agent": "legal", "text": "Anyone?"})]},
                   {"when": "Draw it", "do": [("say", "Drawing.")]},
                   {"when": "Which palette", "do": [("say", "Blue.")]}],
-        "Secretary": [{"do": [("report", "I will tell the person.")]}]})
+        "Secretary": [{"do": [("say", "I will tell the person.")]}]})
     made = await service.create_project("Studio", str(tmp_path / "work"))
     art = await service.add_fleet(made.id, "art", "Draw it")
     await until(lambda: any("Draw it" in h for h in harness.heard.get("K5 u1", [])))
@@ -155,6 +161,10 @@ async def test_a_real_kadence_unit_is_the_secretary_on_a_scripted_model(tmp_path
     made = await service.create_project("Studio", str(tmp_path / "work"), "Run my game studio")
     await until(lambda: Proposed(made.id) in seen, timeout=30)
     assert [team.name for team in (await service.proposal(made.id)).teams] == ["dev", "trailer"]
+    # Her turn ends as a conversation's does: nothing to finish, and no report.
+    await until(lambda: service.fleet(made.secretary).lead.state == "done", timeout=30)
+    history, _ = await service.history(made.secretary)
+    assert "Delivered" not in [type(event).__name__ for event in history]
     await service.aclose()
 
 
@@ -165,7 +175,7 @@ async def test_a_proposal_reaches_a_frontend_over_the_socket(tmp_path: Path):
     from kfm.server import Server
 
     harness = FakeHarness({"Secretary": [
-        {"do": [("tool", "propose", {"teams": TEAMS}), ("report", "Proposed.")]}]})
+        {"do": [("tool", "propose", {"teams": TEAMS}), ("say", "Three teams, as proposed.")]}]})
     (tmp_path / "work").mkdir()
     home, socket = tmp_path / "home", tmp_path / "s"
     server = Server(LocalService(home, harness=harness, config=FleetConfig()), socket,

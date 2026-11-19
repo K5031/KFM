@@ -315,9 +315,9 @@ async def test_a_described_project_is_drafted_and_started_by_the_person(window,
              {"name": "legal", "does": "Read contracts.", "ongoing": True}]
     shown, harness = window({
         "Secretary": [{"do": [("tool", "propose", {"teams": proposed}),
-                              ("report", "Proposed.")]},
+                              ("say", "Proposed.")]},
                       {"when": "Add a legal team", "do": [
-                          ("tool", "propose", {"teams": [proposed[2]]}), ("report", "Proposed.")]}],
+                          ("tool", "propose", {"teams": [proposed[2]]}), ("say", "Proposed.")]}],
         "K5 u1": [{"do": [("say", "On it.")]}, {"do": [("say", "On it.")]}]})
     form = shown.project_form
     form.name.setText("Studio")
@@ -370,7 +370,7 @@ async def test_a_described_project_is_drafted_and_started_by_the_person(window,
 
 
 async def test_a_draft_that_fails_or_is_discarded_leaves_the_project(window, tmp_path: Path):
-    shown, _ = window({"Secretary": [{"do": [("report", "A plan in words.")]}]})
+    shown, _ = window({"Secretary": [{"do": [("say", "A plan in words.")]}]})
     form = shown.project_form
     form.name.setText("Studio")
     form.does.setPlainText("Run my game studio")

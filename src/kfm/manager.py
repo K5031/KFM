@@ -131,6 +131,11 @@ class Manager:
         return self.running and not self.stopping
 
     @property
+    def _converses(self) -> bool:
+        """Its units are talked with and have no work to end: a project's secretary."""
+        return self.project is not None and self.project.secretary
+
+    @property
     def _words(self) -> Vocabulary:
         assert self._harness is not None  # words are written to units, which run
         return self._harness.vocabulary
@@ -153,8 +158,8 @@ class Manager:
             self._harness = self._own_harness or await asyncio.to_thread(
                 harnesses.load, config.harness, config.harness_options)
             self.config, self.fleet.settings = config, settings.record(config)
-            secretary = self.project is not None and self.project.secretary
-            self._tools = ToolServer((secretary_tools if secretary else fleet_tools)(self))
+            self._tools = ToolServer(
+                (secretary_tools if self._converses else fleet_tools)(self))
             await self._tools.start()
             self.fleet.manager_pid = os.getpid()
             self.running = True
@@ -434,12 +439,13 @@ class Manager:
 
     def _instruction(self, unit: Unit) -> Instruction:
         """The unit's standing instruction, from the fleet as it is now."""
-        if self.project is not None and self.project.secretary:
-            brief = units.secretary_brief(unit, self.project.name, self.work, self._words)
-        else:
-            brief = units.brief(unit, self.fleet.supervisor_of(unit),
-                                self.fleet.subordinates(unit), self._words,
-                                in_project=self.project is not None)
+        if self._converses:
+            return Instruction(
+                units.secretary_brief(unit, self.project.name, self.work, self._words),
+                False, self.config.check_in_s, conversation=True)
+        brief = units.brief(unit, self.fleet.supervisor_of(unit),
+                            self.fleet.subordinates(unit), self._words,
+                            in_project=self.project is not None)
         return Instruction(brief, unit.ongoing, self.config.check_in_s)
 
     async def _begin(self, unit: Unit) -> None:
@@ -517,7 +523,8 @@ class Manager:
                 if carries_on:  # between check-ins, or until its question is answered
                     self._set(unit, "waiting" if unit.question is not None else "working")
                 else:
-                    self._set(unit, "done" if unit.report is not None else "idle")
+                    over = unit.report is not None or self._converses
+                    self._set(unit, "done" if over else "idle")
                 if unit.state != "working":
                     self._turn_ended(unit)
             case api.Said(text=text):
@@ -547,8 +554,9 @@ class Manager:
         """The unit stopped working: tell its supervisor, or the person, why."""
         match unit.state:
             case "done":
-                self._deliver(unit, "report", f"[Report from {unit.label}] {unit.report}",
-                              unit.report or "")
+                if unit.report is not None:  # a conversation's turn ends without one
+                    self._deliver(unit, "report",
+                                  f"[Report from {unit.label}] {unit.report}", unit.report)
                 self._spawn(self._close(unit))
                 if unit.supervisor is None:
                     self.finished.set()

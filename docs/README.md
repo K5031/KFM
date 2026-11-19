@@ -135,8 +135,9 @@ opens a window on the same service the commands talk to, without a terminal. It 
   - *A change of teams.* She puts a proposal to you, on the same page as the first one,
     and nothing changes until you start it.
 
-  She is not a manager: every lead still answers to you, and you can write to any of
-  them yourself. She can read the project's folder and change nothing in it. Between
+  What she writes is her answer: she does not end with a report, as an agent at work
+  does. She is not a manager: every lead still answers to you, and you can write to any
+  of them yourself. She can read the project's folder and change nothing in it. Between
   your messages she is asleep and costs nothing.
 
   ![The secretary](images/secretary-light.png)

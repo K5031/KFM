@@ -140,10 +140,15 @@ class _Session(Session):
     async def begin(self, instruction: Instruction) -> str:
         info = await self._request("start")
         self._conversation = info["id"]
-        await self.instruct(instruction)
+        if instruction.conversation:  # said once, as what the conversation opens with
+            await self.send(instruction.text)
+        else:
+            await self.instruct(instruction)
         return info["id"]
 
     async def instruct(self, instruction: Instruction) -> None:
+        if instruction.conversation:
+            return
         low, high = instruction.check_in_s
         await self._request("set_duty", duty={
             "instruction": instruction.text,

@@ -46,9 +46,14 @@ What it is able to do, and nothing about when:
 
 | Ability | What it is |
 |---|---|
-| `teams` | how each team stands: its lead, what it is doing, what it spent, what it last reported or asked |
+| `teams` | how each team stands: its lead, what it is doing, what it spent, and from the record KFM keeps of every team, what was reported, asked and said to it lately, the person's own messages to a lead included |
 | `message` | write to a team's lead, as the person does |
-| `propose` | put a change to the person: teams added, a team's work restated, a team ended. Shown where a draft is shown; applies when the person approves |
+| `propose` | put a change to the person: teams added, a team's work restated, a team ended, a team given a folder of its own. Shown where a draft is shown; applies when the person approves |
+
+**The project's state is the record, not a file someone keeps.** KFM already writes
+down every report, question, message and change of each team. The secretary reads that,
+so what she knows after sleeping is what happened, including what the person told a
+lead without her.
 
 So "how is it going?" is answered from `teams`; a small adjustment is a `message` to
 the lead it concerns; a change of structure or a plan that involves several teams is a
@@ -62,10 +67,14 @@ the lead it concerns; a change of structure or a plan that involves several team
   answer comes back as a message. Agents below a lead go through their lead.
 - A message to a team that is stopped or has finished is refused with that fact: one
   team does not start another, or spend its money.
+- A lead can write to the secretary as to another lead, which wakes her. Two leads that
+  cannot agree have her, and through her or directly the person, to take it to.
 
 ### What teams share
 
-The project's folder, which every team already works in. Nothing is added here;
+The project's folder, which every team already works in, and nothing keeps two teams
+from changing the same file, which every agent is told. A team can be given a folder of
+its own, by the person or in a proposal. Nothing else is added here;
 [shared team memory](2026-11-12-shared-team-memory.md) is the piece for what teams know
 as opposed to what they made.
 
@@ -77,6 +86,15 @@ as opposed to what they made.
 - **No drafting; the person sets up the teams, and leads talk to each other.** Removes
   the special case and keeps everything else. The person has to know the split before
   they start, and still has nobody to ask or to hand a change to.
+- **A state file the leads keep up to date** (status, decisions, blockers), for the
+  secretary to read on waking. It is a duty laid on every lead, kept as well as each
+  lead keeps it, and a second account beside the record KFM writes anyway.
+- **A rule for escalation** (an unresolved conflict wakes the secretary or the person).
+  Whether something is unresolved is a judgment; the leads are given whom they can
+  reach, and reach them when they judge so.
+- **A fixed layout for the shared folder** (an area per team, an append-only log, an
+  owner per file), held by KFM. It decides for every project how its files are
+  arranged. A team's own folder is there for the projects that need it.
 - **As it is, with a "status" command that summarises the fleets.** A summary by fixed
   code says what is in the records and cannot be asked a question or told a change.
 
@@ -94,8 +112,10 @@ as opposed to what they made.
 ## Risks
 
 - **What it knows goes stale while it sleeps.** It wakes knowing the plan, not the
-  week. Each question costs it a look at the teams, and it can answer from memory when
+  week. Each question costs it a look at the record, and it can answer from memory when
   it should have looked.
+- **Two teams can drift apart without either noticing.** No rule or referee catches
+  what neither lead sees as a conflict.
 - **Two voices.** A lead can hear one thing from the person and another from the
   secretary. Its message is the person's word passed on, and a lead cannot tell how
   faithfully.

@@ -11,6 +11,7 @@ import os
 import signal
 import stat
 import sys
+import time
 from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -59,6 +60,10 @@ def main(argv: list[str] | None = None) -> int:
     status = commands.add_parser("status", help="show projects, fleets and their agents")
     status.add_argument("fleet", nargs="?", help="one fleet's name or id (default: all)")
 
+    service = commands.add_parser(
+        "service", help="KFM's background service: since when it runs; stop or restart it "
+                        "(after an update it still runs the code it was started on)")
+    service.add_argument("action", nargs="?", choices=("stop", "restart"))
     commands.add_parser("projects", help="list the projects")
     project = commands.add_parser("project", help="make, rename or delete a project")
     what = project.add_subparsers(dest="action", required=True)
@@ -145,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     try:
+        if args.command == "service":
+            return asyncio.run(_service(args))
         if args.command == "serve":
             return asyncio.run(_serve(args))
         return asyncio.run(_attached(args))
@@ -153,6 +160,37 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except KeyboardInterrupt:
         return 130
+
+
+async def _service(args: argparse.Namespace) -> int:
+    """Show KFM's service, end it, or end it and start another."""
+    def shown(service: RemoteService) -> str:
+        since = time.strftime("%H:%M on %d %b", time.localtime(service.since))
+        return f"KFM's service runs since {since} (process {service.pid})."
+
+    service: RemoteService | None
+    try:
+        service = await RemoteService.connect(args.home, start=False)
+    except ServiceError as e:
+        if "No KFM service runs" not in str(e):
+            raise
+        service = None
+    if service is None and args.action != "restart":
+        print("No KFM service runs.")
+        return 0
+    if args.action is None:
+        assert service is not None
+        print(shown(service))
+        await service.aclose()
+        return 0
+    if service is not None:
+        await service.end()
+        print("KFM's service is ended. Its fleets are stopped and can be resumed.")
+    if args.action == "restart":
+        service = await RemoteService.connect(args.home)
+        print(shown(service))
+        await service.aclose()
+    return 0
 
 
 async def _serve(args: argparse.Namespace) -> int:

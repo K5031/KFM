@@ -107,3 +107,21 @@ def test_a_wrong_setting_ends_with_one_line(tmp_path: Path):
 def test_status_without_a_fleet_says_how_to_start_one(tmp_path: Path):
     shown = kfm("status", home=tmp_path)
     assert shown.returncode == 1 and "kfm run" in shown.stdout
+
+
+def test_the_service_is_shown_and_stopped_from_the_terminal(tmp_path: Path):
+    settings(tmp_path, {"K5 u1": [{"text": "On watch."}]})
+    work = tmp_path / "work"
+    work.mkdir()
+    assert "No KFM service runs" in kfm("service", home=tmp_path).stdout
+    kfm("run", "Keep watch", "--duty", "--detach", "--name", "watch", "--work", str(work),
+        home=tmp_path)
+    shown = kfm("service", home=tmp_path).stdout
+    assert "runs since" in shown and "process" in shown
+    stopped = kfm("service", "stop", home=tmp_path)
+    assert stopped.returncode == 0 and "ended" in stopped.stdout, stopped.stderr
+    assert "No KFM service runs" in kfm("service", home=tmp_path).stdout
+    assert "stopped, 1 agents" in kfm("status", "watch", home=tmp_path).stdout  # resumable
+    restarted = kfm("service", "restart", home=tmp_path)
+    assert restarted.returncode == 0 and "runs since" in restarted.stdout, restarted.stderr
+    kfm("service", "stop", home=tmp_path)

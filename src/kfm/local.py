@@ -231,6 +231,9 @@ class LocalService(Service):
         self._listeners.append(listener)
         return lambda: self._listeners.remove(listener) if listener in self._listeners else None
 
+    async def end(self) -> None:
+        await self.aclose()
+
     async def aclose(self) -> None:
         await asyncio.gather(*(manager.aclose() for manager in self._managers.values()),
                              return_exceptions=True)

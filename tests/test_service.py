@@ -240,3 +240,26 @@ async def test_a_service_of_another_version_is_refused_and_named(tmp_path: Path)
     assert asyncio.get_running_loop().time() - started < 1.0  # at once: it is not waited out
     assert "version 0" in str(refused.value) and "can be resumed" in str(refused.value)
     server.close()
+
+
+async def test_the_service_is_ended_by_a_frontend(tmp_path: Path):
+    """Its fleets stop and can be resumed; the next frontend starts another."""
+    harness = FakeHarness({"K5 u1": [{"do": [("say", "On watch.")]}]})
+    (tmp_path / "work").mkdir()
+    home, socket = tmp_path / "home", tmp_path / "s"
+    server = Server(LocalService(home, harness=harness, config=FleetConfig()), socket,
+                    idle_s=60)
+    serving = asyncio.ensure_future(server.run())
+    await until(socket.exists)
+    remote = await RemoteService.connect(home, socket=socket, start=False)
+    assert remote.pid > 0 and remote.since > 0
+    made = await remote.create_project("Acme", str(tmp_path / "work"))
+    fleet = await remote.add_fleet(made.id, "watch", "Keep watch")
+    await until(lambda: remote.state(fleet).running)
+    await remote.end()  # returns once its fleets are stopped and it has let go
+    await asyncio.wait_for(serving, 10)
+    assert not socket.exists()
+    assert not Fleet.load(home / "projects" / made.id / "fleets"
+                          / fleet.partition("/")[2]).running
+    with pytest.raises(ServiceError, match="No KFM service runs"):
+        await RemoteService.connect(home, socket=socket, start=False)

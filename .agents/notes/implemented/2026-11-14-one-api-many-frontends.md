@@ -45,8 +45,11 @@ use it directly, with the second harness.
 **One service.** `kfm serve` runs it and answers the contract on a Unix socket in KFM's
 home (`kfm/server.py`), one JSON object a line, as Kadence's headless channel speaks.
 Any number of frontends attach. One that finds no service starts it, detached. It ends
-when no fleet runs and no frontend is attached. The first line of a connection names
-the contract's version, and a frontend of another version is told so.
+when no fleet runs and no frontend is attached, or when a frontend ends it
+(`Service.end`): it outlives the window, so after an update it still runs the code it
+was started on, and the person restarts it. The first line of a connection names the
+contract's version, the service's process and when it started, and a frontend of
+another version is told so.
 
 **Frontends are clients.** `kfm/remote.py` is `Service` over that socket. The window
 (`desktop.py`) and the command line (`__main__.py`) take a `Service` and nothing else:

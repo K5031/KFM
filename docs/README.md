@@ -58,9 +58,10 @@ in the other, and both can follow it at once.
 - **Closing the window, or a terminal, does not stop a fleet.** It runs until it is
   stopped, finishes, or reaches its spending limit. `kfm status` shows what runs.
 - **A reboot stops every fleet;** `kfm resume` starts one again where it was.
-- **After an update** the service still running may be the old one. `kfm` and the window
-  then say so and do not attach. It ends by itself once no fleet runs and nothing is
-  attached to it, or with the command the message names; its fleets can be resumed.
+- **After an update** the service still running is the old one, on the code it was
+  started with, for as long as a fleet runs or a window is open. Restart it: **Restart
+  KFM** in the menu at the bottom left of the window, or `kfm service restart`. Its
+  fleets stop and can be resumed. `kfm service` says since when it runs.
 
 ## The command line
 
@@ -75,6 +76,7 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm resume [FLEET] [--budget N]` | Start a stopped fleet again and follow it |
 | `kfm say FLEET "text" [--to u2] [--file F]` | A message to the lead, or to one agent, with files. `PROJECT/Secretary` as the fleet reaches a project's secretary |
 | `kfm approve FLEET UNIT REQUEST yes\|no\|always` | Answer what an agent asked to do |
+| `kfm service [stop\|restart]` | Since when KFM's background service runs; end it, or end it and start another |
 | `kfm projects` | List the projects |
 | `kfm project new NAME [--work PATH] [--does "text"]`, `rename`, `delete` | Make, rename or delete a project. With `--does`, its secretary proposes its teams |
 | `kfm proposal PROJECT [--start\|--drop]` | The teams its secretary proposed; start them all, or drop the proposal |

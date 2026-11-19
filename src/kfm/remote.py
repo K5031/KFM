@@ -6,8 +6,11 @@ in the service's process. Letting go of it leaves the fleets running."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import itertools
 import json
+import os
+import signal
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -35,6 +38,7 @@ from kfm.service import (
 )
 
 START_S = 15.0  # for a service that was started to answer
+END_S = 30.0  # for one that was asked to end to be gone: it stops its fleets first
 _ERRORS: dict[str, type[Exception]] = {
     "FleetError": FleetError, "UnitError": UnitError,
     "ValueError": ValueError, "KeyError": ValueError, "TypeError": ValueError}
@@ -45,8 +49,12 @@ class ServiceError(RuntimeError):
 
 
 class RemoteService(Service):
-    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, *,
+                 path: Path | None = None, pid: int = 0, since: float = 0.0) -> None:
+        """`path`: its socket. `pid` and `since`: the service's process, and when it
+        started, which is the code it runs."""
         self._reader, self._writer = reader, writer
+        self._path, self.pid, self.since = path, pid, since
         self._ids = itertools.count(1)
         self._waiting: dict[int, asyncio.Future[Any]] = {}
         self._fleets: dict[str, Fleet] = {}
@@ -79,7 +87,8 @@ class RemoteService(Service):
                 f"running and no window open it ends by itself within seconds: start KFM "
                 f"again then. Otherwise end it with: {end}\nIts fleets stop and can be "
                 f"resumed.")
-        return cls(reader, writer)
+        return cls(reader, writer, path=path, pid=hello.get("pid", 0),
+                   since=hello.get("since", 0.0))
 
     # ── Projects ─────────────────────────────────────────────────────────
 
@@ -186,6 +195,23 @@ class RemoteService(Service):
     def subscribe(self, listener: Callable[[Update], None]) -> Callable[[], None]:
         self._listeners.append(listener)
         return lambda: self._listeners.remove(listener) if listener in self._listeners else None
+
+    async def end(self) -> None:
+        try:
+            await self._request("end")
+        except ServiceError:
+            pass  # it went before it answered
+        except ValueError:  # one from before it could be asked: its process is ended
+            if self.pid:
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(self.pid, signal.SIGTERM)
+        try:  # it lets go of those attached once its fleets are stopped
+            await asyncio.wait_for(asyncio.shield(self._reading), END_S)
+        except TimeoutError:
+            raise ServiceError(
+                f"The KFM service did not end within {END_S:.0f} seconds.") from None
+        finally:
+            await self.aclose()
 
     async def aclose(self) -> None:
         self._reading.cancel()

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import getpass
+import os
 import sys
 import tempfile
 import time
@@ -1408,6 +1409,7 @@ class FleetWindow(QMainWindow):
         self.app_menu_action = menu.addAction("Add to App Menu")
         self.app_menu_action.triggered.connect(lambda: self._run(self._add_to_app_menu()))
         self.app_menu_action.setVisible(False)
+        menu.addAction("Restart KFM").triggered.connect(self.ask_restart)
         menu.addSeparator()
         menu.addAction("Quit").triggered.connect(self.close)
         self.profile_button.setMenu(menu)
@@ -1699,6 +1701,33 @@ class FleetWindow(QMainWindow):
     async def stop(self) -> None:
         if self.view is not None:
             await self.view.stop()
+
+    def ask_restart(self) -> None:
+        """End the service that holds the fleets and start the window again, on what is
+        installed now: the service outlives the window, and so runs the code it was
+        started on."""
+        dialog = self.dialog = QMessageBox(self)
+        dialog.setWindowTitle("Restart KFM")
+        dialog.setText("Restart KFM? Fleets that run stop and can be resumed.")
+        dialog.setStandardButtons(QMessageBox.StandardButton.Yes
+                                  | QMessageBox.StandardButton.Cancel)
+        dialog.button(QMessageBox.StandardButton.Yes).setText("Restart")
+        dialog.accepted.connect(lambda: self._run(self.restart()))
+        dialog.open()
+
+    async def restart(self) -> None:
+        try:
+            await self.service.end()
+        except REFUSALS as e:
+            self.dialog = QMessageBox(QMessageBox.Icon.Warning, "KFM", str(e), parent=self)
+            self.dialog.open()
+            return
+        self.relaunch()
+
+    @staticmethod
+    def relaunch() -> None:
+        """This program again, in place of this process."""
+        os.execv(sys.executable, [sys.executable, "-m", "kfm.desktop"])
 
     async def shut(self) -> None:
         """Let go of the service and close the window. The service in this process stops

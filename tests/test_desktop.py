@@ -644,7 +644,7 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
     try:
         assert shown.profile_button.text().strip() == getpass.getuser()
         assert [a.text() for a in shown.profile_button.menu().actions() if a.text()][1:] == [
-            "Settings", "Add to App Menu", "Quit"]
+            "Settings", "Add to App Menu", "Restart KFM", "Quit"]
         shown.gear_button.click()
         await until(lambda: shown.dialog is not None and shown.dialog.isVisible())
         dialog = shown.dialog
@@ -822,6 +822,22 @@ async def test_the_window_adds_itself_to_the_app_menu(window, tmp_path: Path, mo
     again, _ = window({})
     await asyncio.sleep(0.2)
     assert not again.app_menu_action.isVisible()  # it is there already
+
+
+async def test_kfm_is_restarted_from_the_profile_corner(window, tmp_path: Path):
+    """The service that holds the fleets is ended, and the window started again on a new
+    one: what an update needs, since the service outlives the window."""
+    shown, _ = window({"K5 u1": [{"do": [("say", "On watch.")]}]})
+    view = await start(shown, tmp_path, "Keep watch", duty=True)
+    await until(lambda: view.running)
+    again: list[bool] = []
+    shown.relaunch = lambda: again.append(True)
+    [restart] = [a for a in shown.profile_button.menu().actions() if a.text() == "Restart KFM"]
+    restart.trigger()
+    assert "stop" in shown.dialog.text() and "resumed" in shown.dialog.text()
+    shown.dialog.button(shown.dialog.StandardButton.Yes).click()
+    await until(lambda: again == [True])
+    assert not shown.service.state(view.id).running
 
 
 async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QApplication):

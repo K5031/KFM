@@ -44,6 +44,8 @@ class Server:
         self.service, self.path, self._idle_s = service, path, idle_s
         self._writers: set[asyncio.StreamWriter] = set()
         self._calls: set[asyncio.Task[None]] = set()
+        self._since = time.time()
+        self._ending = asyncio.Event()  # a frontend asked for the service to end
 
     async def run(self) -> None:
         """Serve until idle. RuntimeError when a service already answers on the socket."""
@@ -63,15 +65,17 @@ class Server:
             for call in list(self._calls):
                 call.cancel()
             await asyncio.gather(*self._calls, return_exceptions=True)
+            await self.service.aclose()  # its fleets stop, and those attached see it
             for writer in list(self._writers):
                 writer.close()
-            await self.service.aclose()
             self.path.unlink(missing_ok=True)
 
     async def _until_idle(self) -> None:
         idle_since: float | None = None
         while True:
-            await asyncio.sleep(min(LOOK_S, self._idle_s / 2))
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._ending.wait(), min(LOOK_S, self._idle_s / 2))
+                return
             if self._writers or self.service.running():
                 idle_since = None
             elif idle_since is None:
@@ -110,7 +114,8 @@ class Server:
     async def _attached(self, reader: asyncio.StreamReader,
                         writer: asyncio.StreamWriter) -> None:
         mine: set[asyncio.Task[None]] = set()
-        writer.write(json.dumps({"kfm": VERSION, "pid": os.getpid()}).encode() + b"\n")
+        writer.write(json.dumps({"kfm": VERSION, "pid": os.getpid(),
+                                 "since": self._since}).encode() + b"\n")
         self._writers.add(writer)
         try:
             while line := await reader.readline():
@@ -132,10 +137,14 @@ class Server:
             request = json.loads(line)
             request_id = request["id"]
             method = request["method"]
-            if method not in CALLS:
+            if method == "end":  # the service itself: `run` stops its fleets and returns
+                self._ending.set()
+                answer: dict[str, Any] = {"id": request_id, "result": None}
+            elif method not in CALLS:
                 raise ValueError(f"There is no {method!r} in KFM's service.")
-            answer: dict[str, Any] = {"id": request_id, "result": await self._call(
-                method, request.get("args", []), request.get("kwargs", {}))}
+            else:
+                answer = {"id": request_id, "result": await self._call(
+                    method, request.get("args", []), request.get("kwargs", {}))}
         except _REFUSALS + (KeyError,) as e:
             answer = {"id": request_id,
                       "error": {"type": type(e).__name__, "message": str(e)}}

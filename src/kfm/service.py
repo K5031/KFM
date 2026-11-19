@@ -215,6 +215,12 @@ class Service(abc.ABC):
         what ends it."""
 
     @abc.abstractmethod
+    async def end(self) -> None:
+        """End the service itself, for everyone attached to it: its fleets stop and can
+        be resumed. Returns once it is gone; whoever attaches next starts another, on
+        the code that is then installed."""
+
+    @abc.abstractmethod
     async def aclose(self) -> None:
         """Let go of the service. The one in this process stops its fleets; a client of
         `kfm serve` leaves them running."""

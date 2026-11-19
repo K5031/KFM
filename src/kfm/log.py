@@ -19,7 +19,7 @@ FILE = "log.jsonl"
 _KINDS = {kind.__name__: kind for kind in (events.Changed, events.Said, events.Delivered,
                                            events.Instructed,
                                            events.Approval, events.Answered, events.Told,
-                                           events.Notice)}
+                                           events.Across, events.Notice)}
 
 
 def encode(event: events.FleetEvent, at: float) -> dict[str, Any]:

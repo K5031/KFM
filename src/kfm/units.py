@@ -62,9 +62,52 @@ def hired_note(unit: Unit, words: Vocabulary) -> str:
             f"started on that. Its reports and questions come to you; {message} reaches it.]")
 
 
-def brief(unit: Unit, supervisor: Unit | None, under: list[Unit], words: Vocabulary) -> str:
+SECRETARY = "Secretary"  # what a project's secretary, and her fleet of one, are called
+
+
+def from_team(team: str, text: str) -> str:
+    """A message from another team's lead, or from the project's secretary."""
+    who = "the project's secretary" if team == SECRETARY else f"the lead of the team {team}"
+    return f"[Message from {who}] {text}"
+
+
+def secretary_brief(unit: Unit, project: str, work: Path, words: Vocabulary) -> str:
+    """The standing instruction of a project's secretary."""
+    began = (f"The project began with the person saying:\n\n{unit.task}\n\n"
+             if unit.task else "")
+    return (
+        f"You are the secretary of {project}, a project of teams of AI agents that work "
+        "without human supervision.\n\n"
+        f"{began}"
+        "How the project works:\n"
+        "- The project belongs to a person, who talks to you about it. Their messages "
+        f"arrive here. {words.finish} with a report ends your turn on one; the report "
+        f"and what you write are what they read. {words.ask} puts a question to them.\n"
+        "- A team has a lead agent that takes on what the team is there to do and hires "
+        "agents under it as the work needs, so a team's size is its lead's to decide. A "
+        "team's lead runs, and is paid for, for as long as the team does.\n"
+        "- You are not above the teams. Each lead answers to the person, who can also "
+        "write to any of them without you. No report of theirs comes to you.\n"
+        "- Between messages your process is closed, and you keep this conversation.\n"
+        f"- {words.tool('teams')} shows how each team stands, from the record that is "
+        "kept of it: what its lead is doing, what it has spent, and what was reported, "
+        "asked and said to it lately, the person's own messages included.\n"
+        f"- {words.tool('message')} writes to a team's lead, who reads it as coming from "
+        "you. A lead can write to you, which starts you as a message from the person "
+        "does.\n"
+        f"- {words.tool('propose')} puts teams to the person, who reads the proposal and "
+        "may change it. A team exists once they start it; nothing you propose changes "
+        "anything before.\n"
+        f"- The teams work in the folder {work}, unless one is given its own, and nothing "
+        "keeps two from changing the same file. You can read it; you are not able to "
+        "change it or to run commands.")
+
+
+def brief(unit: Unit, supervisor: Unit | None, under: list[Unit], words: Vocabulary, *,
+          in_project: bool = False) -> str:
     """The unit's standing instruction: who it is in the fleet, its task, and how the fleet
-    works from where it stands. `under`: the agents it has when this is written."""
+    works from where it stands. `under`: the agents it has when this is written.
+    `in_project`: its fleet is a team of a project, which has other teams and a secretary."""
     who = f"{unit.name}, a" if unit.name else "a"
     lines = [(f"You are {who} K{unit.rank} agent in a fleet of AI agents that works "
               "without human supervision. A higher rank supervises the one below it.")]
@@ -98,6 +141,13 @@ def brief(unit: Unit, supervisor: Unit | None, under: list[Unit], words: Vocabul
             "yours.")
     else:
         lines.append("- You are the lowest rank: there is no rank below you to hand work to.")
+    if in_project and supervisor is None:
+        lines.append(
+            "- Your fleet is one team of a project. Its other teams each have a lead that "
+            "answers to the person, as you do, and the person talks about the project to "
+            f"its secretary. {words.tool('message')} with a team's name, or \"secretary\", "
+            f"in place of an agent's id reaches that team's lead, or the secretary, and "
+            f"{words.tool('status')} lists the teams.")
     if under:
         lines.append("- These agents are under you. One with a task works on it by itself; "
                      "one with none starts on the first message it gets:")

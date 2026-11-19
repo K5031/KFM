@@ -75,6 +75,7 @@ from kfm.api import UnitError
 from kfm.chart import Chart, ChartFleet, state_tone
 from kfm.config import FleetConfig
 from kfm.events import (
+    Across,
     Answered,
     Approval,
     Changed,
@@ -87,8 +88,9 @@ from kfm.events import (
     units,
 )
 from kfm.fleet import Fleet, FleetError, Unit
+from kfm.project import SECRETARY
 from kfm.remote import RemoteService, ServiceError
-from kfm.service import Happened, Listed, ProjectInfo, Service, Update, Updated
+from kfm.service import Happened, Listed, ProjectInfo, Proposed, Service, Update, Updated
 
 SIDEBAR = 280  # px
 FORM = 760  # px, the start screen's width
@@ -98,6 +100,7 @@ AGENT_ROW_PX = 30
 PROJECT_ROLE = Qt.ItemDataRole.UserRole  # a project row's id
 FLEETS_ROLE = Qt.ItemDataRole.UserRole + 10  # how many fleets it has
 QUIET_STATES = ("starting", "working", "waiting", "done")  # shown by the agents list alone
+OVER = ("done", "idle", "failed", "stopped")  # an agent that is at nothing
 BAR = 48  # px, the bar on top
 COLUMN = 720  # px, the widest the timeline's entries get
 REFRESH_MS = 1000  # spending and states, while a fleet runs
@@ -189,6 +192,25 @@ class DeliveryCard(QFrame):
         layout.setSpacing(6)
         target = called(event.to) if event.to is not None else "you"
         self.header = label(f"{called(event.unit)} → {target} · {event.kind}", role="strong")
+        self.body = MarkdownView()
+        self.body.setMarkdown(event.text)
+        layout.addWidget(self.header)
+        layout.addWidget(self.body)
+
+
+class AcrossCard(QFrame):
+    """A message between an agent and another team of the project, or its secretary."""
+
+    def __init__(self, event: Across, called: Callable[[str], str]) -> None:
+        super().__init__()
+        self.setObjectName("delivery")
+        self.concerns = {event.unit}
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(6)
+        ends = (called(event.unit), event.team) if event.sent else (event.team,
+                                                                   called(event.unit))
+        self.header = label(f"{ends[0]} → {ends[1]} · message", role="strong")
         self.body = MarkdownView()
         self.body.setMarkdown(event.text)
         layout.addWidget(self.header)
@@ -484,7 +506,7 @@ class ProjectForm(QWidget):
         self.name.returnPressed.connect(lambda: self.does.setFocus())
         inside.addWidget(self.name)
         self.does = TaskBox()
-        self.does.setPlaceholderText("What it should do, to have its fleets drafted (optional)")
+        self.does.setPlaceholderText("What it should do, for its secretary (optional)")
         self.does.submitted.connect(self.submitted)
         inside.addWidget(self.does)
         row = QHBoxLayout()
@@ -565,6 +587,7 @@ class DraftRow(QFrame):
 
     def __init__(self, name: str = "", does: str = "", ongoing: bool = True) -> None:
         super().__init__(objectName="composer")
+        self.folder: str | None = None  # one of its own, in the project's, if proposed
         inside = QVBoxLayout(self)
         inside.setContentsMargins(16, 12, 12, 10)
         inside.setSpacing(8)
@@ -598,12 +621,11 @@ class DraftPage(QWidget):
     start_asked = Signal()
     over = Signal()
 
-    def __init__(self, opened: ProjectInfo, description: str) -> None:
+    def __init__(self, opened: ProjectInfo) -> None:
         super().__init__()
-        self.project, self.description = opened, description
+        self.project = opened
         self.rows: list[DraftRow] = []
-        self.busy = True  # the agent is drafting
-        self._work: asyncio.Task[None] | None = None
+        self.busy = True  # the secretary is at it
         self.setStyleSheet(BOX_STYLE.format(line=theme.current().line))
         column = QWidget()
         column.setMaximumWidth(FORM)
@@ -649,18 +671,8 @@ class DraftPage(QWidget):
         outer.addWidget(scroll)
         self._show()
 
-    def run(self, service: Service) -> None:
-        """Have an agent draft the fleets."""
-        self._service = service
-        self._work = asyncio.ensure_future(self._draft(service))
-
     def cancel(self) -> None:
-        """Drop the draft; an agent still at it is stopped."""
-        if self._work is not None and not self._work.done():
-            self._work.cancel()
-            dropped = asyncio.ensure_future(
-                self._service.cancel_draft(self.project.id))
-            dropped.add_done_callback(lambda task: task.cancelled() or task.exception())
+        """Drop the proposal, or stop waiting for one."""
         self.over.emit()
 
     def add_row(self, name: str = "", does: str = "", ongoing: bool = True) -> DraftRow:
@@ -674,19 +686,23 @@ class DraftPage(QWidget):
         self.note.setText(text)
         theme.mark(self.note, "tone", "error")
 
-    async def _draft(self, service: Service) -> None:
-        try:
-            made = await service.draft(self.project.id, self.description)
-        except (draft.DraftError, *REFUSALS) as e:
-            self.busy = False
-            self._show()
-            self.warn(f"No draft: {e}")
-            return
+    def fill(self, made: draft.Draft) -> None:
+        """Show what the secretary proposed, in place of what was there."""
+        for row in list(self.rows):
+            self._remove(row)
         for team in made.teams:
-            self.add_row(team.name, team.does, team.ongoing)
+            self.add_row(team.name, team.does, team.ongoing).folder = team.folder
         self.busy = False
         self._show()
-        self.note.setText(f"Drafted for ${made.spent_usd:.2f}. Nothing runs until you start it.")
+        theme.mark(self.note, "tone", "muted")
+        self.note.setText(
+            f"Proposed for ${made.spent_usd:.2f}. Nothing runs until you start it.")
+
+    def failed(self) -> None:
+        """The secretary ended without a proposal."""
+        self.busy = False
+        self._show()
+        self.warn("No proposal. What the secretary said is on her page.")
 
     def _remove(self, row: DraftRow) -> None:
         self.rows.remove(row)
@@ -694,7 +710,7 @@ class DraftPage(QWidget):
         row.deleteLater()
 
     def _show(self) -> None:
-        self.heading.setText("Drafting…" if self.busy else "Draft")
+        self.heading.setText("Drafting…" if self.busy else "Proposal")
         for part in (self.add_button, self.budget, self.start):
             part.setVisible(not self.busy)
         self.discard.setText("Cancel" if self.busy else "Discard")
@@ -912,6 +928,7 @@ class FleetView(QWidget):
     def __init__(self, service: Service, fleet_id: str) -> None:
         super().__init__()
         self.service, self.id = service, fleet_id
+        self.secretary = fleet_id.endswith(f"/{SECRETARY}")  # a project's, not a team
         self.entries: list[QWidget] = []
         self.shown: str | None = None  # the agent whose entries are shown; None: all
         self._upto: int | None = None  # the number of the last event shown; None: none yet
@@ -939,7 +956,8 @@ class FleetView(QWidget):
         self.scroll.setWidget(page)
 
         self.input = MessageBox()
-        self.input.setPlaceholderText("Message the lead")
+        self.input.setPlaceholderText(
+            "Message the secretary" if self.secretary else "Message the lead")
         self.input.submitted.connect(self._send_clicked)
         self.send_button = QToolButton(objectName="send")
         self.send_button.setProperty("active", True)
@@ -1103,7 +1121,7 @@ class FleetView(QWidget):
         to = self.chosen
         self.input.setPlaceholderText(
             f"Message {to.called}" if to is not None and to.supervisor is not None
-            else "Message the lead")
+            else "Message the secretary" if self.secretary else "Message the lead")
         self.changed.emit()
 
     @property
@@ -1205,6 +1223,8 @@ class FleetView(QWidget):
                 self._add(SaidEntry(unit, known, text))
             case Delivered():
                 self._add(DeliveryCard(event, self._called))
+            case Across():
+                self._add(AcrossCard(event, self._called))
             case Instructed(unit=unit, by=by, text=text):
                 # The person's own is what they said; a supervisor's is a card.
                 self._add(YouEntry(text, unit) if by is None
@@ -1386,6 +1406,9 @@ class FleetWindow(QMainWindow):
         self.resume_button.setProperty("primary", True)
         self.stop_button.clicked.connect(lambda: self._run(self.stop()))
         self.resume_button.clicked.connect(lambda: self._run(self.resume()))
+        self.secretary_button = QPushButton("Secretary")
+        self.secretary_button.setToolTip("Ask about the project, or have it changed")
+        self.secretary_button.clicked.connect(self.open_secretary)
         self.limit = Budget()  # a stopped fleet's limit, to raise before it carries on
         self._limit_of: tuple[str, float] | None = None  # the fleet and limit it shows
         self.bar = DragArea()
@@ -1399,6 +1422,7 @@ class FleetWindow(QMainWindow):
         self._bar_gap = QWidget()  # keeps the controls at the right while nothing is named
         bar.addWidget(self._bar_gap, 1)
         bar.addWidget(self.status)
+        bar.addWidget(self.secretary_button)
         bar.addSpacing(8)
         bar.addWidget(self.stop_button)
         bar.addWidget(self.limit)
@@ -1466,13 +1490,12 @@ class FleetWindow(QMainWindow):
             return []
         mine = f"{self.project.id}/"
         return [view for fleet_id, view in sorted(self.views.items())
-                if fleet_id.startswith(mine)]
+                if fleet_id.startswith(mine) and not view.secretary]
 
     async def create_project(self, name: str, work: Path, description: str = "") -> None:
-        """A new project; with a description, an agent drafts its fleets."""
+        """A new project; with a description, its secretary proposes its teams."""
         try:
-            made = await self.service.create_project(name, str(work))
-            config = await self.service.settings()
+            made = await self.service.create_project(name, str(work), description)
         except REFUSALS as e:
             self.project_form.warn(f"The project could not be made: {e}")
             return
@@ -1480,38 +1503,74 @@ class FleetWindow(QMainWindow):
         self.project_form.does.clear()
         self.project_form.set_folder(None)
         if description:
-            page = self.drafts[made.id] = DraftPage(made, description)
-            page.budget.setValue(config.budget_usd)
+            await self._draft_page(made)
+        await self.open_project(made)
+
+    async def _draft_page(self, opened: ProjectInfo) -> DraftPage:
+        """The page for what the project's secretary proposes, waiting for it."""
+        if (page := self.drafts.get(opened.id)) is None:
+            page = self.drafts[opened.id] = DraftPage(opened)
+            with contextlib.suppress(*REFUSALS):
+                page.budget.setValue((await self.service.settings()).budget_usd)
             page.start_asked.connect(lambda: self._run(self.start_draft(page)))
             page.over.connect(lambda: self._drop_draft(page))
             self.draft_pages.addWidget(page)
-            page.run(self.service)
-        await self.open_project(made)
+        return page
+
+    def _waited(self, project_id: str) -> None:
+        """A page that waits for a proposal stops when the secretary ended without one."""
+        page = self.drafts.get(project_id)
+        view = self.views.get(f"{project_id}/{SECRETARY}")
+        lead = view.fleet.lead if view is not None and view.fleet is not None else None
+        if page is not None and page.busy and lead is not None and lead.state in OVER:
+            page.failed()
+
+    async def _proposed(self, project_id: str) -> None:
+        """The project's secretary put teams to the person."""
+        try:
+            made = await self.service.proposal(project_id)
+            listed = {each.id: each for each in await self.service.projects()}
+        except REFUSALS:
+            return
+        if made is None or project_id not in listed:
+            return
+        (await self._draft_page(listed[project_id])).fill(made)
+        if self.project is not None and self.project.id == project_id:
+            self.view, self.adding = None, False
+        self._refresh()
 
     async def start_draft(self, page: DraftPage) -> None:
         """Start every fleet of the draft, and show the project's chart."""
         fleets = [(row.name.text().strip(), row.does.toPlainText().strip(),
-                   row.kind.duty.isChecked()) for row in page.rows]
-        names = [name.lower() for name, _, _ in fleets]
-        if not fleets or not all(name and does for name, does, _ in fleets):
+                   row.kind.duty.isChecked(), row.folder) for row in page.rows]
+        names = [name.lower() for name, _, _, _ in fleets]
+        if not fleets or not all(name and does for name, does, _, _ in fleets):
             return page.warn("Each fleet needs a name and what it does.")
         if len(set(names)) < len(names):
             return page.warn("Two fleets have the same name.")
         page.start.setEnabled(False)
-        for name, does, ongoing in fleets:
-            await self.start_fleet(name, does, ongoing=ongoing, work=Path(page.project.work),
+        await self._settle(page.project.id)  # before the teams are listed again
+        for name, does, ongoing, folder in fleets:
+            work = Path(page.project.work)
+            await self.start_fleet(name, does, ongoing=ongoing,
+                                   work=work / folder if folder else work,
                                    budget=page.budget.value(), opened=page.project,
                                    show=False)
         self._drop_draft(page)
 
     def _drop_draft(self, page: DraftPage) -> None:
         if self.drafts.pop(page.project.id, None) is page:
+            self._run(self._settle(page.project.id))
             self.draft_pages.removeWidget(page)
             page.deleteLater()
             if self.project is not None and self.project.id == page.project.id:
                 self.adding = False
                 self._prepare_start()
             self._refresh()
+
+    async def _settle(self, project_id: str) -> None:
+        with contextlib.suppress(*REFUSALS):
+            await self.service.settle_proposal(project_id)
 
     async def open_project(self, opened: ProjectInfo) -> None:
         """Show the project's chart, which is empty until it has a fleet."""
@@ -1528,12 +1587,17 @@ class FleetWindow(QMainWindow):
             found = await self.service.fleets(opened.id)
         except REFUSALS:
             found = []
+        found.append(opened.secretary)  # a fleet of one agent, and not one of its teams
         for fleet_id in found:  # each can be read: the service lists no other
             await (self.views.get(fleet_id) or self._view(fleet_id)).load()
         mine = f"{opened.id}/"
         for fleet_id, view in list(self.views.items()):
             if fleet_id.startswith(mine) and fleet_id not in found and view.loaded:
                 self._drop(view)
+        with contextlib.suppress(*REFUSALS):  # what she proposed while nobody looked
+            if await self.service.proposal(opened.id):
+                await self._proposed(opened.id)
+        self._waited(opened.id)
 
     def new_project(self) -> None:
         """The form for a project; fleets that run keep running."""
@@ -1551,6 +1615,11 @@ class FleetWindow(QMainWindow):
     def show_chart(self) -> None:
         self.view, self.adding = None, False
         self._refresh()
+
+    def open_secretary(self) -> None:
+        """The conversation with the open project's secretary."""
+        if self.project is not None and (view := self.views.get(self.project.secretary)):
+            self.open_fleet(view)
 
     def open_fleet(self, view: FleetView, unit_id: str | None = None) -> None:
         """The fleet's timeline, for one agent or for all."""
@@ -1629,8 +1698,12 @@ class FleetWindow(QMainWindow):
             case Updated(fleet=fleet_id):
                 if (view := self.views.get(fleet_id)) is not None:
                     view.updated()
+                    if view.secretary:
+                        self._waited(fleet_id.partition("/")[0])
             case Listed():
                 self._run(self._relist())
+            case Proposed(project=project_id):
+                self._run(self._proposed(project_id))
 
     async def _relist(self) -> None:
         """A project or a fleet was added, renamed or removed, here or by another
@@ -1961,6 +2034,7 @@ class FleetWindow(QMainWindow):
         self.title.setVisible(opened is not None)
         self._bar_gap.setVisible(opened is None)
         self.status.setVisible(view is not None or on_chart)
+        self.secretary_button.setVisible(on_chart)
         self.stop_button.setVisible(view is not None and view.running)
         self.resume_button.setVisible(view is not None and bool(view.start_word))
         self.resume_button.setText(view.start_word if view is not None else "")

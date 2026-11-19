@@ -23,7 +23,7 @@ from kfm.draft import Draft
 from kfm.events import FleetEvent
 from kfm.fleet import Fleet
 
-VERSION = 3  # of this contract; a service and a client of different versions do not talk
+VERSION = 4  # of this contract; a service and a client of different versions do not talk
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,8 +31,9 @@ class ProjectInfo:
     id: str
     name: str
     work: str  # the folder its fleets work in, unless one is given its own
-    fleets: int
-    running: int  # of its fleets
+    fleets: int  # its teams; its secretary is not one
+    running: int  # of its teams
+    secretary: str = ""  # the id of its secretary, a fleet of one agent
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +74,14 @@ class Listed:
     """A project or a fleet was added, renamed or removed."""
 
 
-type Update = Happened | Updated | Listed
+@dataclass(frozen=True, slots=True)
+class Proposed:
+    """A project's secretary put teams to the person: `Service.proposal` has them."""
+
+    project: str
+
+
+type Update = Happened | Updated | Listed | Proposed
 
 
 class Service(abc.ABC):
@@ -84,7 +92,10 @@ class Service(abc.ABC):
         """Every project, newest first."""
 
     @abc.abstractmethod
-    async def create_project(self, name: str, work: str) -> ProjectInfo: ...
+    async def create_project(self, name: str, work: str,
+                             description: str = "") -> ProjectInfo:
+        """A project with its secretary and no teams. `description`: what the project
+        should do, said to the secretary, which starts her on it."""
 
     @abc.abstractmethod
     async def rename_project(self, project: str, name: str) -> None: ...
@@ -94,13 +105,12 @@ class Service(abc.ABC):
         """Stop its fleets and remove its records; the folder they worked in stays."""
 
     @abc.abstractmethod
-    async def draft(self, project: str, description: str) -> Draft:
-        """Have one agent propose the project's fleets from what it should do. Nothing is
-        started. `draft.DraftError` when there is no proposal, or it was dropped."""
+    async def proposal(self, project: str) -> Draft | None:
+        """The teams the project's secretary last put to the person, until settled."""
 
     @abc.abstractmethod
-    async def cancel_draft(self, project: str) -> None:
-        """Drop the draft under way for the project, if there is one."""
+    async def settle_proposal(self, project: str) -> None:
+        """The person started what they wanted of the proposal, or dropped it."""
 
     # ── Fleets ───────────────────────────────────────────────────────────
 

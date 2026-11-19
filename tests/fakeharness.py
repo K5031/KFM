@@ -44,6 +44,7 @@ class FakeHarness(Harness):
         self.models: list[tuple[str, str | None]] = []  # (unit name, model), as opened
         self.approved: list[tuple[str, bool]] = []  # (request id, allow)
         self.permissions: list[tuple[str, str]] = []  # (unit name, permissions), as opened
+        self.results: list[tuple[str, str, str]] = []  # (unit name, tool, what it answered)
         self.always: list[str] = []  # request ids allowed for the rest of the unit's work
         self.files: list[tuple[str, list[str], bool]] = []  # (unit name, files, spoken)
         self.instructed: list[tuple[str, str]] = []  # (unit name, its new instruction)
@@ -114,7 +115,9 @@ class FakeSession(Session):
                     self.emit(Said(said))
                 case ("tool", name, arguments):
                     async with Client(self.spec.tools_url) as client:
-                        await client.call_tool(name, arguments)
+                        result = await client.call_tool(name, arguments)
+                    self.harness.results.append((self.spec.name, name, " ".join(
+                        getattr(part, "text", "") for part in result.content)))
                 case ("report", report):
                     self.emit(Reported(report))
                     self.harness.standing[self.session] = False

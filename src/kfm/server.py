@@ -21,10 +21,9 @@ from typing import Any
 from kfm import config as settings
 from kfm import log
 from kfm.api import UnitError
-from kfm.draft import DraftError
 from kfm.fleet import FleetError
 from kfm.local import LocalService
-from kfm.service import VERSION, Happened, Listed, Update, Updated
+from kfm.service import VERSION, Happened, Listed, Proposed, Update, Updated
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +32,11 @@ IDLE_S = 5.0  # with no fleet running and nobody attached, before it ends
 LOOK_S = 1.0  # how often it looks whether it is idle, at most
 LINE_LIMIT = 16 * 1024 * 1024  # bytes: a fleet's history is one line
 CALLS = frozenset({
-    "projects", "create_project", "rename_project", "delete_project", "draft", "cancel_draft",
+    "projects", "create_project", "rename_project", "delete_project", "proposal", "settle_proposal",
     "fleets", "add_fleet", "watch", "history", "start", "stop", "rename_fleet", "delete_fleet",
     "add_agent", "remove_agent", "rename_agent", "set_task", "set_model", "say", "approve",
     "settings", "save_settings"})
-_REFUSALS = (FleetError, UnitError, DraftError, ValueError, OSError, TypeError)
+_REFUSALS = (FleetError, UnitError, ValueError, OSError, TypeError)
 
 
 class Server:
@@ -91,6 +90,8 @@ class Server:
                 self._send_all(self._record(fleet_id))
             case Listed():
                 self._send_all({"update": "listed"})
+            case Proposed(project=project_id):
+                self._send_all({"update": "proposed", "project": project_id})
 
     def _record(self, fleet_id: str) -> dict[str, Any]:
         fleet = self.service.fleet(fleet_id)
@@ -156,9 +157,9 @@ class Server:
                 return [asdict(each) for each in result]
             case "create_project":
                 return asdict(result)
-            case "draft":
-                return {"teams": [team.model_dump() for team in result.teams],
-                        "spent_usd": result.spent_usd}
+            case "proposal":
+                return result and {"teams": [team.model_dump() for team in result.teams],
+                                   "spent_usd": result.spent_usd}
             case "watch":
                 return self._record(args[0])
             case "history":

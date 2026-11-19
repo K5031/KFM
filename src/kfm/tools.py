@@ -16,6 +16,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
 from kfm.api import UnitError
+from kfm.draft import Team
 from kfm.fleet import FleetError, Unit
 
 if TYPE_CHECKING:
@@ -96,7 +97,10 @@ def fleet_tools(manager: Manager) -> MCPServer:
 
     @server.tool(description=(
         "Send a message to one of your agents. One that has finished, failed or has no "
-        "task yet starts working on it. Its reply arrives later as a message."))
+        "task yet starts working on it. Its reply arrives later as a message. The lead of "
+        "a team in a project also reaches another team's lead by that team's name, and "
+        "the project's secretary by \"secretary\"; a team that is not running is not "
+        "started by a message."))
     async def message(
         agent: Annotated[str, Field(description="The agent's id, such as u3.")],
         text: Annotated[str, Field(min_length=1)],
@@ -104,7 +108,12 @@ def fleet_tools(manager: Manager) -> MCPServer:
     ) -> str:
         with _refusals():
             me = caller(ctx)
-            unit = manager.fleet.subordinate(me, agent)
+            try:
+                unit = manager.fleet.subordinate(me, agent)
+            except FleetError:
+                if me.supervisor is not None or manager.project is None:
+                    raise
+                return f"Sent to {await manager.project.send(me, agent, text)}."
             await manager.message(me, unit, text)
         return f"Sent to {unit.label}."
 
@@ -115,8 +124,11 @@ def fleet_tools(manager: Manager) -> MCPServer:
             me = caller(ctx)
         lines = [_line(unit) for unit in manager.fleet.subordinates(me)]
         left = manager.config.budget_usd - manager.fleet.spent_usd
+        teams = (f"\nThe project's other teams:\n{manager.project.listing()}"
+                 if manager.project is not None and me.supervisor is None else "")
         return "\n".join(lines or ["You have no agents."]) + (
-            f"\nThe fleet has ${left:.2f} of its ${manager.config.budget_usd:.2f} left.")
+            f"\nThe fleet has ${left:.2f} of its ${manager.config.budget_usd:.2f} left."
+            + teams)
 
     @server.tool(description="Stop one of your agents, and every agent under it.")
     async def stop(agent: Annotated[str, Field(description="The agent's id.")],
@@ -132,6 +144,48 @@ def fleet_tools(manager: Manager) -> MCPServer:
         with _refusals():
             await manager.update(caller(ctx), text)
         return "Sent."
+
+    return server
+
+
+def secretary_tools(manager: Manager) -> MCPServer:
+    """What a project's secretary has in place of the fleet tools."""
+    server = MCPServer("fleet")
+    project = manager.project
+    assert project is not None
+
+    @server.tool(description=(
+        "How each team of the project stands: its lead and what it is doing, what the "
+        "team has spent, and what was lately reported, asked and said to it. With `team`, "
+        "more of that team's record."))
+    async def teams(
+        team: Annotated[str | None, Field(description="A team's name.")] = None,
+    ) -> str:
+        with _refusals():
+            return await project.standing(team)
+
+    @server.tool(description=(
+        "Write to a team's lead, who reads it as coming from the project's secretary. Its "
+        "answer, if it writes one, arrives later as a message. A team that is not running "
+        "is not started by it."))
+    async def message(
+        team: Annotated[str, Field(description="The team's name.")],
+        text: Annotated[str, Field(min_length=1)],
+    ) -> str:
+        with _refusals():
+            me = manager.fleet.lead
+            assert me is not None
+            return f"Sent to {await project.send(me, team, text)}."
+
+    @server.tool(description=(
+        "Put teams to the person: each with its name, what it is there to do, and "
+        "whether that is standing work or a task that finishes. The person reads the "
+        "proposal and may change it; a team exists once they start it."))
+    async def propose(teams: Annotated[list[Team], Field(min_length=1)]) -> str:
+        if len({team.name.strip().lower() for team in teams}) < len(teams):
+            raise ToolError("Two teams have the same name.")
+        project.propose(teams)
+        return "Shown to the person. Nothing exists of it until they start it."
 
     return server
 

@@ -72,12 +72,23 @@ class Told:
 
 
 @dataclass(frozen=True, slots=True)
+class Across:
+    """A message between a unit and another team of its project: that team's lead, or the
+    project's secretary. `sent`: the unit wrote it; else it got it."""
+
+    unit: str
+    team: str  # the other team's name
+    text: str
+    sent: bool
+
+
+@dataclass(frozen=True, slots=True)
 class Notice:
     text: str
 
 
 type FleetEvent = (Changed | Said | Delivered | Instructed | Approval | Answered | Told
-                   | Notice)
+                   | Across | Notice)
 
 
 def units(event: FleetEvent) -> set[str]:

@@ -140,15 +140,16 @@ async def test_a_fleet_is_built_and_changed_through_the_service(tmp_path: Path):
 
 
 async def test_settings_and_a_draft_through_the_service(tmp_path: Path):
-    harness = FakeHarness({"Planner": [{"do": [("tool", "propose", {"teams": [
+    harness = FakeHarness({"Secretary": [{"do": [("tool", "propose", {"teams": [
         {"name": "dev", "does": "Build the game"}, {"name": "art", "does": "Draw it"}]})]}]})
     (tmp_path / "work").mkdir()
     service = LocalService(tmp_path / "home", harness=harness)  # settings from its home
     assert (await service.settings()).budget_usd == 10.0
     saved = await service.save_settings(budget_usd=25.0, models={"K5": "big-1"})
     assert saved == await service.settings() and saved.models == {"K5": "big-1"}
-    made = await service.create_project("Studio", str(tmp_path / "work"))
-    proposed = await service.draft(made.id, "Run my game studio")
+    made = await service.create_project("Studio", str(tmp_path / "work"), "Run my game studio")
+    await until(lambda: made.id in service._proposals)
+    proposed = await service.proposal(made.id)
     assert [(team.name, team.does) for team in proposed.teams] == [
         ("dev", "Build the game"), ("art", "Draw it")]
     assert await service.fleets(made.id) == []  # nothing was started

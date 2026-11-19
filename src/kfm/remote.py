@@ -18,7 +18,7 @@ from kfm import config as settings
 from kfm import log
 from kfm.api import UnitError
 from kfm.config import HOME, FleetConfig
-from kfm.draft import Draft, DraftError, Team
+from kfm.draft import Draft, Team
 from kfm.events import FleetEvent
 from kfm.fleet import Fleet, FleetError
 from kfm.server import LINE_LIMIT, SOCKET
@@ -28,6 +28,7 @@ from kfm.service import (
     Happened,
     Listed,
     ProjectInfo,
+    Proposed,
     Service,
     Update,
     Updated,
@@ -35,7 +36,7 @@ from kfm.service import (
 
 START_S = 15.0  # for a service that was started to answer
 _ERRORS: dict[str, type[Exception]] = {
-    "FleetError": FleetError, "UnitError": UnitError, "DraftError": DraftError,
+    "FleetError": FleetError, "UnitError": UnitError,
     "ValueError": ValueError, "KeyError": ValueError, "TypeError": ValueError}
 
 
@@ -85,8 +86,9 @@ class RemoteService(Service):
     async def projects(self) -> list[ProjectInfo]:
         return [ProjectInfo(**each) for each in await self._request("projects")]
 
-    async def create_project(self, name: str, work: str) -> ProjectInfo:
-        return ProjectInfo(**await self._request("create_project", name, work))
+    async def create_project(self, name: str, work: str,
+                             description: str = "") -> ProjectInfo:
+        return ProjectInfo(**await self._request("create_project", name, work, description))
 
     async def rename_project(self, project: str, name: str) -> None:
         await self._request("rename_project", project, name)
@@ -96,12 +98,13 @@ class RemoteService(Service):
         for fleet_id in [each for each in self._fleets if each.startswith(f"{project}/")]:
             self._drop(fleet_id)
 
-    async def draft(self, project: str, description: str) -> Draft:
-        made = await self._request("draft", project, description)
-        return Draft(tuple(Team(**team) for team in made["teams"]), made["spent_usd"])
+    async def proposal(self, project: str) -> Draft | None:
+        made = await self._request("proposal", project)
+        return made and Draft(tuple(Team(**team) for team in made["teams"]),
+                              made["spent_usd"])
 
-    async def cancel_draft(self, project: str) -> None:
-        await self._request("cancel_draft", project)
+    async def settle_proposal(self, project: str) -> None:
+        await self._request("settle_proposal", project)
 
     # ── Fleets ───────────────────────────────────────────────────────────
 
@@ -231,6 +234,8 @@ class RemoteService(Service):
         match message["update"]:
             case "listed":
                 self._tell(Listed())
+            case "proposed":
+                self._tell(Proposed(message["project"]))
             case "updated" if fleet_id in self._fleets:
                 if message["record"] is None:
                     self._drop(fleet_id)

@@ -17,11 +17,11 @@ from pathlib import Path
 
 from kfm.api import UnitError
 from kfm.config import HOME
-from kfm.draft import DraftError
-from kfm.events import Approval, Changed, Delivered, Instructed, Notice, Said
+from kfm.events import Across, Approval, Changed, Delivered, Instructed, Notice, Said
 from kfm.fleet import Unit
 from kfm.remote import RemoteService, ServiceError
 from kfm.service import Happened, ProjectInfo, Service, Update, Updated
+from kfm.units import SECRETARY
 
 LINE_CHARS = 300  # of what an agent below the lead says, in the log
 NO_FLEET = 'There is no fleet yet. Start one with: kfm run "<task>"'
@@ -66,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
     new.add_argument("name")
     new.add_argument("--work", type=Path, default=Path.cwd(),
                      help="the folder its fleets work in (default: this one)")
+    new.add_argument("--does", default="",
+                     help="what it should do: its secretary proposes its teams")
     rename = what.add_parser("rename")
     rename.add_argument("project")
     rename.add_argument("name")
@@ -110,7 +112,14 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 change.add_argument(argument)
 
-    say = commands.add_parser("say", help="a message to a fleet's lead, or to one agent")
+    proposal = commands.add_parser(
+        "proposal", help="the teams a project's secretary proposed")
+    proposal.add_argument("project")
+    answer = proposal.add_mutually_exclusive_group()
+    answer.add_argument("--start", action="store_true", help="start every team of it")
+    answer.add_argument("--drop", action="store_true")
+    say = commands.add_parser("say", help="a message to a fleet's lead, to one agent, or to "
+                                          "a project's secretary (PROJECT/Secretary)")
     say.add_argument("fleet")
     say.add_argument("text")
     say.add_argument("--to", help="the agent's id (default: the lead)")
@@ -139,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "serve":
             return asyncio.run(_serve(args))
         return asyncio.run(_attached(args))
-    except (ValueError, OSError, RuntimeError, UnitError, DraftError) as e:
+    except (ValueError, OSError, RuntimeError, UnitError) as e:
         print(f"kfm: {e}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
@@ -242,8 +251,10 @@ async def _project(service: Service, args: argparse.Namespace) -> int:
         work = args.work.resolve()
         if not work.is_dir():
             raise ValueError(f"There is no folder {work}.")
-        made = await service.create_project(args.name, str(work))
-        print(f"Project {made.id} ({made.name}).")
+        made = await service.create_project(args.name, str(work), args.does)
+        print(f"Project {made.id} ({made.name})." + (
+            f" Its secretary is at it: kfm watch {made.name}/Secretary, then "
+            f"kfm proposal {made.name}." if args.does else ""))
         return 0
     owner = _one_project(await service.projects(), args.project)
     if args.action == "rename":
@@ -251,6 +262,28 @@ async def _project(service: Service, args: argparse.Namespace) -> int:
     else:
         await service.delete_project(owner.id)
         print(f"{owner.name} is deleted; {owner.work} is as it was.")
+    return 0
+
+
+async def _proposal(service: Service, args: argparse.Namespace) -> int:
+    owner = _one_project(await service.projects(), args.project)
+    made = await service.proposal(owner.id)
+    if made is None:
+        print(f"The secretary of {owner.name} has proposed nothing.")
+        return 0
+    if args.drop:
+        await service.settle_proposal(owner.id)
+        return 0
+    for team in made.teams:
+        print(f"{team.name} ({'duty' if team.ongoing else 'task'}"
+              + (f", in {team.folder}" if team.folder else "") + f"): {team.does}")
+    if args.start:
+        await service.settle_proposal(owner.id)
+        for team in made.teams:
+            work = str(Path(owner.work) / team.folder) if team.folder else None
+            await service.add_fleet(owner.id, team.name, team.does, ongoing=team.ongoing,
+                                    work=work)
+        print("Started.")
     return 0
 
 
@@ -330,7 +363,7 @@ async def _settings(service: Service, args: argparse.Namespace) -> int:
 _COMMANDS: dict[str, Callable[[Service, argparse.Namespace], Awaitable[int]]] = {
     "run": _run, "watch": _watch, "resume": _resume, "stop": _stop, "status": _status,
     "projects": _projects, "project": _project, "fleet": _fleet, "agent": _agent,
-    "say": _say, "approve": _approve, "settings": _settings}
+    "proposal": _proposal, "say": _say, "approve": _approve, "settings": _settings}
 
 
 # ── Finding what a name means ────────────────────────────────────────────
@@ -348,15 +381,19 @@ async def _one_fleet(service: Service, text: str | None) -> str | None:
     """The fleet a name or an id means, watched; with none, the newest. None, and a line
     that says so, when there is no fleet at all."""
     every: list[tuple[str, str, str]] = []  # id, its project's name, its name
+    secretaries: list[tuple[str, str, str]] = []  # found by name, and never the newest
     for each in await service.projects():
         for fleet in await service.fleets(each.id):
             record = service.fleet(fleet)
             every.append((fleet, each.name, record.name if record is not None else ""))
-    if not every:
+        await service.watch(each.secretary)
+        secretaries.append((each.secretary, each.name, SECRETARY))
+    if not every and text is None:
         print(NO_FLEET)
         return None
     if text is None:
         return max(every, key=lambda found: found[0].split("/")[1])[0]
+    every += secretaries
     found = [fleet for fleet, owner, name in every
              if text in (fleet, name, f"{owner}/{name}")]
     if len(found) != 1:
@@ -458,6 +495,9 @@ class Console:
             case Approval(unit=unit, tool=tool, arguments=arguments):
                 self.approvals.append(event)
                 print(f"[{tag(unit)}] wants to run {tool} {_clip(arguments)}. Allow? (y/n/a: always)")
+            case Across(unit=unit, team=team, text=text, sent=sent):
+                ends = f"{tag(unit)} → {team}" if sent else f"{team} → {called(unit)}"
+                print(f"[{ends}] message: {_clip(text)}")
             case Notice(text=text):
                 print(f"! {text}")
         sys.stdout.flush()

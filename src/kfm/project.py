@@ -12,7 +12,8 @@ from pathlib import Path
 from kfm.fleet import RECORD
 
 PROJECT = "project.json"
-FORMAT = 1
+FORMAT = 2
+SECRETARY = "secretary"  # the folder of its secretary, among its fleets'
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,7 +24,13 @@ class Project:
 
     def fleets(self) -> list[Path]:
         """The folders of its fleets, oldest first. Blocking."""
-        return sorted(record.parent for record in (self.folder / "fleets").glob(f"*/{RECORD}"))
+        return sorted(record.parent for record in (self.folder / "fleets").glob(f"*/{RECORD}")
+                      if record.parent.name != SECRETARY)
+
+    @property
+    def secretary(self) -> Path:
+        """The folder of its secretary, a fleet of one agent."""
+        return self.folder / "fleets" / SECRETARY
 
     def new_fleet(self) -> Path:
         """A folder for one more fleet; the fleet's manager makes it. Blocking."""

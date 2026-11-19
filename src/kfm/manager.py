@@ -11,7 +11,7 @@ import os
 import shutil
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from kfm import api, harnesses, log, units
 from kfm import config as settings
@@ -26,7 +26,9 @@ from kfm.api import (
     Vocabulary,
 )
 from kfm.config import FleetConfig
+from kfm.draft import Team
 from kfm.events import (
+    Across,
     Answered,
     Approval,
     Changed,
@@ -38,7 +40,7 @@ from kfm.events import (
     Told,
 )
 from kfm.fleet import Fleet, FleetError, Unit
-from kfm.tools import ToolServer, fleet_tools
+from kfm.tools import ToolServer, fleet_tools, secretary_tools
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,27 @@ def _forget(folder: Path, gone: Sequence[Unit]) -> None:
         shutil.rmtree(folder / "units" / unit.id, ignore_errors=True)
 
 
+class Project(Protocol):
+    """What a fleet is given of the project it is a team of: the other teams, and the way
+    to them. The service that holds the project's fleets provides it."""
+
+    name: str
+    secretary: bool  # this fleet is the project's secretary, not one of its teams
+
+    def listing(self) -> str:
+        """The project's other teams, a line each."""
+
+    async def standing(self, team: str | None) -> str:
+        """How each team stands, with what its record holds of late; more of `team`."""
+
+    async def send(self, sender: Unit, team: str, text: str) -> str:
+        """A message to the lead of the team of that name, or to the secretary. Returns
+        the name as the project has it. FleetError when it cannot be."""
+
+    def propose(self, teams: Sequence[Team]) -> None:
+        """Put teams to the person."""
+
+
 class Manager:
     """A fleet, whether or not it runs: its record and its rules always, its units'
     processes only between `start` and `stop`. Whatever changes the fleet goes through
@@ -59,11 +82,14 @@ class Manager:
 
     def __init__(self, folder: Path, fleet: Fleet, *, harness: Harness | None = None,
                  on_event: Callable[[FleetEvent], None] = lambda event: None,
-                 on_change: Callable[[], None] = lambda: None) -> None:
+                 on_change: Callable[[], None] = lambda: None,
+                 project: Project | None = None) -> None:
         """`harness`: the agent program the units run; None: the one the fleet's settings
         name, loaded when it starts. `on_change`: called when the record, or how the
-        fleet stands, changed, before any event that tells of it."""
+        fleet stands, changed, before any event that tells of it. `project`: the project
+        the fleet is a team of, if it is one."""
         self.folder, self.fleet, self.work = folder, fleet, Path(fleet.work)
+        self.project = project
         self.config = settings.from_record(fleet.settings)
         self.running = False  # its processes are up, or ending
         self.stopping = False  # they are ending: nothing more is started
@@ -127,7 +153,8 @@ class Manager:
             self._harness = self._own_harness or await asyncio.to_thread(
                 harnesses.load, config.harness, config.harness_options)
             self.config, self.fleet.settings = config, settings.record(config)
-            self._tools = ToolServer(fleet_tools(self))
+            secretary = self.project is not None and self.project.secretary
+            self._tools = ToolServer((secretary_tools if secretary else fleet_tools)(self))
             await self._tools.start()
             self.fleet.manager_pid = os.getpid()
             self.running = True
@@ -318,6 +345,22 @@ class Manager:
             await self.tell(unit, f"[Message from {supervisor.label}, your supervisor] {text}")
         self._emit(Instructed(unit.id, supervisor.id, "message", text))
 
+    async def hear(self, team: str, text: str) -> None:
+        """A message for the lead from another team of the project, or its secretary. A
+        lead with no task yet takes it as that."""
+        lead = self.fleet.lead
+        if lead is None:
+            raise FleetError("That team has no lead.")
+        if lead.state == "planned":
+            await self._assign(lead, units.from_team(team, text))
+        else:
+            await self.tell(lead, units.from_team(team, text))
+        self._emit(Across(lead.id, team, text, False))
+
+    def sent(self, unit: Unit, team: str, text: str) -> None:
+        """The unit's message went to another team of the project."""
+        self._emit(Across(unit.id, team, text, True))
+
     async def update(self, unit: Unit, text: str) -> None:
         """A unit's update for its supervisor, without ending its work."""
         self._deliver(unit, "update", f"[Update from {unit.label}] {text}", text)
@@ -391,8 +434,12 @@ class Manager:
 
     def _instruction(self, unit: Unit) -> Instruction:
         """The unit's standing instruction, from the fleet as it is now."""
-        brief = units.brief(unit, self.fleet.supervisor_of(unit),
-                            self.fleet.subordinates(unit), self._words)
+        if self.project is not None and self.project.secretary:
+            brief = units.secretary_brief(unit, self.project.name, self.work, self._words)
+        else:
+            brief = units.brief(unit, self.fleet.supervisor_of(unit),
+                                self.fleet.subordinates(unit), self._words,
+                                in_project=self.project is not None)
         return Instruction(brief, unit.ongoing, self.config.check_in_s)
 
     async def _begin(self, unit: Unit) -> None:

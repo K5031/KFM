@@ -11,16 +11,29 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from kfm import draft, harnesses, log, project
+from kfm import draft, log, project
 from kfm import fleet as records
 from kfm.api import Harness
 from kfm.config import CONFIG_FILE, HOME, FleetConfig, load, save
-from kfm.events import FleetEvent, units
+from kfm.events import Across, Delivered, FleetEvent, Notice, Told, units
 from kfm.fleet import Fleet, FleetError, Unit
 from kfm.manager import Manager
-from kfm.service import FleetState, Happened, Listed, ProjectInfo, Service, Update, Updated
+from kfm.service import (
+    FleetState,
+    Happened,
+    Listed,
+    ProjectInfo,
+    Proposed,
+    Service,
+    Update,
+    Updated,
+)
+from kfm.units import SECRETARY
 
 _ID = re.compile(r"[\w.-]+")
+READ_ONLY = "allow_read_only"  # the secretary looks, writes and proposes; she does no work
+LATELY, MORE = 4, 30  # lines of a team's record the secretary is shown; of one she asks for
+CLIP = 300  # characters of one such line
 
 
 class LocalService(Service):
@@ -32,7 +45,7 @@ class LocalService(Service):
         self.home, self._harness, self._config = home, harness, config
         self._managers: dict[str, Manager] = {}  # of every fleet read, running or not
         self._listeners: list[Callable[[Update], None]] = []
-        self._drafts: dict[str, asyncio.Task[draft.Draft]] = {}
+        self._proposals: dict[str, draft.Draft] = {}  # by project, until settled
         self._tasks: set[asyncio.Task[Any]] = set()
 
     # ── Projects ─────────────────────────────────────────────────────────
@@ -42,9 +55,18 @@ class LocalService(Service):
         counts = await asyncio.to_thread(lambda: [len(each.fleets()) for each in found])
         return [self._info(each, fleets) for each, fleets in zip(found, counts, strict=True)]
 
-    async def create_project(self, name: str, work: str) -> ProjectInfo:
+    async def create_project(self, name: str, work: str,
+                             description: str = "") -> ProjectInfo:
         made = await asyncio.to_thread(project.create, self.home, name, Path(work))
+        config = replace(await self.settings(), permissions=READ_ONLY)
+        secretary = f"{made.folder.name}/{project.SECRETARY}"
+        manager = self._managers[secretary] = await asyncio.to_thread(
+            lambda: Manager.new(config, made.secretary, made.work, SECRETARY,
+                                **self._how(secretary, made.name)))
+        await manager.add(None, SECRETARY, "")
         self._tell(Listed())
+        if description.strip():
+            await manager.say(description.strip())
         return self._info(made, 0)
 
     async def rename_project(self, project_id: str, name: str) -> None:
@@ -56,36 +78,17 @@ class LocalService(Service):
 
     async def delete_project(self, project_id: str) -> None:
         folder = self._project(project_id)
-        await self.cancel_draft(project_id)
+        self._proposals.pop(project_id, None)
         for fleet_id in [each for each in self._managers if each.startswith(f"{project_id}/")]:
             await self._managers.pop(fleet_id).aclose()
         await asyncio.to_thread(project.delete, folder)
         self._tell(Listed())
 
-    async def draft(self, project_id: str, description: str) -> draft.Draft:
-        opened = await asyncio.to_thread(project.load, self._project(project_id))
-        config = await self.settings()
-        harness = self._harness or await asyncio.to_thread(
-            harnesses.load, config.harness, config.harness_options)
-        await self.cancel_draft(project_id)
-        work = self._drafts[project_id] = asyncio.ensure_future(draft.draft(
-            description, config=config, harness=harness, folder=opened.folder / "planner",
-            work=opened.work))
-        try:
-            return await asyncio.shield(work)
-        except asyncio.CancelledError:
-            if work.cancelled():  # dropped, by cancel_draft
-                raise draft.DraftError("The draft was dropped.") from None
-            work.cancel()  # whoever asked for it gave up
-            raise
-        finally:
-            if self._drafts.get(project_id) is work:
-                del self._drafts[project_id]
+    async def proposal(self, project_id: str) -> draft.Draft | None:
+        return self._proposals.get(project_id)
 
-    async def cancel_draft(self, project_id: str) -> None:
-        if (work := self._drafts.pop(project_id, None)) is not None:
-            work.cancel()
-            await asyncio.gather(work, return_exceptions=True)
+    async def settle_proposal(self, project_id: str) -> None:
+        self._proposals.pop(project_id, None)
 
     # ── Fleets ───────────────────────────────────────────────────────────
 
@@ -97,13 +100,17 @@ class LocalService(Service):
             with contextlib.suppress(ValueError, OSError, KeyError):  # of another version
                 await self.watch(fleet_id)
                 found.append(fleet_id)
+        await self.watch(f"{project_id}/{project.SECRETARY}")
         return found
 
     async def add_fleet(self, project_id: str, name: str, task: str, *, ongoing: bool = True,
                         work: str | None = None, budget_usd: float | None = None) -> str:
         if not name.strip():
             raise ValueError("A fleet needs a name.")
+        if name.strip().lower() == SECRETARY.lower():
+            raise ValueError("That name is the secretary's.")
         opened = await asyncio.to_thread(project.load, self._project(project_id))
+        await self.fleets(project_id)  # a team is told of the others: they are all read
         config = await self.settings()
         if budget_usd is not None:
             config = replace(config, budget_usd=budget_usd)
@@ -111,7 +118,7 @@ class LocalService(Service):
         fleet_id = f"{project_id}/{folder.name}"
         manager = self._managers[fleet_id] = await asyncio.to_thread(
             lambda: Manager.new(config, folder, Path(work) if work else opened.work,
-                                name.strip(), **self._how(fleet_id)))
+                                name.strip(), **self._how(fleet_id, opened.name)))
         if task.strip():
             await manager.start()
             self._run(manager.add(None, "", task, ongoing=ongoing))
@@ -121,8 +128,9 @@ class LocalService(Service):
     async def watch(self, fleet_id: str) -> None:
         if fleet_id not in self._managers:
             folder = self._folder(fleet_id)
+            owner = await asyncio.to_thread(project.load, folder.parent.parent)
             read = await asyncio.to_thread(
-                lambda: Manager.load(folder, **self._how(fleet_id)))
+                lambda: Manager.load(folder, **self._how(fleet_id, owner.name)))
             self._managers.setdefault(fleet_id, read)  # it may have been read meanwhile
 
     def fleet(self, fleet_id: str) -> Fleet | None:
@@ -155,6 +163,7 @@ class LocalService(Service):
         return [event for _, event in kept if units(event) <= manager.fleet.units.keys()], upto
 
     async def start(self, fleet_id: str, *, budget_usd: float | None = None) -> None:
+        await self.fleets(fleet_id.partition("/")[0])
         await self._get(fleet_id).start(budget_usd=budget_usd)
 
     async def stop(self, fleet_id: str) -> None:
@@ -200,6 +209,7 @@ class LocalService(Service):
 
     async def say(self, fleet_id: str, text: str, unit_id: str | None = None, *,
                   files: Sequence[str] = (), spoken: bool = False) -> None:
+        await self.fleets(fleet_id.partition("/")[0])
         manager = self._get(fleet_id)
         to = self._unit(manager, unit_id) if unit_id else None
         await manager.say(text, to, files=files, spoken=spoken)
@@ -222,8 +232,6 @@ class LocalService(Service):
         return lambda: self._listeners.remove(listener) if listener in self._listeners else None
 
     async def aclose(self) -> None:
-        for work in list(self._drafts.values()):
-            work.cancel()
         await asyncio.gather(*(manager.aclose() for manager in self._managers.values()),
                              return_exceptions=True)
         for task in list(self._tasks):
@@ -235,16 +243,21 @@ class LocalService(Service):
         return list(self._managers)
 
     def running(self) -> bool:
-        """Whether any fleet runs or is stopping."""
-        return any(manager.running for manager in self._managers.values())
+        """Whether any fleet runs or is stopping. A secretary with nothing to do is
+        asleep, and holds nothing up."""
+        return any(manager.running and not (
+                       fleet_id.endswith(f"/{project.SECRETARY}")
+                       and not any(unit.active for unit in manager.fleet.units.values()))
+                   for fleet_id, manager in self._managers.items())
 
     # ── Internals ────────────────────────────────────────────────────────
 
     def _info(self, opened: project.Project, fleets: int) -> ProjectInfo:
-        mine = f"{opened.folder.name}/"
+        mine, secretary = f"{opened.folder.name}/", f"{opened.folder.name}/{project.SECRETARY}"
         running = sum(1 for fleet_id, manager in self._managers.items()
-                      if manager.up and fleet_id.startswith(mine))
-        return ProjectInfo(opened.folder.name, opened.name, str(opened.work), fleets, running)
+                      if manager.up and fleet_id.startswith(mine) and fleet_id != secretary)
+        return ProjectInfo(opened.folder.name, opened.name, str(opened.work), fleets, running,
+                           secretary)
 
     def _project(self, project_id: str) -> Path:
         if not _ID.fullmatch(project_id) or project_id in (".", ".."):
@@ -268,13 +281,82 @@ class LocalService(Service):
             raise FleetError(f"The fleet has no agent {unit_id}.")
         return unit
 
-    def _how(self, fleet_id: str) -> dict[str, Any]:
-        """What a fleet's manager is made with: its harness, and what it says to whom."""
+    def _how(self, fleet_id: str, project_name: str) -> dict[str, Any]:
+        """What a fleet's manager is made with: its harness, what it says to whom, and
+        the project it is a team of."""
         def happened(event: FleetEvent) -> None:
             self._tell(Happened(fleet_id, event, self._managers[fleet_id].count))
 
         return {"harness": self._harness, "on_event": happened,
-                "on_change": lambda: self._tell(Updated(fleet_id))}
+                "on_change": lambda: self._tell(Updated(fleet_id)),
+                "project": _Side(self, fleet_id, project_name)}
+
+    # ── What a team is given of its project (manager.Project) ────────────
+
+    def _teams(self, fleet_id: str) -> list[tuple[str, str, Manager]]:
+        """The other fleets of the fleet's project: what each is called, its id, and its
+        manager. The secretary is called that."""
+        owner = fleet_id.partition("/")[0]
+        return [(SECRETARY if each == f"{owner}/{project.SECRETARY}" else manager.fleet.name,
+                 each, manager)
+                for each, manager in self._managers.items()
+                if each.startswith(f"{owner}/") and each != fleet_id]
+
+    def _listing(self, fleet_id: str) -> str:
+        lines = []
+        for name, each, manager in self._teams(fleet_id):
+            if name == SECRETARY:
+                continue
+            lead = manager.fleet.lead
+            lines.append(f"- {name} ({self.state(each).status}): "
+                         f"{_clip(lead.task) if lead is not None and lead.task else 'no task yet'}")
+        return "\n".join(lines) or "It has no other teams."
+
+    async def _standing(self, fleet_id: str, team: str | None) -> str:
+        teams = [(name, each, manager) for name, each, manager in self._teams(fleet_id)
+                 if name != SECRETARY]
+        if team is not None:
+            teams = [found for found in teams if found[0].lower() == team.strip().lower()]
+            if not teams:
+                raise FleetError(f"The project has no team {team!r}.")
+        parts = []
+        for name, each, manager in teams:
+            lead, how = manager.fleet.lead, self.state(each)
+            head = (f"{name}: {how.status}, spent ${manager.fleet.spent_usd:.2f} of "
+                    f"${how.budget_usd:.2f}, {len(manager.fleet.units)} agents.")
+            if lead is not None:
+                head += f"\n  Lead {lead.label}: {lead.state}. Task: {_clip(lead.task)}"
+            await manager.flush()
+            kept = await asyncio.to_thread(log.read, manager.folder)
+            lines = [line for _, event in kept if (line := _record_line(manager, event))]
+            lately = lines[-(MORE if team is not None else LATELY):]
+            parts.append("\n".join([head, *(f"  - {line}" for line in lately)]))
+        return "\n\n".join(parts) or "The project has no teams."
+
+    async def _send(self, fleet_id: str, sender: Unit, team: str, text: str) -> str:
+        mine = self._managers[fleet_id]
+        wanted = team.strip().lower()
+        found = next(((name, manager) for name, _, manager in self._teams(fleet_id)
+                      if name.lower() == wanted), None)
+        if found is None:
+            names = ", ".join(name for name, _, _ in self._teams(fleet_id)) or "none"
+            raise FleetError(f"You have no agent, and the project no team, called {team!r}. "
+                             f"The project's other teams: {names}.")
+        name, manager = found
+        if name == SECRETARY:
+            await manager.start()  # she is started by a message, as by the person's
+        elif not manager.up:
+            raise FleetError(f"The team {name} is not running; a message does not start it.")
+        me = SECRETARY if fleet_id.endswith(f"/{project.SECRETARY}") else mine.fleet.name
+        await manager.hear(me, text)
+        mine.sent(sender, name, text)
+        return name
+
+    def _propose(self, fleet_id: str, teams: Sequence[draft.Team]) -> None:
+        owner = fleet_id.partition("/")[0]
+        self._proposals[owner] = draft.Draft(tuple(teams),
+                                             self._managers[fleet_id].fleet.spent_usd)
+        self._tell(Proposed(owner))
 
     def _tell(self, update: Update) -> None:
         for listener in list(self._listeners):
@@ -284,3 +366,48 @@ class LocalService(Service):
         task = asyncio.ensure_future(work)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
+
+
+class _Side:
+    """`manager.Project` for one fleet of a project held by a LocalService."""
+
+    def __init__(self, service: LocalService, fleet_id: str, name: str) -> None:
+        self._service, self._fleet, self.name = service, fleet_id, name
+        self.secretary = fleet_id.endswith(f"/{project.SECRETARY}")
+
+    def listing(self) -> str:
+        return self._service._listing(self._fleet)
+
+    async def standing(self, team: str | None) -> str:
+        return await self._service._standing(self._fleet, team)
+
+    async def send(self, sender: Unit, team: str, text: str) -> str:
+        return await self._service._send(self._fleet, sender, team, text)
+
+    def propose(self, teams: Sequence[draft.Team]) -> None:
+        self._service._propose(self._fleet, teams)
+
+
+def _clip(text: str) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= CLIP else text[:CLIP] + "…"
+
+
+def _record_line(manager: Manager, event: FleetEvent) -> str | None:
+    """An event of a team's record as the secretary reads it; None for what says nothing
+    of how the team stands."""
+    def called(unit_id: str) -> str:
+        unit = manager.fleet.units.get(unit_id)
+        return unit.label if unit is not None else "an agent since removed"
+
+    match event:
+        case Delivered(unit=unit, to=None, kind=kind, text=text):
+            return f"{called(unit)} to the person, {kind}: {_clip(text)}"
+        case Told(text=text, to=to):
+            return f"The person to {called(to) if to else 'the lead'}: {_clip(text)}"
+        case Across(unit=unit, team=team, text=text, sent=sent):
+            way = f"{called(unit)} to {team}" if sent else f"{team} to {called(unit)}"
+            return f"{way}: {_clip(text)}"
+        case Notice(text=text):
+            return _clip(text)
+    return None

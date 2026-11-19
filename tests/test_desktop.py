@@ -112,6 +112,11 @@ async def start(window: FleetWindow, tmp_path: Path, task: str, *, name: str = "
     return window.view
 
 
+def teams(window: FleetWindow) -> dict[str, FleetView]:
+    """The pages of the fleets that are teams: a project's secretary is not one."""
+    return {key: view for key, view in window.views.items() if not view.secretary}
+
+
 def agents(window: FleetWindow) -> list[tuple[int, str, str]]:
     """(depth, name and rank, state) of each row of the agents tree."""
     rows = []
@@ -164,7 +169,7 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
     form.task.setPlainText("Tidy up")
     form.start.click()  # not without a name
     await asyncio.sleep(0.05)
-    assert not shown.views
+    assert not teams(shown)
     view = await start(shown, tmp_path, "Tidy up", name="dev")
     await until(lambda: shown.service.state(view.id).finished)
     await until(lambda: len(cards(view)) == 3)
@@ -177,7 +182,7 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
     await until(lambda: "finished" in shown.status.text())
     assert "of $3.00" in shown.status.text()
     assert view.fleet.work == str(tmp_path / "work")
-    assert view.id.startswith(f"{shown.project.id}/") and shown.views == {view.id: view}
+    assert view.id.startswith(f"{shown.project.id}/") and teams(shown) == {view.id: view}
 
 
 async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: Path):
@@ -305,11 +310,14 @@ async def test_fleets_run_side_by_side_and_projects_are_switched(window, tmp_pat
 
 async def test_a_described_project_is_drafted_and_started_by_the_person(window,
                                                                           tmp_path: Path):
-    teams = [{"name": "dev", "does": "Build the game.", "ongoing": True},
+    proposed = [{"name": "dev", "does": "Build the game.", "ongoing": True},
              {"name": "trailer", "does": "Cut a trailer.", "ongoing": False},
              {"name": "legal", "does": "Read contracts.", "ongoing": True}]
     shown, harness = window({
-        "Planner": [{"do": [("tool", "propose", {"teams": teams}), ("report", "Proposed.")]}],
+        "Secretary": [{"do": [("tool", "propose", {"teams": proposed}),
+                              ("report", "Proposed.")]},
+                      {"when": "Add a legal team", "do": [
+                          ("tool", "propose", {"teams": [proposed[2]]}), ("report", "Proposed.")]}],
         "K5 u1": [{"do": [("say", "On it.")]}, {"do": [("say", "On it.")]}]})
     form = shown.project_form
     form.name.setText("Studio")
@@ -320,18 +328,18 @@ async def test_a_described_project_is_drafted_and_started_by_the_person(window,
     [page] = shown.drafts.values()
     await until(lambda: not page.busy)
     assert page.isVisibleTo(shown) and shown.title.text() == "Studio"
-    assert "Run my game studio" in harness.heard["Planner"][0]
+    assert "Run my game studio" in harness.heard["Secretary"][0]
     assert [(r.name.text(), r.does.toPlainText(), r.kind.duty.isChecked())
             for r in page.rows] == [("dev", "Build the game.", True),
                                     ("trailer", "Cut a trailer.", False),
                                     ("legal", "Read contracts.", True)]
-    assert not shown.views and "K5 u1" not in harness.heard  # nothing runs yet
+    assert not teams(shown) and "K5 u1" not in harness.heard  # nothing runs yet
     page.rows[2].remove.click()  # the person changes the draft
     page.rows[1].name.setText("video")
     page.rows[0].name.clear()
     page.start.click()
     await asyncio.sleep(0.05)
-    assert not shown.views and "needs a name" in page.note.text()
+    assert not teams(shown) and "needs a name" in page.note.text()
     page.rows[0].name.setText("dev")
     page.budget.setValue(4.0)
     page.start.click()
@@ -343,9 +351,26 @@ async def test_a_described_project_is_drafted_and_started_by_the_person(window,
     assert dev.fleet.lead.ongoing and not video.fleet.lead.ongoing
     assert "of $4.00" in dev.status
 
+    # The secretary stays: she is opened from the chart and is not one of its teams. What
+    # she proposes later comes back as the same page.
+    assert shown.secretary_button.isVisibleTo(shown)
+    shown.secretary_button.click()
+    view = shown.view
+    assert view.id == shown.project.secretary and shown.title.text() == "Secretary"
+    assert view.input.placeholderText() == "Message the secretary"
+    assert not shown.secretary_button.isVisibleTo(shown)
+    view.input.setPlainText("Add a legal team")
+    view.send_button.click()
+    await until(lambda: shown.drafts and not next(iter(shown.drafts.values())).busy)
+    [page] = shown.drafts.values()
+    assert page.isVisibleTo(shown) and [r.name.text() for r in page.rows] == ["legal"]
+    page.discard.click()
+    await until(lambda: chart(shown) == {"dev": ["K5"], "video": ["K5"]})
+    assert not shown.drafts
+
 
 async def test_a_draft_that_fails_or_is_discarded_leaves_the_project(window, tmp_path: Path):
-    shown, _ = window({"Planner": [{"do": [("report", "A plan in words.")]}]})
+    shown, _ = window({"Secretary": [{"do": [("report", "A plan in words.")]}]})
     form = shown.project_form
     form.name.setText("Studio")
     form.does.setPlainText("Run my game studio")
@@ -353,7 +378,7 @@ async def test_a_draft_that_fails_or_is_discarded_leaves_the_project(window, tmp
     form.create.click()
     await until(lambda: shown.drafts and not next(iter(shown.drafts.values())).busy)
     [page] = shown.drafts.values()
-    assert "No draft" in page.note.text() and page.rows == []
+    assert "No proposal" in page.note.text() and page.rows == []
     page.add_button.click()  # by hand, then
     assert len(page.rows) == 1
     page.discard.click()
@@ -402,7 +427,7 @@ async def test_a_fleet_is_built_by_hand_and_then_started(window, tmp_path: Path)
     shown.start_form.name.setText("content")
     shown.start_form.start.click()  # nothing it should do: no lead builds it
     await until(lambda: chart(shown) == {"content": []})
-    [view] = shown.views.values()
+    [view] = teams(shown).values()
     key = view.id
     head, first = shown.chart.heads[key], shown.chart.firsts[key]
     assert "not started" in head.status.text() and not head.start.isVisibleTo(shown)
@@ -470,7 +495,7 @@ async def test_a_project_is_deleted_with_its_fleets_and_not_its_work(window, tmp
     shown.dialog.delete.click()
     await until(lambda: not kept.exists())
     await until(lambda: shown.projects.count() == 0 and shown.project_form.isVisibleTo(shown))
-    assert not shown.views and shown.project is None and not view.running
+    assert not teams(shown) and shown.project is None and not view.running
     assert (tmp_path / "work" / "kept.txt").exists()
 
 
@@ -490,7 +515,7 @@ async def test_a_fleet_is_deleted_from_the_chart(window, tmp_path: Path):
     shown.dialog.delete.click()
     await until(lambda: not folder(tmp_path, first.id).exists())
     await until(lambda: chart(shown) == {"art": ["K5"]})
-    assert list(shown.views.values()) == [second] and second.running and not first.running
+    assert list(teams(shown).values()) == [second] and second.running and not first.running
     await until(lambda: shown.projects.item(0).data(FLEETS_ROLE) == 1)
     await second.stop()
 

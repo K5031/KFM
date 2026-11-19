@@ -17,6 +17,7 @@ from kfm.config import FleetConfig
 from kfm.tools import ToolServer
 
 STOP_GRACE_S = 5.0
+READ_ONLY = "allow_read_only"  # the drafting agent looks and proposes; it does none of the work
 
 
 class DraftError(Exception):
@@ -38,17 +39,19 @@ class Draft:
 
 
 def brief(description: str, work: Path, words: api.Vocabulary) -> str:
+    """What the drafting agent is told: what is so, and what its tools do."""
     return (
         "A person is setting up an organisation of AI agents and has described what it "
         f"should do:\n\n{description.strip()}\n\n"
-        "The organisation is made of teams. Each team has a lead agent that takes on what "
-        "the team is there to do and hires agents under it as the work needs, so you do "
-        f"not decide a team's size. The teams work side by side in the folder {work}, do "
-        "not talk to each other, and each reports to the person.\n\n"
-        "Decide which teams this needs: as few as do the job. Look at the folder if that "
-        f"helps. Then call {words.tool('propose')} once with the teams and call "
-        f"{words.finish}. The person reads your proposal and may change it before anything "
-        "starts. Do none of the work yourself.")
+        "Your task: propose the teams this organisation is made of.\n\n"
+        "Each team has a lead agent that takes on what the team is there to do and hires "
+        "agents under it as the work needs, so a team's size is its lead's to decide. A "
+        "team's lead runs, and is paid for, for as long as the team does. The teams work "
+        f"side by side in the folder {work}, do not talk to each other, and each reports "
+        "to the person.\n\n"
+        f"{words.tool('propose')} shows the person your proposal, which they read and may "
+        f"change before anything starts. {words.finish} ends your task. You can read the "
+        "folder; you are not able to change it or to run commands.")
 
 
 async def draft(description: str, *, config: FleetConfig, harness: api.Harness,
@@ -95,7 +98,7 @@ async def draft(description: str, *, config: FleetConfig, harness: api.Harness,
         await asyncio.to_thread(folder.mkdir, parents=True, exist_ok=True)
         session = await harness.open(api.UnitSpec(
             "u1", "Planner", config.top_rank, folder, work,
-            config.model_for(config.top_rank, None), config.permissions,
+            config.model_for(config.top_rank, None), READ_ONLY,
             config.unit_budget_usd, server.url), on_event)
         try:
             await session.begin(api.Instruction(

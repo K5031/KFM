@@ -25,6 +25,12 @@ async def test_an_agent_proposes_the_teams_and_ends(tmp_path: Path):
     assert "Run my game studio" in told and str(tmp_path) in told
     assert "fleet.propose" in told and "done" in told  # in the harness's own words
     assert harness.opened == [("Planner", None)]
+    # It is told what is so; how to draft is its own. That it does none of the work is
+    # what it is able to do: it reads, and nothing else is allowed.
+    for instruction in ("as few", "do none", "decide which", "you must", "you should",
+                        "you do not", "look at the folder if"):
+        assert instruction not in told.lower(), instruction
+    assert harness.permissions == [("Planner", "allow_read_only")]
 
 
 @pytest.mark.parametrize(("steps", "why"), [

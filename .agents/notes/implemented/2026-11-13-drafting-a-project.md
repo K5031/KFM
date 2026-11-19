@@ -24,8 +24,11 @@ one's name, what it is there to do, and whether that is a duty or a task.
 - **It ends with its proposal.** It is no lead over the fleets, since the person is the
   top. An approval it asks for is refused; ending, failing or asking a question without
   a proposal is reported as no draft.
-- **It does not size the fleets**; each lead hires as its work needs. It is told to
-  propose as few teams as do the job.
+- **It does not size the fleets**; each lead hires as its work needs. Its brief says
+  what is so (a team has a lead that hires, a lead is paid for as long as its team runs)
+  and what its two tools do, and nothing on how to draft.
+- **It reads and does nothing else**: it is opened with read-only permissions
+  (`draft.READ_ONLY`), whatever the fleet's settings give its agents.
 - **The draft is a page of the window**: a row for each fleet with its name, what it
   does, Task or Duty and a way to leave it out, a button to add one, the limit each fleet
   gets, Start and Discard. Nothing runs until Start; it then starts every fleet and

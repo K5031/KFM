@@ -136,4 +136,9 @@ def test_a_project_from_the_terminal_gets_its_folder_in_the_projects_folder(tmp_
     made = kfm("project", "new", "Sea Game", home=tmp_path)
     assert made.returncode == 0 and (base / "Sea-Game").is_dir(), made.stderr
     assert str(base / "Sea-Game") in kfm("projects", home=tmp_path).stdout
+    (base / "Sea-Game" / "notes.txt").write_text("mine")  # in use: not taken unasked
+    again = kfm("project", "new", "Sea Game", home=tmp_path)
+    assert again.returncode != 0 and "already exists" in again.stderr and "--work" in again.stderr
+    named = kfm("project", "new", "Sea Game", "--work", str(base / "Sea-Game"), home=tmp_path)
+    assert named.returncode == 0, named.stderr
     kfm("service", "stop", home=tmp_path)

@@ -20,7 +20,7 @@ from kfm.api import UnitError
 from kfm.config import HOME
 from kfm.events import Across, Approval, Changed, Delivered, Instructed, Notice, Said
 from kfm.fleet import Unit
-from kfm.project import folder_name
+from kfm.project import folder_name, in_use
 from kfm.remote import RemoteService, ServiceError
 from kfm.service import Happened, ProjectInfo, Service, Update, Updated
 from kfm.units import SECRETARY
@@ -300,6 +300,10 @@ async def _project(service: Service, args: argparse.Namespace) -> int:
         base = (await service.settings()).projects_folder
         if args.work is None and base and (own := folder_name(args.name)):
             work = Path(base).expanduser().resolve() / own
+            if in_use(work):
+                raise ValueError(
+                    f"{work} already exists and has files in it. To use it for this "
+                    f"project, name it: --work {work}")
             work.mkdir(parents=True, exist_ok=True)
         else:
             work = (args.work or Path.cwd()).resolve()

@@ -120,7 +120,8 @@ opens a window on the same service the commands talk to, without a terminal. It 
   folder its fleets work in. Your home folder itself is refused, since agents work
   freely inside the folder they are given. To skip choosing, set a **Projects folder**
   in Settings: a new project then gets a folder named after it in there ("Sea Game"
-  works in `Sea-Game`), made when you press Create, unless you choose another. Projects are listed on the
+  works in `Sea-Game`), made when you press Create, unless you choose another. If a
+  folder of that name is there already with files in it, KFM asks before using it. Projects are listed on the
   left; click one to switch to it. Right-click one to **delete** it: its fleets are
   stopped and their records and logs removed, after you confirm. The folder the agents
   worked in, and everything in it, is kept.

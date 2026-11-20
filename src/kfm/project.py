@@ -44,6 +44,14 @@ def folder_name(name: str) -> str:
     return re.sub(r"[^\w.]+", "-", name).strip("-.")
 
 
+def in_use(folder: Path) -> bool:
+    """Whether the folder is there with something in it. Blocking."""
+    try:
+        return any(folder.iterdir())
+    except OSError:
+        return False
+
+
 def create(home: Path, name: str, work: Path) -> Project:
     """Blocking."""
     made = Project(_unused(home / "projects"), name.strip(), work)

@@ -668,6 +668,31 @@ async def test_a_project_makes_its_folder_in_the_projects_folder(tmp_path: Path,
         assert shown.project.work == str(tmp_path / "all" / "Sea-Game-2")
         assert (tmp_path / "all" / "Sea-Game-2").is_dir()
 
+        # A folder of that name with files in it is not taken without asking.
+        shown.new_project()
+        await until(lambda: form.base == tmp_path / "all")
+        (tmp_path / "all" / "Sea-Game-2" / "notes.txt").write_text("mine")
+        form.name.setText("Sea Game 2")
+        form.create.click()
+        asked = shown.dialog
+        assert "already exists" in asked.text() and shown.project is None
+        asked.button(asked.StandardButton.Cancel).click()
+        await asyncio.sleep(0.05)
+        assert shown.project is None
+        (tmp_path / "all" / "Empty").mkdir()  # an empty one is as good as new
+        form.name.setText("Sea Game 2")
+        form.create.click()
+        shown.dialog.button(shown.dialog.StandardButton.Yes).click()
+        await until(lambda: shown.project is not None)
+        assert shown.project.work == str(tmp_path / "all" / "Sea-Game-2")
+
+        shown.new_project()
+        await until(lambda: form.base == tmp_path / "all")
+        form.name.setText("Empty")
+        form.create.click()
+        await until(lambda: shown.project is not None and shown.project.name == "Empty")
+        assert shown.project.work == str(tmp_path / "all" / "Empty")
+
         shown.new_project()
         await until(lambda: form.base == tmp_path / "all")
         form.name.setText("Elsewhere")

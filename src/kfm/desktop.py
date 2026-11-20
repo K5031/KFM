@@ -2078,11 +2078,27 @@ class FleetWindow(QMainWindow):
             return
         folder = form.folder
         if folder is None and (folder := form.own_folder()) is not None:
+            if project.in_use(folder):  # not one made for this project: ask first
+                dialog = self.dialog = QMessageBox(self)
+                dialog.setWindowTitle("New project")
+                dialog.setText(f"{folder} already exists and has files in it. Agents can "
+                               "change anything in it. Use it for this project?")
+                dialog.setStandardButtons(QMessageBox.StandardButton.Yes
+                                          | QMessageBox.StandardButton.Cancel)
+                dialog.button(QMessageBox.StandardButton.Yes).setText("Use it")
+                dialog.setDefaultButton(QMessageBox.StandardButton.Cancel)
+                dialog.accepted.connect(lambda: self._create(name, folder))
+                dialog.open()
+                return
             try:  # one of its own, in the projects folder
                 folder.mkdir(parents=True, exist_ok=True)
             except OSError as e:
                 form.warn(f"{folder} could not be made: {e}")
                 return
+        self._create(name, folder)
+
+    def _create(self, name: str, folder: Path | None) -> None:
+        form = self.project_form
         work, problem = _work_folder(folder)
         if work is None:
             form.warn(problem)

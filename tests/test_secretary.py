@@ -148,7 +148,7 @@ async def test_leads_reach_each_other_and_the_secretary(tmp_path: Path):
     brief = next(h for h in harness.heard["K5 u1"] if "Build it" in h)
     assert "one team of a project" in brief and "fleet.message" in brief
     [status] = [r[2] for r in harness.results if r[1] == "status"]
-    assert "The project's other teams:" in status and "- art (running): Draw it" in status
+    assert "The project's other teams, each with a limit of its own:" in status and "- art (running): Draw it" in status
     to_art, to_secretary, to_nobody = [r[2] for r in harness.results if r[1] == "message"]
     assert (to_art, to_secretary) == ("Sent to art.", "Sent to Secretary.")
     assert "no team" in to_nobody and "art" in to_nobody

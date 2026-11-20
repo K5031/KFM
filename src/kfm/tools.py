@@ -138,10 +138,11 @@ def fleet_tools(manager: Manager) -> MCPServer:
             me = caller(ctx)
         lines = [_line(unit) for unit in manager.fleet.subordinates(me)]
         left = manager.config.budget_usd - manager.fleet.spent_usd
-        teams = (f"\nThe project's other teams:\n{manager.project.listing()}"
+        teams = (f"\nThe project's other teams, each with a limit of its own:\n"
+                 f"{manager.project.listing()}"
                  if manager.project is not None and me.supervisor is None else "")
         return "\n".join(lines or ["You have no agents."]) + (
-            f"\nThe fleet has ${left:.2f} of its ${manager.config.budget_usd:.2f} left."
+            f"\nYour fleet has ${left:.2f} of its ${manager.config.budget_usd:.2f} left."
             + teams)
 
     @server.tool(description="Stop one of your agents, and every agent under it.")

@@ -43,7 +43,7 @@ def test_the_brief_says_where_the_unit_stands_in_its_harnesss_words():
     watcher = fleet.add("Watcher", "Watch the logs", lead, ongoing=True)
     words = kadence.WORDS
     top, low, standing = (brief(lead, None, [], words), brief(worker, lead, [], words),
-                          brief(watcher, lead, [], words))
+                          brief(watcher, lead, [], words, wake_s=300.0))
     assert "You are Lead, a K2 agent" in top and "Your task: Ship the site" in top
     assert "A person gave you this task" in top and "mcp__fleet__delegate" in top
     assert "Your supervisor is Lead (K2)" in low and "Your team: web." in low
@@ -56,6 +56,8 @@ def test_the_brief_says_where_the_unit_stands_in_its_harnesss_words():
     assert "mcp__fleet__delegate starts a K1 agent on a task you give it" in top
     assert "finish_goal" in low and "finish_goal" not in standing
     assert "mcp__fleet__report" in standing
+    # Standing work is taken up again soon whatever it plans for later, which it knows.
+    assert "your next turn starts within 5 minutes" in standing and "minutes" not in low
     other = brief(worker, lead, [], Vocabulary(finish="done", ask="ask_boss", tools="fleet."))
     assert "done with a report ends the task" in other
     assert "ask_boss puts a question to it" in other

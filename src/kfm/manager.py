@@ -520,7 +520,8 @@ class Manager:
                 False, self.config.check_in_s, conversation=True)
         brief = units.brief(unit, self.fleet.supervisor_of(unit),
                             self.fleet.subordinates(unit), self._words,
-                            in_project=self.project is not None)
+                            in_project=self.project is not None,
+                            wake_s=self.config.check_in_s[1])
         return Instruction(brief, unit.ongoing, self.config.check_in_s)
 
     async def _begin(self, unit: Unit) -> None:

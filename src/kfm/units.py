@@ -107,11 +107,18 @@ def secretary_brief(unit: Unit, project: str, work: Path, words: Vocabulary) -> 
         "change it or to run commands.")
 
 
+def _span(seconds: float) -> str:
+    if seconds < 120:
+        return f"{seconds:g} seconds"
+    return f"{seconds / 60:g} minutes"
+
+
 def brief(unit: Unit, supervisor: Unit | None, under: list[Unit], words: Vocabulary, *,
-          in_project: bool = False) -> str:
+          in_project: bool = False, wake_s: float | None = None) -> str:
     """The unit's standing instruction: who it is in the fleet, its task, and how the fleet
     works from where it stands. `under`: the agents it has when this is written.
-    `in_project`: its fleet is a team of a project, which has other teams and a secretary."""
+    `in_project`: its fleet is a team of a project, which has other teams and a secretary.
+    `wake_s`: the longest standing work rests between turns."""
     who = f"{unit.name}, a" if unit.name else "a"
     lines = [(f"You are {who} K{unit.rank} agent in a fleet of AI agents that works "
               "without human supervision. A higher rank supervises the one below it.")]
@@ -131,8 +138,11 @@ def brief(unit: Unit, supervisor: Unit | None, under: list[Unit], words: Vocabul
                      f"your conversation, and gets what you report. {words.ask} puts a "
                      "question to it; the answer arrives as a message.")
     if unit.ongoing:
+        again = (f" When a turn of yours ends, your next turn starts within {_span(wake_s)} "
+                 "at the latest, whatever you have planned for later, and at once on a "
+                 "message." if wake_s else "")
         lines.append(f"- This is standing work, with no end. {words.tool('report')} sends "
-                     f"{reader} something without ending it.")
+                     f"{reader} something without ending it.{again}")
     else:
         lines.append(f"- {words.finish} with a report ends the task. The report is all "
                      f"{reader} gets of your work.")

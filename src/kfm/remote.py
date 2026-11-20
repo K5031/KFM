@@ -22,7 +22,7 @@ from kfm import log
 from kfm.api import UnitError
 from kfm.config import HOME, FleetConfig
 from kfm.draft import Draft, Team
-from kfm.events import FleetEvent
+from kfm.events import Approval, FleetEvent
 from kfm.fleet import Fleet, FleetError
 from kfm.server import LINE_LIMIT, SOCKET
 from kfm.service import (
@@ -296,7 +296,9 @@ class RemoteService(Service):
         if message["record"] is None:
             raise ValueError(f"There is no fleet {fleet_id}.")
         self._fleets[fleet_id] = Fleet.of(message["record"])
-        self._states[fleet_id] = FleetState(**message["state"])
+        state = message["state"]
+        self._states[fleet_id] = FleetState(**{**state, "approvals": tuple(
+            Approval(**asked) for asked in state.get("approvals", ()))})
 
     def _drop(self, fleet_id: str) -> None:
         self._fleets.pop(fleet_id, None)

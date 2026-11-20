@@ -195,6 +195,11 @@ opens a window on the same service the commands talk to, without a terminal. It 
 
   ![A fleet](images/fleet-light.png)
 
+- **What waits for you** is at the top of the window, whatever you are looking at: each
+  approval an agent asks for, with **Allow**, **Always allow** and **Deny**, and each
+  question a lead has put to you, with **Answer**, which opens its fleet. An agent that
+  asks stands still until you answer: on the chart and in the agents list it reads
+  "asking", and a project in the list on the left says how many wait for you.
 - **What an agent is doing now** shows under its feed while it works: the tool it is
   using, the end of what it is thinking, and the message it is writing, which moves into
   the feed once it is whole. While a project's secretary drafts, the same shows under

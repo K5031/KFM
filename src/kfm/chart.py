@@ -75,7 +75,8 @@ def state_tone(state: str, running: bool) -> str:
     """The colour an agent's state is written in. What it was doing when its fleet
     stopped is not what it does now: working and waiting are muted then."""
     colors = theme.current()
-    at_work = {"working": colors.accent, "starting": colors.accent, "waiting": colors.warning}
+    at_work = {"working": colors.accent, "starting": colors.accent,
+               "waiting": colors.warning, "asking": colors.warning}
     return {"failed": colors.error, "done": colors.ok}.get(
         state, at_work.get(state, colors.muted) if running else colors.muted)
 

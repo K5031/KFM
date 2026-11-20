@@ -155,7 +155,7 @@ class LocalService(Service):
         can_start = not manager.running and (
             at_work or any(unit.state == "planned" for unit in units))
         return FleetState(manager.up, manager.stopping, finished, manager.config.budget_usd,
-                          status, can_start, has_run)
+                          status, can_start, has_run, tuple(manager.asking.values()))
 
     async def history(self, fleet_id: str) -> tuple[list[FleetEvent], int]:
         manager = self._get(fleet_id)
@@ -262,8 +262,14 @@ class LocalService(Service):
         mine, secretary = f"{opened.folder.name}/", f"{opened.folder.name}/{project.SECRETARY}"
         running = sum(1 for fleet_id, manager in self._managers.items()
                       if manager.up and fleet_id.startswith(mine) and fleet_id != secretary)
+        waiting = sum(len(manager.asking) + sum(
+                          1 for unit in manager.fleet.units.values()
+                          if unit.supervisor is None and unit.state == "waiting"
+                          and manager.up)
+                      for fleet_id, manager in self._managers.items()
+                      if fleet_id.startswith(mine))
         return ProjectInfo(opened.folder.name, opened.name, str(opened.work), fleets, running,
-                           secretary)
+                           secretary, waiting)
 
     def _project(self, project_id: str) -> Path:
         if not _ID.fullmatch(project_id) or project_id in (".", ".."):
@@ -296,6 +302,7 @@ class LocalService(Service):
         return {"harness": self._harness, "on_event": happened,
                 "on_change": lambda: self._tell(Updated(fleet_id)),
                 "on_live": lambda unit, *live: self._tell(Live(fleet_id, unit, *live)),
+                "on_asking": lambda: self._tell(Listed()),  # a project's count changed
                 "project": _Side(self, fleet_id, project_name)}
 
     # ── What a team is given of its project (manager.Project) ────────────

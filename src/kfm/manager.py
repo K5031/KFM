@@ -86,6 +86,7 @@ class Manager:
                  on_event: Callable[[FleetEvent], None] = lambda event: None,
                  on_change: Callable[[], None] = lambda: None,
                  on_live: Callable[[str, str, str, str], None] = lambda *live: None,
+                 on_asking: Callable[[], None] = lambda: None,
                  project: Project | None = None) -> None:
         """`harness`: the agent program the units run; None: the one the fleet's settings
         name, loaded when it starts. `on_change`: called when the record, or how the
@@ -96,6 +97,10 @@ class Manager:
         # What each unit is doing as it does it: [thinking, writing, the tool in use], for
         # whoever watches (`on_live`: the unit's id, then these). It is not recorded.
         self._on_live = on_live
+        # What units ask the person's approval for, by request, until it is answered or
+        # the unit's turn is over. `on_asking`: called when there is one more, or one less.
+        self.asking: dict[str, Approval] = {}
+        self._on_asking = on_asking
         self._live: dict[str, list[str]] = {}
         self._live_due: set[str] = set()
         self._used: set[str] = set()  # units whose tool is over, and still shown
@@ -325,6 +330,7 @@ class Manager:
             always = allow and always
             await session.approve(request_id, allow, always=always)
             self._emit(Answered(unit.id, request_id, allow, always))
+            self._asked(unit, request_id)
 
     # ── What units do, through the fleet tools ───────────────────────────
 
@@ -520,6 +526,7 @@ class Manager:
         return session
 
     async def _close(self, unit: Unit) -> None:
+        self._asked(unit)  # what it asked for goes with its process
         if (session := self._sessions.pop(unit.id, None)) is not None:
             await session.close(STOP_GRACE_S)
 
@@ -542,6 +549,7 @@ class Manager:
                     over = unit.report is not None or self._converses
                     self._set(unit, "done" if over else "idle")
                 self._watched(unit, thinking="", writing="", doing="")  # its turn is over
+                self._asked(unit)
                 if unit.state != "working":
                     self._turn_ended(unit)
             case api.Said(text=text):
@@ -571,9 +579,14 @@ class Manager:
                 self._changed()
                 self._check_budget()
             case api.ApprovalNeeded(request_id=request_id, tool=tool, arguments=arguments):
-                self._emit(Approval(unit.id, request_id, tool, arguments))
+                asked = self.asking[request_id] = Approval(unit.id, request_id, tool,
+                                                           arguments)
+                self._set(unit, "asking")
+                self._emit(asked)
+                self._on_asking()
             case api.Failed(message=message):
                 self._watched(unit, thinking="", writing="", doing="")
+                self._asked(unit)
                 unit.failure = message
                 self._set(unit, "failed")
                 self._turn_ended(unit)
@@ -584,6 +597,19 @@ class Manager:
                     unit.failure = why
                     self._set(unit, "failed")
                     self._turn_ended(unit)
+
+    def _asked(self, unit: Unit, request_id: str | None = None) -> None:
+        """A request of the unit's is answered, or with None all of them are void: its
+        turn is over, or its process is."""
+        mine = [each for each, asked in self.asking.items()
+                if asked.unit == unit.id and request_id in (None, each)]
+        for each in mine:
+            del self.asking[each]
+        if unit.state == "asking" and not any(a.unit == unit.id for a in self.asking.values()):
+            self._set(unit, "working")
+        if mine:
+            self._changed()
+            self._on_asking()
 
     def _now(self, unit: Unit) -> list[str]:
         return self._live.setdefault(unit.id, ["", "", ""])

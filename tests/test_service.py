@@ -341,3 +341,32 @@ async def test_what_an_agent_does_is_seen_as_it_does_it(tmp_path: Path):
     assert {type(event).__name__ for event in history} <= {
         "Instructed", "Changed", "Said", "Delivered", "Told", "Notice"}
     await service.aclose()
+
+
+async def test_what_waits_for_the_person_is_known_without_opening_a_fleet(tmp_path: Path):
+    """An agent that asks for approval stands still: its state, its fleet's state and its
+    project's count say so, here and over the socket."""
+    harness = FakeHarness({"K5 u1": [
+        {"do": [("approval", "r1", "shell", "uv run pytest"), ("say", "Ran them.")]}]})
+    (tmp_path / "work").mkdir()
+    home, socket = tmp_path / "home", tmp_path / "s"
+    server = Server(LocalService(home, harness=harness, config=FleetConfig()), socket,
+                    idle_s=0.3)
+    serving = asyncio.ensure_future(server.run())
+    await until(socket.exists)
+    remote = await RemoteService.connect(home, socket=socket, start=False)
+    made = await remote.create_project("Acme", str(tmp_path / "work"))
+    fleet = await remote.add_fleet(made.id, "dev", "Run the tests")
+    await until(lambda: remote.state(fleet).approvals)
+    [asked] = remote.state(fleet).approvals
+    assert (asked.unit, asked.request_id, asked.tool, asked.arguments) == (
+        "u1", "r1", "shell", "uv run pytest")
+    assert remote.fleet(fleet).units["u1"].state == "asking"
+    assert (await remote.projects())[0].waiting == 1
+    await remote.approve(fleet, "u1", "r1", True)
+    await until(lambda: not remote.state(fleet).approvals)
+    await until(lambda: remote.fleet(fleet).units["u1"].state == "working")
+    assert (await remote.projects())[0].waiting == 0
+    await remote.stop(fleet)
+    await remote.aclose()
+    await asyncio.wait_for(serving, 10)

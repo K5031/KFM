@@ -20,7 +20,7 @@ from typing import Any
 
 from kfm.config import FleetConfig
 from kfm.draft import Draft
-from kfm.events import FleetEvent
+from kfm.events import Approval, FleetEvent
 from kfm.fleet import Fleet
 
 VERSION = 4  # of this contract; a service and a client of different versions do not talk
@@ -34,6 +34,8 @@ class ProjectInfo:
     fleets: int  # its teams; its secretary is not one
     running: int  # of its teams
     secretary: str = ""  # the id of its secretary, a fleet of one agent
+    waiting: int = 0  # approvals and leads' questions that wait for the person, in the
+    # fleets of it that the service has read
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +51,8 @@ class FleetState:
     status: str = "not started"
     can_start: bool = False  # it is stopped, with agents that would carry on or begin
     has_run: bool = False  # one of its agents has begun
+    # What its agents ask the person's approval for and wait on, oldest first.
+    approvals: tuple[Approval, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

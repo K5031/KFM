@@ -1005,6 +1005,38 @@ async def test_drafting_shows_what_the_secretary_does_and_thinks(window, tmp_pat
     page.stop.click()
 
 
+async def test_what_waits_for_the_person_shows_wherever_they_are(window, tmp_path: Path):
+    """An approval asked for in one fleet is answered from the chart, or from another
+    fleet's page; a lead's question leads to its fleet."""
+    shown, harness = window({
+        "K5 u1": [{"when": "Build it", "do": [
+                      ("approval", "r1", "shell", "uv run pytest"), ("say", "Ran them.")]},
+                  {"when": "Draw it", "do": [("ask", "Which palette?")]}]})
+    dev = await start(shown, tmp_path, "Build it", name="dev", duty=True)
+    shown.back_button.click()
+    await until(lambda: shown.attention.isVisibleTo(shown) and len(shown.attention.rows) == 1)
+    [row] = shown.attention.rows
+    assert row.text.text() == "dev › K5 u1 wants to run shell uv run pytest"
+    assert [b.text() for b in row.buttons] == ["Allow", "Always allow", "Deny"]
+    assert chart(shown) == {"dev": ["K5"]} and shown.chart.isVisibleTo(shown)
+    node = shown.chart.nodes[(dev.id, "u1")]
+    assert node.state.text() == "asking"
+    await until(lambda: "1 waiting for you" in shown.projects.item(0).data(PREVIEW_ROLE))
+
+    art = await start(shown, tmp_path, "Draw it", name="art", duty=True)  # another's page
+    await until(lambda: art.fleet.lead.state == "waiting")
+    assert shown.view is art and len(shown.attention.rows) == 1  # its own question is here
+    shown.attention.rows[0].buttons[1].click()  # Always allow
+    await until(lambda: harness.approved == [("r1", True)] and harness.always == ["r1"])
+    await until(lambda: not shown.attention.isVisibleTo(shown))
+    shown.back_button.click()
+    await until(lambda: len(shown.attention.rows) == 1)  # on the chart: art's lead asks
+    [row] = shown.attention.rows
+    assert row.text.text() == "art › K5 u1 asks: Which palette?"
+    row.buttons[0].click()
+    assert shown.view is art
+
+
 async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QApplication):
     from PySide6.QtCore import Qt
 

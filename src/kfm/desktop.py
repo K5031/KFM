@@ -111,7 +111,7 @@ AGENT_ROWS = 10  # agents shown before their list scrolls
 AGENT_ROW_PX = 30
 PROJECT_ROLE = Qt.ItemDataRole.UserRole  # a project row's id
 FLEETS_ROLE = Qt.ItemDataRole.UserRole + 10  # how many fleets it has
-QUIET_STATES = ("starting", "working", "waiting", "done")  # shown by the agents list alone
+QUIET_STATES = ("starting", "working", "waiting", "asking", "done")  # shown by the agents list alone
 OVER = ("done", "idle", "failed", "stopped")  # an agent that is at nothing
 THINKING = 600  # characters, the end, of what an agent is thinking, under its feed
 BAR = 48  # px, the bar on top
@@ -190,6 +190,54 @@ class SaidEntry(QWidget):
         self.body.setMarkdown(text)
         layout.addWidget(self.header)
         layout.addWidget(self.body)
+
+
+class Attention(QFrame):
+    """What waits for the person, wherever in the window they are: each approval an agent
+    asks for, with its answers, and each question a lead has put to them, with the way
+    to its fleet. An agent that asks stands still until it is answered."""
+
+    def __init__(self) -> None:
+        super().__init__(objectName="attention")
+        self.setStyleSheet(
+            f"QFrame#attention {{ border-bottom: 1px solid {theme.current().line}; }}")
+        self._rows = QVBoxLayout(self)
+        self._rows.setContentsMargins(20, 8, 20, 8)
+        self._rows.setSpacing(6)
+        self.shown: list[str] = []  # what each row stands for
+        self.rows: list[QWidget] = []
+        self.hide()
+
+    def show_rows(self, rows: Sequence[tuple[str, str, Sequence[tuple[str, Callable[[], None]]]]]
+                  ) -> None:
+        """`rows`: what each stands for, its text, and its buttons (the first is the one
+        to press). Left alone while they stand for the same things."""
+        keys = [key for key, _, _ in rows]
+        if keys == self.shown:
+            return
+        self.shown = keys
+        for row in self.rows:
+            row.setParent(None)
+            row.deleteLater()
+        self.rows = []
+        for _, text, buttons in rows:
+            row = QWidget()
+            across = QHBoxLayout(row)
+            across.setContentsMargins(0, 0, 0, 0)
+            across.setSpacing(8)
+            row.text = ElidedLabel(text)  # type: ignore[attr-defined]
+            row.text.setToolTip(text)  # type: ignore[attr-defined]
+            across.addWidget(row.text, 1)  # type: ignore[attr-defined]
+            row.buttons = []  # type: ignore[attr-defined]
+            for index, (word, press) in enumerate(buttons):
+                button = QPushButton(word)
+                button.setProperty("primary", index == 0)
+                button.clicked.connect(lambda _=False, press=press: press())
+                across.addWidget(button)
+                row.buttons.append(button)  # type: ignore[attr-defined]
+            self._rows.addWidget(row)
+            self.rows.append(row)
+        self.setVisible(bool(rows))
 
 
 class LiveEntry(QWidget):
@@ -1634,7 +1682,9 @@ class FleetWindow(QMainWindow):
         right = QVBoxLayout()
         right.setContentsMargins(0, 0, 0, 0)
         right.setSpacing(0)
+        self.attention = Attention()
         right.addWidget(self.bar)
+        right.addWidget(self.attention)
         right.addWidget(self.pages, 1)
         layout.addWidget(side)
         layout.addLayout(right, 1)
@@ -2005,8 +2055,11 @@ class FleetWindow(QMainWindow):
         for info in found:
             item = QListWidgetItem(info.name)
             preview = "1 fleet" if info.fleets == 1 else f"{info.fleets} fleets"
-            item.setData(PREVIEW_ROLE, f"{preview} · {info.running} running" if info.running
-                         else preview)
+            if info.running:
+                preview += f" · {info.running} running"
+            if info.waiting:  # an approval, or a lead's question: an agent stands still
+                preview += f" · {info.waiting} waiting for you"
+            item.setData(PREVIEW_ROLE, preview)
             item.setData(DATE_ROLE, _when(info.id))
             item.setData(PROJECT_ROLE, info.id)
             item.setData(FLEETS_ROLE, info.fleets)
@@ -2286,8 +2339,36 @@ class FleetWindow(QMainWindow):
 
     # ── What is shown ────────────────────────────────────────────────────
 
+    def _show_attention(self) -> None:
+        """Every approval and every lead's question that waits for the person, in the
+        fleets read so far, of whatever project."""
+        rows: list[tuple[str, str, list[tuple[str, Callable[[], None]]]]] = []
+        for view in self.views.values():
+            fleet = view.fleet
+            if fleet is None:
+                continue
+            for asked in self.service.state(view.id).approvals:
+                unit = fleet.units.get(asked.unit)
+                who = unit.called if unit is not None else asked.unit
+                rows.append((
+                    f"{view.id}/{asked.request_id}",
+                    f"{view.name} › {who} wants to run {asked.tool} {asked.arguments}",
+                    [(word, lambda view=view, asked=asked, allow=allow, always=always:
+                      self._run(view._answer(asked, allow, always)))
+                     for word, allow, always in (("Allow", True, False),
+                                                 ("Always allow", True, True),
+                                                 ("Deny", False, False))]))
+            lead = fleet.lead
+            if (lead is not None and lead.state == "waiting" and lead.question
+                    and view.running and view is not self.view):
+                rows.append((f"{view.id}?{lead.question}",
+                             f"{view.name} › {lead.called} asks: {lead.question}",
+                             [("Answer", lambda view=view: self.open_fleet(view))]))
+        self.attention.show_rows(rows)
+
     def _refresh(self) -> None:
         """The bar, the page and the sidebar, from things as they are now."""
+        self._show_attention()
         opened, view = self.project, self.view
         fleets = self.project_views()
         drafted = self.drafts.get(opened.id) if opened is not None else None

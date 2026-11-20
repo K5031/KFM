@@ -2565,7 +2565,8 @@ class FleetWindow(QMainWindow):
         if limit is not None and limit != self._limit_of:  # not over what is being typed
             self.limit.setValue(limit[1])
         self._limit_of = limit
-        self.agents_section.setVisible(view is not None)
+        self.agents_section.setVisible(  # the secretary is one agent: nothing to list
+            view is not None and (opened is None or view.id != opened.secretary))
         self.projects_label.setVisible(self.projects.count() > 0)
         for i in range(self.projects.count()):
             item = self.projects.item(i)

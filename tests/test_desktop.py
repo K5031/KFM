@@ -359,6 +359,7 @@ async def test_a_described_project_is_drafted_and_started_by_the_person(window,
     assert view.id == shown.project.secretary and shown.title.text() == "Secretary"
     assert view.input.placeholderText() == "Message the secretary"
     assert not shown.secretary_button.isVisibleTo(shown)
+    assert not shown.agents_section.isVisibleTo(shown)  # she is one agent: no list of them
     view.input.setPlainText("Add a legal team")
     view.send_button.click()
     await until(lambda: shown.drafts and not next(iter(shown.drafts.values())).busy)

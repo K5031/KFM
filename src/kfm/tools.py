@@ -113,8 +113,8 @@ def fleet_tools(manager: Manager) -> MCPServer:
         "Send a message to one of your agents. One that has finished, failed or has no "
         "task yet starts working on it. Its reply arrives later as a message. The lead of "
         "a team in a project also reaches another team's lead by that team's name, and "
-        "the project's secretary by \"secretary\"; a team that is not running is not "
-        "started by a message."))
+        "the project's secretary by \"secretary\"; a team that is not running, or whose "
+        "lead finished or failed, is started by it."))
     async def message(
         agent: Annotated[str, Field(description="The agent's id, such as u3.")],
         text: Annotated[str, Field(min_length=1)],

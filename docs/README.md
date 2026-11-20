@@ -190,8 +190,8 @@ opens a window on the same service the commands talk to, without a terminal. It 
   record and log are removed, after you confirm; the folder it worked in is kept.
 - **Several fleets run at once.** Each has its own limit, and is stopped and resumed by
   itself. A team's lead can write to another team's lead, and to the secretary; such a
-  message shows in both teams' feeds. A lead's message does not start a team that is stopped; the secretary's does, so
-  she can be asked to get a team going again.
+  message shows in both teams' feeds. A message from a lead or the secretary starts a team that is stopped, as yours does,
+  and that team spends from its own limit.
 - **Open a fleet** by clicking its name on the chart, or an agent to see only what
   concerns it. The arrow at the top left leads back to the chart.
 

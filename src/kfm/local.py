@@ -400,14 +400,8 @@ class LocalService(Service):
             raise FleetError(f"You have no agent, and the project no team, called {team!r}. "
                              f"The project's other teams: {names}.")
         name, manager = found
-        from_secretary = fleet_id.endswith(f"/{project.SECRETARY}")
-        if name == SECRETARY or from_secretary:
-            # She is started by a message, as by the person's; and what she writes is the
-            # person's word passed on, so it starts a team as theirs does.
-            await manager.start()
-        elif not manager.up:
-            raise FleetError(f"The team {name} is not running; a message does not start it.")
-        me = SECRETARY if from_secretary else mine.fleet.name
+        await manager.start()  # a message starts a team, as the person's does
+        me = SECRETARY if fleet_id.endswith(f"/{project.SECRETARY}") else mine.fleet.name
         await manager.hear(me, text)
         mine.sent(sender, name, text)
         return name

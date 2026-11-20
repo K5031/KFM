@@ -154,13 +154,16 @@ async def test_leads_reach_each_other_and_the_secretary(tmp_path: Path):
     await until(lambda: "Secretary" in harness.heard)
     assert "[Message from the lead of the team dev] We disagree." in harness.heard["Secretary"][0]
 
-    await service.stop(art)  # a team that does not run is not started by a message
+    await service.stop(art)  # a team that does not run is started by a message
+    assert not service.state(art).running
     harness.scripts["K5 u1"] = [{"when": "Try again", "do": [
         ("tool", "message", {"agent": "art", "text": "Still there?"})]}]
     await service.say(dev, "Try again")
     await until(lambda: len([r for r in harness.results if r[1] == "message"]) == 4)
-    assert "not running" in harness.results[-1][2]
-    assert not service.state(art).running
+    assert harness.results[-1][2] == "Sent to art."
+    assert service.state(art).running
+    await until(lambda: any(h == "[Message from the lead of the team dev] Still there?"
+                            for h in harness.heard["K5 u1"]))
     await service.aclose()
 
 

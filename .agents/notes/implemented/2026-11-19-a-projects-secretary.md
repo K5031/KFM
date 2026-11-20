@@ -58,7 +58,7 @@ on when to use which. In place of a lead's tools she has three (`tools.secretary
 | Tool | What it is |
 |---|---|
 | `teams` | how each team stands: its lead, what it is doing, what it spent, and from the team's record what was lately reported, asked and said to it, the person's own messages to a lead included. With a team's name, more of that record |
-| `message` | write to a team's lead, who reads it as from the project's secretary. It starts a team that is stopped, and a lead that failed, as the person's own message does |
+| `message` | write to a team's lead, who reads it as from the project's secretary. It starts a team that is stopped, and a lead that finished or failed |
 | `propose` | put teams to the person: each with a name, what it does, task or duty, and optionally a folder of its own inside the project's |
 
 **The project's state is the record, not a file someone keeps.** KFM already writes
@@ -82,12 +82,12 @@ when she ends without one.
   The other lead reads `[Message from the lead of the team dev] …`; both fleets' records
   get the message (`events.Across`), and both feeds show it. Agents below a lead have no
   such way.
-- A lead's message to a team that is not running is refused with that fact: one team
-  does not start another, or spend its money. The secretary is started by one, as by
-  the person's.
-- The secretary's own message does start a stopped team (the user, 2026-11-20): what
-  she writes is the person's word passed on, and "get dev going again" is what she is
-  asked. The team's limit bounds what that can spend.
+- A message starts a team that is not running, and wakes a lead that finished or
+  failed, whoever sent it: another lead, the secretary, or the person (the user,
+  2026-11-20). A team that has finished is otherwise out of every other team's reach,
+  and work that needs it waits for a start nobody gives. The started team spends from
+  its own limit, which is what bounds it; one that has spent it is not started, and the
+  sender is told so.
 
 ### What teams share
 
@@ -107,6 +107,10 @@ own, chosen by the person or proposed by the secretary.
 - **A state file the leads keep up to date** (status, decisions, blockers), for the
   secretary to read on waking. It is a duty laid on every lead, kept as well as each
   lead keeps it, and a second account beside the record KFM writes anyway.
+- **A lead's message does not start a stopped team; the secretary's does.** One team
+  then cannot spend another's money. A lead that needs a finished team has to go
+  through the secretary, which makes her the coordinator she is not meant to be, and
+  one that does not think of it waits for a team that never comes back.
 - **A rule for escalation** (an unresolved conflict wakes the secretary or the person).
   Whether something is unresolved is a judgment; the leads are given whom they can
   reach, and reach them when they judge so.
@@ -130,7 +134,8 @@ own, chosen by the person or proposed by the secretary.
   secretary. Her message is the person's word passed on, and a lead cannot tell how
   faithfully.
 - **Talk between leads costs money.** Each message wakes a lead on its whole
-  conversation. Each team's limit is what bounds it.
+  conversation, and starts its team if it had stopped: a team the person stopped can be
+  started again by another. Each team's limit is what bounds it.
 - **Nobody settles a disagreement between leads** but the person, and two teams can
   drift apart without either noticing.
 - **She proposes new teams only.** Ending a team or restating its work is the person's

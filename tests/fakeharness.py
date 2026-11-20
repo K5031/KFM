@@ -50,7 +50,8 @@ class FakeHarness(Harness):
         self.approved: list[tuple[str, bool]] = []  # (request id, allow)
         self.conversations: list[str] = []  # units begun on a conversation, not a goal
         self.permissions: list[tuple[str, str]] = []  # (unit name, permissions), as opened
-        self.offered = [("big-1", "Big One"), ("small-1", "Small One")]  # its models
+        self.offered = [("big-1", "Big One", "$5 in, $25 out per million tokens"),
+                        ("small-1", "Small One", "")]  # its models
         self.open_s = 0.0  # how long a unit's process takes to come up
         self.broken = False  # no process comes up
         self.results: list[tuple[str, str, str]] = []  # (unit name, tool, what it answered)
@@ -62,7 +63,7 @@ class FakeHarness(Harness):
     def vocabulary(self) -> Vocabulary:
         return WORDS
 
-    async def model_choices(self, folder: Path) -> Sequence[tuple[str, str]]:
+    async def model_choices(self, folder: Path) -> Sequence[tuple[str, str, str]]:
         return self.offered
 
     async def open(self, spec: UnitSpec, on_event: Callable[[UnitEvent], None],

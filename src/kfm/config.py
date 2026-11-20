@@ -11,6 +11,7 @@ from typing import Any
 import tomli_w
 
 HOME = Path.home() / ".kfm"
+AUTO = "auto"  # a rank's model: whoever hires an agent of that rank chooses it
 CONFIG_FILE = "fleet.toml"
 
 
@@ -33,13 +34,23 @@ class FleetConfig:
     # A unit's duty intervals: it carries on soon after a turn, and checks in this often
     # when nothing wakes it.
     check_in_s: tuple[float, float] = (5.0, 300.0)
+    # The models a supervisor chooses from for an agent it hires at a rank whose model
+    # is AUTO: the person's list. Empty: no rank is its supervisor's to choose for.
+    auto_models: tuple[str, ...] = ()
     # Not a fleet's: where a new project's folder is made, named after it, when the
     # person chooses none. "": a folder is chosen for each project.
     projects_folder: str = ""
 
     def model_for(self, rank: int, team: str | None) -> str | None:
-        return (self.teams.get(team or "") or self.models.get(f"K{rank}")
+        """The model an agent of that rank and team runs on when none was chosen for it:
+        its team's, else its rank's, else the default. None: the agent program's own."""
+        of_rank = self.models.get(f"K{rank}")
+        return (self.teams.get(team or "") or (of_rank if of_rank != AUTO else None)
                 or self.models.get("default"))
+
+    def chosen_by_supervisor(self, rank: int) -> bool:
+        """Whether whoever hires an agent of that rank names its model."""
+        return self.models.get(f"K{rank}") == AUTO and bool(self.auto_models)
 
 
 def load(path: Path, **overrides: Any) -> FleetConfig:
@@ -64,7 +75,8 @@ def save(path: Path, **changes: Any) -> FleetConfig:
 
 def record(config: FleetConfig) -> dict[str, Any]:
     """The settings as fleet.json keeps them, for `from_record`."""
-    return {**asdict(config), "check_in_s": list(config.check_in_s)}
+    return {**asdict(config), "check_in_s": list(config.check_in_s),
+            "auto_models": list(config.auto_models)}
 
 
 def from_record(data: Mapping[str, Any], **overrides: Any) -> FleetConfig:
@@ -79,6 +91,8 @@ def _config(data: dict[str, Any], source: str, overrides: Mapping[str, Any]) -> 
         raise ValueError(f"{source}: unknown setting {', '.join(unknown)}")
     if "check_in_s" in data:
         data["check_in_s"] = tuple(data["check_in_s"])
+    if "auto_models" in data:
+        data["auto_models"] = tuple(data["auto_models"])
     config = FleetConfig(**data)
     if not 1 <= config.top_rank <= 5:
         raise ValueError("top_rank is between 1 and 5")

@@ -522,4 +522,5 @@ async def test_kadence_says_which_models_it_offers(tmp_path: Path, monkeypatch):
         "runtime": {"model": "fake-1"}}))
     harness = harnesses.load("kadence", {"config": str(base)})
     assert await harness.model_choices(tmp_path / "models") == [
-        ("fake-1", "fake-1"), ("fake-2", "fake-2")]
+        ("fake-1", "fake-1", "$1 in, $2 out per million tokens"),
+        ("fake-2", "fake-2", "$1 in, $2 out per million tokens")]

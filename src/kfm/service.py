@@ -23,7 +23,7 @@ from kfm.draft import Draft
 from kfm.events import Approval, FleetEvent
 from kfm.fleet import Fleet
 
-VERSION = 4  # of this contract; a service and a client of different versions do not talk
+VERSION = 5  # of this contract; a service and a client of different versions do not talk
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,9 +223,10 @@ class Service(abc.ABC):
     # ── Settings, and what happens ───────────────────────────────────────
 
     @abc.abstractmethod
-    async def models(self) -> list[tuple[str, str]]:
-        """The models the agent program offers, each its id and its name, for a person to
-        choose from; none when it cannot say."""
+    async def models(self) -> list[tuple[str, str, str]]:
+        """The models the agent program offers, for a person to choose from: each its id,
+        its name, and what else is known of it (its price) or ""; none when it cannot
+        say."""
 
     @abc.abstractmethod
     async def settings(self) -> FleetConfig:

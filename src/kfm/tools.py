@@ -62,6 +62,22 @@ def _refusals() -> Iterator[None]:
         raise ToolError(str(e)) from None
 
 
+def _models(manager: Manager) -> str:
+    """What the `delegate` tool says of the model an agent runs on: for which ranks it is
+    its supervisor's to choose, from which models, and what the agent runs on otherwise."""
+    config = manager.config
+    ranks = [f"K{rank}" for rank in range(config.top_rank - 1, 0, -1)
+             if config.chosen_by_supervisor(rank)]
+    default = config.models.get("default") or "the agent program's own model"
+    if not ranks:
+        return "Its model is the person's to set."
+    known = manager.models()
+    choices = "; ".join(f"{each} ({known[each]})" if known.get(each) else each
+                        for each in config.auto_models)
+    return (f"The model of a {', '.join(ranks)} agent is yours to choose, from: {choices}. "
+            f"Without `model`, it runs on {default}.")
+
+
 def fleet_tools(manager: Manager) -> MCPServer:
     server = MCPServer("fleet")
 
@@ -72,7 +88,7 @@ def fleet_tools(manager: Manager) -> MCPServer:
     @server.tool(description=(
         "Start a new agent one rank below you on a task. It works on its own, in the same "
         "folder, and sees nothing of your conversation, only the task. Returns at once; "
-        "its report, or a question, arrives later as a message."))
+        "its report, or a question, arrives later as a message. " + _models(manager)))
     async def delegate(
         task: Annotated[str, Field(min_length=1, description="The task.")],
         ctx: Context,
@@ -86,10 +102,12 @@ def fleet_tools(manager: Manager) -> MCPServer:
         budget_usd: Annotated[float | None, Field(
             gt=0, description="The most it may spend, in US dollars; at most the fleet's "
                               "limit per agent, which is the default.")] = None,
+        model: Annotated[str | None, Field(
+            description="The model it runs on, where that is yours to choose.")] = None,
     ) -> str:
         with _refusals():
             unit = await manager.delegate(caller(ctx), name, task, team=team,
-                                          ongoing=ongoing, budget_usd=budget_usd)
+                                          ongoing=ongoing, budget_usd=budget_usd, model=model)
         if unit.state == "failed":
             raise ToolError(f"{unit.label} could not start: {unit.failure}")
         return (f"Started {unit.label}. Its report or question will arrive as a message; "

@@ -9,7 +9,7 @@ import asyncio
 import logging
 import os
 import shutil
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -87,6 +87,7 @@ class Manager:
                  on_change: Callable[[], None] = lambda: None,
                  on_live: Callable[[str, str, str, str], None] = lambda *live: None,
                  on_asking: Callable[[], None] = lambda: None,
+                 models: Callable[[], Mapping[str, str]] = dict,
                  project: Project | None = None) -> None:
         """`harness`: the agent program the units run; None: the one the fleet's settings
         name, loaded when it starts. `on_change`: called when the record, or how the
@@ -99,6 +100,9 @@ class Manager:
         self._on_live = on_live
         # What units ask the person's approval for, by request, until it is answered or
         # the unit's turn is over. `on_asking`: called when there is one more, or one less.
+        # What is known of each model there is (its name, its price), by id, for the
+        # supervisors that choose one.
+        self.models = models
         self.asking: dict[str, Approval] = {}
         self._on_asking = on_asking
         self._live: dict[str, list[str]] = {}
@@ -336,10 +340,22 @@ class Manager:
 
     async def delegate(self, supervisor: Unit, name: str, task: str, *,
                        team: str | None = None, ongoing: bool = False,
-                       budget_usd: float | None = None) -> Unit:
-        """A supervisor starts an agent of its own on a task."""
+                       budget_usd: float | None = None, model: str | None = None) -> Unit:
+        """A supervisor starts an agent of its own on a task, on the `model` it names where
+        the agent's rank is its supervisor's to choose for. FleetError for a model that
+        is not among the person's, or a rank whose model the person set."""
+        rank = supervisor.rank - 1
+        if model is not None:
+            if not self.config.chosen_by_supervisor(rank):
+                fixed = self.config.model_for(rank, team or supervisor.team)
+                raise FleetError(
+                    f"The model of a K{rank} agent is not yours to choose: the person set "
+                    f"it" + (f", to {fixed}." if fixed else "."))
+            if model not in self.config.auto_models:
+                raise FleetError(f"{model!r} is not one of the models to choose from: "
+                                 f"{', '.join(self.config.auto_models)}.")
         return await self._add(supervisor, name, task, by=supervisor, team=team,
-                               ongoing=ongoing, budget_usd=budget_usd)
+                               ongoing=ongoing, budget_usd=budget_usd, model=model)
 
     async def tell(self, unit: Unit, text: str, *, files: Sequence[str] = (),
                    spoken: bool = False) -> None:

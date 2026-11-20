@@ -722,7 +722,19 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         field = dialog.models["K5"]
         await until(lambda: field.count() == 3)
         assert [field.itemText(i) for i in range(3)] == ["", "big-1", "small-1"]
-        assert field.itemData(1, Qt.ItemDataRole.ToolTipRole) == "Big One"
+        assert field.itemData(1, Qt.ItemDataRole.ToolTipRole) == (
+            "Big One, $5 in, $25 out per million tokens")
+        # A rank below the top can be left to whoever hires the agent, to choose from
+        # the models ticked under "Auto from".
+        lower = dialog.models["K3"]
+        assert [lower.itemText(i) for i in range(lower.count())] == [
+            "", "auto", "big-1", "small-1"]
+        assert dialog.auto.text() == "None"
+        ticks = {a.text(): a for a in dialog.auto.menu().actions()}
+        assert list(ticks) == ["big-1", "small-1"]
+        ticks["small-1"].setChecked(True)
+        assert dialog.auto.text() == "small-1"
+        lower.setCurrentIndex(1)
         assert field.currentText() == "" and field.lineEdit().placeholderText() == "Default"
         # The model of every rank that has none of its own: each such rank says which.
         every = dialog.models["default"]
@@ -746,7 +758,8 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         await until(lambda: not dialog.isVisible())
         saved = load(tmp_path / "home" / "fleet.toml")
         assert (saved.models, saved.budget_usd, saved.max_units) == (
-            {"default": "small-1", "K5": "big-1", "K4": "my-own-model"}, 25.0, 6)
+            {"default": "small-1", "K5": "big-1", "K4": "my-own-model", "K3": "auto"}, 25.0, 6)
+        assert saved.auto_models == ("small-1",)
         assert saved.permissions == "allow_workspace"  # as it was: left alone
         await until(lambda: shown.start_form.budget.value() == 25.0)  # what a new fleet gets
         shown.gear_button.click()

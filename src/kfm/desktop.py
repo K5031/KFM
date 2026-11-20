@@ -76,7 +76,7 @@ from PySide6.QtWidgets import (
 from kfm import app_menu, draft, project
 from kfm.api import UnitError
 from kfm.chart import Chart, ChartFleet, state_tone
-from kfm.config import FleetConfig
+from kfm.config import AUTO, FleetConfig
 from kfm.events import (
     Across,
     Answered,
@@ -1010,6 +1010,17 @@ class SettingsDialog(QDialog):
         self.models["secretary"].lineEdit().setPlaceholderText(f"As {top}")
         self.models["secretary"].setToolTip(
             f"The model a project's secretary runs on; empty: {top}'s")
+        # Which models whoever hires an agent may choose from, for a rank set to "auto".
+        self.auto = QToolButton(objectName="folderPicker")
+        self.auto.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.auto.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.auto.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.auto.setMenu(QMenu(self.auto))
+        self.auto.setToolTip('For a rank set to "auto", whoever hires the agent chooses its '
+                             "model from these")
+        self.auto_models = list(config.auto_models)
+        models.addRow("Auto from", self.auto)
+        self._show_auto()
         every = self.models["default"]
         every.lineEdit().setPlaceholderText("The agent program's own")
         every.setToolTip("The model of every rank that has none of its own; empty: the one "
@@ -1078,6 +1089,7 @@ class SettingsDialog(QDialog):
                 "max_units": self.agents.value(),
                 "projects_folder": self.projects.text().strip(),
                 "permissions": self.permissions.currentData(),
+                "auto_models": list(self.auto_models),
                 "models": {rank: field.currentText().strip()
                            for rank, field in self.models.items()}}
 
@@ -1091,17 +1103,44 @@ class SettingsDialog(QDialog):
                 field.setToolTip(f"The model {key} agents run on; empty: the default"
                                  + (f", {default}" if default else ""))
 
-    def offer(self, models: Sequence[tuple[str, str]]) -> None:
-        """The models there are to choose from, each by its id with its name beside it in
-        a tooltip; what a field holds stays, listed or not."""
-        for field in self.models.values():
+    def _show_auto(self) -> None:
+        self.auto.setText(", ".join(self.auto_models) or "None")
+
+    def _toggle_auto(self, model_id: str, on: bool) -> None:
+        if on and model_id not in self.auto_models:
+            self.auto_models.append(model_id)
+        elif not on and model_id in self.auto_models:
+            self.auto_models.remove(model_id)
+        self._show_auto()
+
+    def offer(self, models: Sequence[tuple[str, str, str]]) -> None:
+        """The models there are to choose from, each by its id with its name and price
+        beside it in a tooltip; what a field holds stays, listed or not. A rank below the
+        top can also be "auto": whoever hires the agent chooses."""
+        top = next(key for key in self.models if key.startswith("K"))
+        for key, field in self.models.items():
             held = field.currentText()
             field.clear()
-            field.addItem("")  # the agent program's own
-            for model_id, name in models:
+            field.addItem("")  # the default
+            if key.startswith("K") and key != top:
+                field.addItem(AUTO)
+                field.setItemData(1, "Whoever hires the agent chooses, from the models "
+                                     'under "Auto from"', Qt.ItemDataRole.ToolTipRole)
+            for model_id, name, about in models:
                 field.addItem(model_id)
-                field.setItemData(field.count() - 1, name, Qt.ItemDataRole.ToolTipRole)
+                field.setItemData(field.count() - 1, ", ".join(p for p in (name, about) if p),
+                                  Qt.ItemDataRole.ToolTipRole)
             field.setCurrentText(held)
+        menu = self.auto.menu()
+        menu.clear()
+        for model_id, name, about in models:
+            action = menu.addAction(model_id)
+            action.setCheckable(True)
+            action.setChecked(model_id in self.auto_models)
+            action.setToolTip(", ".join(part for part in (name, about) if part))
+            action.toggled.connect(
+                lambda on, model_id=model_id: self._toggle_auto(model_id, on))
+        menu.setToolTipsVisible(True)
 
     def warn(self, text: str) -> None:
         self.warning.setText(text)

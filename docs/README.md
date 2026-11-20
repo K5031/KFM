@@ -86,7 +86,7 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm fleet new PROJECT NAME ["task"]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
 | `kfm agent add FLEET [--under u1] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
 | `kfm agent remove\|rename\|task\|model FLEET UNIT [...]` | Change an agent |
-| `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID] [--permissions LEVEL]` | Show or change what new fleets get |
+| `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID] [--auto-models ID,ID] [--permissions LEVEL]` | Show or change what new fleets get |
 | `kfm serve` | Run the service in this terminal instead of in the background |
 
 ## Stop a fleet and start it again
@@ -284,6 +284,19 @@ Without `[models]`, every agent uses the model in your Kadence configuration. In
 window's Settings each rank has a list of the models your provider offers; one that is
 not listed can be typed. **Default** there is the model of every rank you set none for,
 and an empty rank says which that is.
+
+A rank below the top can be set to **auto**: whoever hires an agent of that rank then
+chooses its model for the job, from the models you tick under **Auto from**, and is told
+their prices. When it names none, the agent runs on the default. In `fleet.toml`:
+
+```toml
+auto_models = ["claude-haiku-5-5", "claude-sonnet-5-5"]
+
+[models]
+K5 = "claude-opus-5-5"
+K4 = "auto"
+default = "claude-haiku-5-5"
+```
 
 ### What agents do without asking
 

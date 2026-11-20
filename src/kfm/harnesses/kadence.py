@@ -8,7 +8,7 @@ import asyncio
 import json
 import sys
 import tomllib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -111,7 +111,7 @@ class KadenceHarness(Harness):
             await opened.attach()
         return opened
 
-    async def model_choices(self, folder: Path) -> Sequence[tuple[str, str]]:
+    async def model_choices(self, folder: Path) -> Sequence[tuple[str, str, str]]:
         """What the configured provider lists: asked of a Kadence started for that alone,
         which makes no request to a model. UnitError when it cannot be asked."""
         def configure() -> None:
@@ -137,7 +137,7 @@ class KadenceHarness(Harness):
             raise UnitError(f"Kadence could not list its models: {e}") from e
         finally:
             await channel.close(MODELS_GRACE_S)
-        return [(each["id"], each.get("name") or each["id"]) for each in listed]
+        return [(each["id"], each.get("name") or each["id"], _price(each)) for each in listed]
 
     def prepare(self, spec: UnitSpec) -> None:
         """The unit's Kadence data folder: the base configuration with this unit's model,
@@ -272,6 +272,14 @@ class _Session(Session):
                 elif self._active and not active:
                     self._emit(Rested(self._has_duty))
                 self._active = active
+
+
+def _price(model: Mapping[str, Any]) -> str:
+    """What a model costs, as Kadence knows it; "" when it does not."""
+    paid, made = model.get("input_usd_per_mtok"), model.get("output_usd_per_mtok")
+    if paid is None or made is None:
+        return ""
+    return f"${paid:g} in, ${made:g} out per million tokens"
 
 
 def _in_words(call: ToolCall) -> str:

@@ -381,8 +381,61 @@ async def test_the_models_an_agent_program_offers_are_listed(tmp_path: Path):
     serving = asyncio.ensure_future(server.run())
     await until(socket.exists)
     remote = await RemoteService.connect(home, socket=socket, start=False)
-    assert await remote.models() == [("big-1", "Big One"), ("small-1", "Small One")]
+    assert await remote.models() == [("big-1", "Big One", "$5 in, $25 out per million tokens"),
+                                     ("small-1", "Small One", "")]
     harness.offered = []
     assert len(await remote.models()) == 2  # kept: the program is not asked each time
     await remote.aclose()
     await asyncio.wait_for(serving, 10)
+
+
+async def test_whoever_hires_an_agent_chooses_its_model_where_the_rank_is_auto(tmp_path: Path):
+    """With a rank's model "auto", its supervisor names one of the models the person
+    allows when it hires; without a choice the agent runs on the default. A rank whose
+    model the person set is not the supervisor's to choose."""
+    harness = FakeHarness({
+        "K5 u1": [{"do": [
+            ("tool", "delegate", {"name": "Reader", "task": "Read", "model": "small-1"}),
+            ("tool", "delegate", {"name": "Plain", "task": "Wait"}),
+            ("tool", "delegate", {"name": "Dear", "task": "Think", "model": "huge-1"})]}],
+        "Reader": [{"do": [("tool", "delegate", {"name": "Sub", "task": "Dig",
+                                                 "model": "small-1"})]}]})
+    (tmp_path / "work").mkdir()
+    service = LocalService(tmp_path / "home", harness=harness, config=FleetConfig(
+        models={"default": "mid-1", "K4": "auto", "K3": "big-1"},
+        auto_models=("small-1", "big-1")))
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    fleet = await service.add_fleet(made.id, "dev", "Build it")
+    await until(lambda: len([r for r in harness.results if r[1] == "delegate"]) == 4)
+    units = {unit.name: unit for unit in service.fleet(fleet).units.values()}
+    assert (units["Reader"].model, units["Plain"].model) == ("small-1", None)
+    assert ("Reader", "small-1") in harness.models and ("Plain", "mid-1") in harness.models
+    refusals = {r[0]: r[2] for r in harness.results if "Started" not in r[2]}
+    assert "huge-1" in refusals["K5 u1"] and "small-1, big-1" in refusals["K5 u1"]
+    assert "Dear" not in units and "Sub" not in units
+    assert "K3" in refusals["Reader"] and "big-1" in refusals["Reader"]  # the person's
+    await service.aclose()
+
+
+async def test_the_hiring_tool_says_which_models_there_are_to_choose(tmp_path: Path):
+    from mcp import Client
+
+    harness = FakeHarness({"K5 u1": [{"do": [("say", "On it.")]}]})
+    (tmp_path / "work").mkdir()
+    service = LocalService(tmp_path / "home", harness=harness, config=FleetConfig(
+        models={"K4": "auto", "default": "mid-1"}, auto_models=("small-1", "big-1")))
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    fleet = await service.add_fleet(made.id, "dev", "Build it")
+    await until(lambda: service.state(fleet).running)
+    manager = service._managers[fleet]
+    await until(lambda: manager.fleet.lead is not None)
+    lead = manager.fleet.lead
+    async with Client(f"{manager._tools.url}?unit={lead.token}") as client:
+        [delegate] = [tool for tool in (await client.list_tools()).tools
+                      if tool.name == "delegate"]
+    about = delegate.description
+    assert "K4" in about and "small-1" in about and "mid-1" in about
+    assert "big-1 (Big One, $5 in, $25 out per million tokens)" in about
+    for instruction in ("you should", "you must", "prefer", "always", "cheapest"):
+        assert instruction not in about.lower(), instruction
+    await service.aclose()

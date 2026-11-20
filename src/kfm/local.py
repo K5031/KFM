@@ -48,7 +48,7 @@ class LocalService(Service):
         self._managers: dict[str, Manager] = {}  # of every fleet read, running or not
         self._listeners: list[Callable[[Update], None]] = []
         self._proposals: dict[str, draft.Draft] = {}  # by project, until settled
-        self._models: list[tuple[str, str]] | None = None  # what the agent program offers
+        self._models: list[tuple[str, str, str]] | None = None  # what the program offers
         self._tasks: set[asyncio.Task[Any]] = set()
 
     # ── Projects ─────────────────────────────────────────────────────────
@@ -119,6 +119,7 @@ class LocalService(Service):
             config = replace(config, budget_usd=budget_usd)
         if work is not None:
             await asyncio.to_thread(_own_folder, Path(work), opened.work)
+        await self._learn_models(config)
         folder = await asyncio.to_thread(opened.new_fleet)
         fleet_id = f"{project_id}/{folder.name}"
         manager = self._managers[fleet_id] = await asyncio.to_thread(
@@ -169,6 +170,7 @@ class LocalService(Service):
 
     async def start(self, fleet_id: str, *, budget_usd: float | None = None) -> None:
         await self.fleets(fleet_id.partition("/")[0])
+        await self._learn_models(self._get(fleet_id).config)
         await self._get(fleet_id).start(budget_usd=budget_usd)
 
     async def stop(self, fleet_id: str) -> None:
@@ -226,7 +228,7 @@ class LocalService(Service):
 
     # ── Settings, and what happens ───────────────────────────────────────
 
-    async def models(self) -> list[tuple[str, str]]:
+    async def models(self) -> list[tuple[str, str, str]]:
         if self._models is None:  # asked once: starting the program to ask takes a moment
             config = await self.settings()
             harness = self._harness or await asyncio.to_thread(
@@ -317,7 +319,19 @@ class LocalService(Service):
                 "on_change": lambda: self._tell(Updated(fleet_id)),
                 "on_live": lambda unit, *live: self._tell(Live(fleet_id, unit, *live)),
                 "on_asking": lambda: self._tell(Listed()),  # a project's count changed
+                "models": self._known,
                 "project": _Side(self, fleet_id, project_name)}
+
+    async def _learn_models(self, config: FleetConfig) -> None:
+        """Have the models' names and prices there before a fleet starts whose
+        supervisors choose among them: they are in what the hiring tool says."""
+        if config.auto_models:
+            await self.models()
+
+    def _known(self) -> dict[str, str]:
+        """What is known of each model the agent program offers, by its id."""
+        return {model_id: ", ".join(part for part in (name, about) if part)
+                for model_id, name, about in self._models or ()}
 
     # ── What a team is given of its project (manager.Project) ────────────
 

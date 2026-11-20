@@ -216,9 +216,10 @@ class Harness(abc.ABC):
     @abc.abstractmethod
     def vocabulary(self) -> Vocabulary: ...
 
-    async def model_choices(self, folder: Path) -> Sequence[tuple[str, str]]:
-        """The models its agents can run on, each its id and its name, for a person to
-        choose from; none when it cannot say. `folder` is its own to use for asking."""
+    async def model_choices(self, folder: Path) -> Sequence[tuple[str, str, str]]:
+        """The models its agents can run on, for a person or a supervisor to choose from:
+        each its id, its name, and what else is known of it in a few words (its price),
+        or "". None when it cannot say. `folder` is its own to use for asking."""
         return ()
 
     @abc.abstractmethod

@@ -200,6 +200,19 @@ async def test_an_answer_can_hold_for_the_rest_of_an_agents_work(fleet, tmp_path
     assert [e.always for e in events if isinstance(e, Answered)] == [True]
 
 
+async def test_a_card_an_agent_ends_its_turn_with_is_said_in_words(fleet):
+    """Kadence's wrap_up is a card in its own window. In a fleet's feed it is what the
+    agent said, or the turn would show nothing."""
+    manager, events = await fleet({"Lead": [call(
+        "wrap_up", recap="The art is listed.", question="Order more art?",
+        options=[{"label": "Yes, order it"}, {"label": "Not now"}])]})
+    await manager.add(None, "Lead", "Look at the art", ongoing=True)
+    await until(lambda: any(isinstance(e, Said) for e in events))
+    [said] = [e.text for e in events if isinstance(e, Said)]
+    assert said == "The art is listed.\n\nOrder more art?\n- Yes, order it\n- Not now"
+    await manager.aclose()
+
+
 async def test_stopping_an_agent_stops_those_under_it(fleet):
     manager, _ = await fleet({
         "Lead": [call("mcp__fleet__delegate", name="Mid", task="Run the team",

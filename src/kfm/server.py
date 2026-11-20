@@ -23,7 +23,7 @@ from kfm import log
 from kfm.api import UnitError
 from kfm.fleet import FleetError
 from kfm.local import LocalService
-from kfm.service import VERSION, Happened, Listed, Live, Proposed, Update, Updated
+from kfm.service import VERSION, Happened, Listed, Live, Proposed, Update, Updated, Within
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ CALLS = frozenset({
     "projects", "create_project", "rename_project", "delete_project", "proposal", "settle_proposal",
     "fleets", "add_fleet", "watch", "history", "start", "stop", "rename_fleet", "delete_fleet",
     "add_agent", "remove_agent", "rename_agent", "set_task", "set_model", "say", "approve",
-    "settings", "save_settings", "models"})
+    "follow", "unfollow", "ask", "settings", "save_settings", "models"})
 _REFUSALS = (FleetError, UnitError, ValueError, OSError, TypeError)
 
 
@@ -98,6 +98,9 @@ class Server:
                 self._send_all({"update": "proposed", "project": project_id})
             case Live():
                 self._send_all({"update": "live", **asdict(update)})
+            case Within(fleet=fleet_id, unit=unit, event=event):
+                self._send_all({"update": "within", "fleet": fleet_id, "unit": unit,
+                                "event": event})
 
     def _record(self, fleet_id: str) -> dict[str, Any]:
         fleet = self.service.fleet(fleet_id)
@@ -116,12 +119,13 @@ class Server:
     async def _attached(self, reader: asyncio.StreamReader,
                         writer: asyncio.StreamWriter) -> None:
         mine: set[asyncio.Task[None]] = set()
+        followed: set[tuple[str, str]] = set()  # the agents it follows, let go of with it
         writer.write(json.dumps({"kfm": VERSION, "pid": os.getpid(),
                                  "since": self._since}).encode() + b"\n")
         self._writers.add(writer)
         try:
             while line := await reader.readline():
-                call = asyncio.ensure_future(self._answer(writer, line))
+                call = asyncio.ensure_future(self._answer(writer, line, followed))
                 for calls in (mine, self._calls):
                     calls.add(call)
                     call.add_done_callback(calls.discard)
@@ -131,9 +135,12 @@ class Server:
             self._writers.discard(writer)
             for call in list(mine):  # what it was waiting for is nobody's now
                 call.cancel()
+            for fleet_id, unit in followed:
+                await self.service.unfollow(fleet_id, unit)
             writer.close()
 
-    async def _answer(self, writer: asyncio.StreamWriter, line: bytes) -> None:
+    async def _answer(self, writer: asyncio.StreamWriter, line: bytes,
+                      followed: set[tuple[str, str]]) -> None:
         request_id = None
         try:
             request = json.loads(line)
@@ -145,8 +152,13 @@ class Server:
             elif method not in CALLS:
                 raise ValueError(f"There is no {method!r} in KFM's service.")
             else:
+                args = request.get("args", [])
                 answer = {"id": request_id, "result": await self._call(
-                    method, request.get("args", []), request.get("kwargs", {}))}
+                    method, args, request.get("kwargs", {}))}
+                if method == "follow" and answer["result"]:
+                    followed.add((args[0], args[1]))
+                elif method == "unfollow":
+                    followed.discard((args[0], args[1]))
         except _REFUSALS + (KeyError,) as e:
             answer = {"id": request_id,
                       "error": {"type": type(e).__name__, "message": str(e)}}

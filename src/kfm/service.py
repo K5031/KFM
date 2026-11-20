@@ -23,7 +23,7 @@ from kfm.draft import Draft
 from kfm.events import Approval, FleetEvent
 from kfm.fleet import Fleet
 
-VERSION = 5  # of this contract; a service and a client of different versions do not talk
+VERSION = 6  # of this contract; a service and a client of different versions do not talk
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,7 +98,19 @@ class Live:
     doing: str
 
 
-type Update = Happened | Updated | Listed | Proposed | Live
+@dataclass(frozen=True, slots=True)
+class Within:
+    """Something happened in an agent's own Kadence conversation, for whoever follows it
+    (Service.follow): an event of Kadence's headless channel as that carries it
+    ({"seq": ..., "event": ...}), or None when the agent's process ended. Not in the
+    fleet's history: the agent's Kadence keeps its conversation."""
+
+    fleet: str
+    unit: str
+    event: dict[str, Any] | None
+
+
+type Update = Happened | Updated | Listed | Proposed | Live | Within
 
 
 class Service(abc.ABC):
@@ -222,6 +234,26 @@ class Service(abc.ABC):
                       always: bool = False) -> None:
         """Answer an `events.Approval`. `always` with `allow`: that agent no longer asks
         for actions of that kind."""
+
+    # ── An agent's own conversation ──────────────────────────────────────
+
+    @abc.abstractmethod
+    async def follow(self, fleet: str, unit: str) -> bool:
+        """Have what happens in an agent's own Kadence conversation sent as `Within`,
+        and its process kept up meanwhile; it is started on its conversation if it is
+        closed, which asks its model nothing. After a `Within` with no event, follow
+        again. False when there is nothing to follow: the fleet does not run, or the
+        agent has not begun."""
+
+    @abc.abstractmethod
+    async def unfollow(self, fleet: str, unit: str) -> None:
+        """Stop that. Nothing when it was not followed."""
+
+    @abc.abstractmethod
+    async def ask(self, fleet: str, unit: str, method: str, params: dict[str, Any]) -> Any:
+        """A request to a followed agent's own Kadence, of its headless channel and in
+        its JSON, and the answer: how a frontend reads its conversation. UnitError when
+        its process is not up or refuses."""
 
     # ── Settings, and what happens ───────────────────────────────────────
 

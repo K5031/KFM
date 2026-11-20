@@ -426,6 +426,19 @@ async def test_in_auto_whoever_starts_an_agent_names_its_model(tmp_path: Path):
     await service.aclose()
 
 
+async def test_a_unit_with_no_conversation_of_its_own_is_not_followed(tmp_path: Path):
+    service, _, _ = local(tmp_path, {"K5001": [{"do": [("say", "On watch.")]}]})
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    dev = await service.add_fleet(made.id, "dev", "Keep watch", ongoing=True)
+    await until(lambda: service.fleet(dev).lead is not None
+                and service.fleet(dev).lead.state == "working")
+    assert not await service.follow(dev, "K5001")  # a scripted unit: its page is the feed
+    with pytest.raises(UnitError):
+        await service.ask(dev, "K5001", "snapshot", {})
+    await service.unfollow(dev, "K5001")
+    await service.aclose()
+
+
 async def test_an_agents_id_is_its_own_in_all_of_a_project(tmp_path: Path):
     service, _, _ = local(tmp_path, {
         "K5001": [{"do": [("tool", "delegate", {"name": "Coder", "task": "Code"})]}],

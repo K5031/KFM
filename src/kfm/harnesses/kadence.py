@@ -210,6 +210,18 @@ class _Session(Session):
         self._closed = True
         await self._channel.close(grace_s)
 
+    # Not of the contract: Kadence's own channel, for a window that shows the unit's
+    # conversation as Kadence does (Manager.follow, Manager.ask).
+
+    @property
+    def listeners(self) -> list[Callable[[EventEnvelope | None], None]]:
+        """Called with each event of the unit's Kadence, and None when it ended."""
+        return self._channel.listeners
+
+    async def ask(self, method: str, params: dict[str, Any]) -> Any:
+        """A request of Kadence's headless channel, in its JSON."""
+        return await self._request(method, **params)
+
     async def _request(self, method: str, **params: Any) -> Any:
         try:
             return await self._channel.request(method, **params)

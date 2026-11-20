@@ -36,6 +36,7 @@ from kfm.service import (
     Service,
     Update,
     Updated,
+    Within,
 )
 
 START_S = 15.0  # for a service that was started to answer
@@ -204,6 +205,17 @@ class RemoteService(Service):
                       always: bool = False) -> None:
         await self._request("approve", fleet, unit, request_id, allow, always=always)
 
+    # ── An agent's own conversation ──────────────────────────────────────
+
+    async def follow(self, fleet: str, unit: str) -> bool:
+        return await self._request("follow", fleet, unit)
+
+    async def unfollow(self, fleet: str, unit: str) -> None:
+        await self._request("unfollow", fleet, unit)
+
+    async def ask(self, fleet: str, unit: str, method: str, params: dict[str, Any]) -> Any:
+        return await self._request("ask", fleet, unit, method, params)
+
     # ── Settings, and what happens ───────────────────────────────────────
 
     async def settings(self) -> FleetConfig:
@@ -282,6 +294,8 @@ class RemoteService(Service):
                 self._tell(Listed())
             case "proposed":
                 self._tell(Proposed(message["project"]))
+            case "within":  # of an agent someone here follows
+                self._tell(Within(fleet_id, message["unit"], message["event"]))
             case "live":  # of any fleet: it is asked for nowhere, and a page comes later
                 self._tell(Live(fleet_id, message["unit"], message["thinking"],
                                 message["writing"], message["doing"]))

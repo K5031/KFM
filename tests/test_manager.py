@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 import tomli_w
 
+from kfm.api import UnitError
 from kfm.config import FleetConfig
 from kfm.events import Answered, Approval, Changed, Delivered, FleetEvent, Notice, Said
 from kfm.fleet import Fleet, FleetError
@@ -210,6 +211,29 @@ async def test_a_card_an_agent_ends_its_turn_with_is_said_in_words(fleet):
     await until(lambda: any(isinstance(e, Said) for e in events))
     [said] = [e.text for e in events if isinstance(e, Said)]
     assert said == "The art is listed.\n\nOrder more art?\n- Yes, order it\n- Not now"
+    await manager.aclose()
+
+
+async def test_an_agents_own_conversation_is_followed_and_asked(fleet):
+    manager, _ = await fleet({"Lead": [finish("Counted."), {"when": "More", "text": "Two more."}]})
+    lead = await manager.add(None, "Lead", "Count the files")
+    await until(lambda: lead.state == "done" and lead.id not in manager._sessions)
+    heard: list[Any] = []
+    assert await manager.follow(lead, heard.append)  # closed: started on its conversation
+    snapshot = await manager.ask(lead, "snapshot", {})
+    assert snapshot["conversation"]["id"] == lead.session and lead.state == "done"
+    history = await manager.ask(lead, "history", {"conversation_id": lead.session})
+    assert any("Count the files" in str(message) for message in history)
+    await manager.say("More")
+    await until(lambda: any(type(e.event).__name__ == "MessageCommitted"
+                            and "Two more." in str(e.event) for e in heard))
+    await until(lambda: lead.state == "done")
+    await asyncio.sleep(0.2)
+    assert lead.id in manager._sessions  # kept up for whoever follows it
+    manager.unfollow(lead)
+    await until(lambda: lead.id not in manager._sessions)
+    with pytest.raises(UnitError):
+        await manager.ask(lead, "snapshot", {})
     await manager.aclose()
 
 

@@ -11,6 +11,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from kadence.frontends.wire import to_json
+
 from kfm import draft, harnesses, log, project
 from kfm import fleet as records
 from kfm.api import Harness, UnitError
@@ -28,6 +30,7 @@ from kfm.service import (
     Service,
     Update,
     Updated,
+    Within,
 )
 from kfm.units import SECRETARY
 
@@ -228,6 +231,27 @@ class LocalService(Service):
                       always: bool = False) -> None:
         manager = self._get(fleet_id)
         await manager.approve(self._unit(manager, unit_id), request_id, allow, always=always)
+
+    # ── An agent's own conversation ──────────────────────────────────────
+
+    async def follow(self, fleet_id: str, unit_id: str) -> bool:
+        manager = self._get(fleet_id)
+
+        def hear(envelope: Any) -> None:
+            self._tell(Within(fleet_id, unit_id, None if envelope is None else {
+                "seq": envelope.seq, "event": to_json(envelope.event)}))
+
+        return await manager.follow(self._unit(manager, unit_id), hear)
+
+    async def unfollow(self, fleet_id: str, unit_id: str) -> None:
+        manager = self._managers.get(fleet_id)
+        if manager is not None and (unit := manager.fleet.units.get(unit_id)) is not None:
+            manager.unfollow(unit)
+
+    async def ask(self, fleet_id: str, unit_id: str, method: str,
+                  params: dict[str, Any]) -> Any:
+        manager = self._get(fleet_id)
+        return await manager.ask(self._unit(manager, unit_id), method, params)
 
     # ── Settings, and what happens ───────────────────────────────────────
 

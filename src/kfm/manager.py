@@ -118,6 +118,9 @@ class Manager:
         self._live: dict[str, list[str]] = {}
         self._live_due: set[str] = set()
         self._used: set[str] = set()  # units whose tool is over, and still shown
+        # Units whose own conversation someone follows: the list each one's listener is
+        # in, and the listener (`follow`).
+        self._followed: dict[str, tuple[list[Any], Callable[[Any], None]]] = {}
         self.config = settings.from_record(fleet.settings)
         self.running = False  # its processes are up, or ending
         self.stopping = False  # they are ending: nothing more is started
@@ -312,6 +315,47 @@ class Manager:
         """What the unit's process is started with of the settings."""
         return (unit.model or self.config.model_for(unit.rank, unit.team),
                 self.config.permissions, unit.budget_usd)
+
+    async def follow(self, unit: Unit, hear: Callable[[Any], None]) -> bool:
+        """Have `hear` called with everything that happens in the unit's own
+        conversation, as its Kadence tells it, and with None when its process ended;
+        `follow` again then. Its process is kept up meanwhile, and started on its
+        conversation if it is closed, which asks its model nothing. False when there is
+        nothing to follow: the fleet does not run, the unit has not begun, its process
+        does not come up, or it is not a Kadence."""
+        self._unfollow(unit)
+        if not self.up or unit.session is None:
+            return False
+        try:
+            session = await self._session(unit)
+        except UnitError:
+            return False
+        listeners = getattr(session, "listeners", None)
+        if listeners is None:
+            return False
+        listeners.append(hear)
+        self._followed[unit.id] = (listeners, hear)
+        return True
+
+    def unfollow(self, unit: Unit) -> None:
+        """Nobody follows the unit any more: one that has ended is closed, as it would
+        have been."""
+        self._unfollow(unit)
+        if unit.state == "done" and unit.id in self._sessions:
+            self._spawn(self._close(unit))
+
+    def _unfollow(self, unit: Unit) -> None:
+        listeners, hear = self._followed.pop(unit.id, ([], None))
+        if hear in listeners:
+            listeners.remove(hear)
+
+    async def ask(self, unit: Unit, method: str, params: dict[str, Any]) -> Any:
+        """A request to the unit's own Kadence, in its channel's JSON, and its answer.
+        UnitError when its process is not up or refuses."""
+        session = self._sessions.get(unit.id)
+        if session is None or not hasattr(session, "ask"):
+            raise UnitError(f"{unit.label} has no conversation open.")
+        return await session.ask(method, params)
 
     async def set_model(self, unit: Unit, model: str | None) -> None:
         """The model the unit runs on from now; None or "": its rank's or team's. A unit
@@ -710,7 +754,8 @@ class Manager:
                 if unit.report is not None:  # a conversation's turn ends without one
                     self._deliver(unit, "report",
                                   f"[Report from {unit.label}] {unit.report}", unit.report)
-                self._spawn(self._close(unit))
+                if unit.id not in self._followed:  # whoever follows it reads on
+                    self._spawn(self._close(unit))
                 if unit.supervisor is None:
                     self.finished.set()
                     self._changed()

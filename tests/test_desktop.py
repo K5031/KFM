@@ -726,7 +726,8 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         assert field.currentText() == "" and field.lineEdit().placeholderText() == "Default"
         # The model of every rank that has none of its own: each such rank says which.
         every = dialog.models["default"]
-        assert list(dialog.models) == ["default", "K5", "K4", "K3", "K2", "K1"]
+        assert list(dialog.models) == ["default", "secretary", "K5", "K4", "K3", "K2", "K1"]
+        assert dialog.models["secretary"].lineEdit().placeholderText() == "As K5"
         assert every.lineEdit().placeholderText() == "The agent program's own"
         every.setCurrentText("small-1")
         assert field.lineEdit().placeholderText() == "Default: small-1"

@@ -1000,11 +1000,16 @@ class SettingsDialog(QDialog):
         models = section("Models")
         # "default" is the model of every rank that has none of its own (FleetConfig.models).
         self.models: dict[str, QComboBox] = {}
-        for key in ("default", *(f"K{rank}" for rank in range(config.top_rank, 0, -1))):
+        top = f"K{config.top_rank}"
+        for key in ("default", "secretary",
+                    *(f"K{rank}" for rank in range(config.top_rank, 0, -1))):
             field = self.models[key] = QComboBox(editable=True)
             field.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)  # typed is not listed
             field.setCurrentText(config.models.get(key, ""))
-            models.addRow("Default" if key == "default" else key, field)
+            models.addRow({"default": "Default", "secretary": "Secretary"}.get(key, key), field)
+        self.models["secretary"].lineEdit().setPlaceholderText(f"As {top}")
+        self.models["secretary"].setToolTip(
+            f"The model a project's secretary runs on; empty: {top}'s")
         every = self.models["default"]
         every.lineEdit().setPlaceholderText("The agent program's own")
         every.setToolTip("The model of every rank that has none of its own; empty: the one "
@@ -1080,7 +1085,7 @@ class SettingsDialog(QDialog):
         """A rank without a model of its own says which one it then runs on."""
         default = self.models["default"].currentText().strip()
         for key, field in self.models.items():
-            if key != "default":
+            if key not in ("default", "secretary"):
                 field.lineEdit().setPlaceholderText(f"Default: {default}" if default
                                                     else "Default")
                 field.setToolTip(f"The model {key} agents run on; empty: the default"

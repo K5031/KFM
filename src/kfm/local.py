@@ -32,6 +32,7 @@ from kfm.service import (
 from kfm.units import SECRETARY
 
 _ID = re.compile(r"[\w.-]+")
+SECRETARY_MODEL = "secretary"  # in FleetConfig.models: a secretary's, else her rank's
 READ_ONLY = "allow_read_only"  # the secretary looks, writes and proposes; she does no work
 LATELY, MORE = 4, 30  # lines of a team's record the secretary is shown; of one she asks for
 CLIP = 300  # characters of one such line
@@ -65,7 +66,7 @@ class LocalService(Service):
         manager = self._managers[secretary] = await asyncio.to_thread(
             lambda: Manager.new(config, made.secretary, made.work, SECRETARY,
                                 **self._how(secretary, made.name)))
-        await manager.add(None, SECRETARY, "")
+        await manager.add(None, SECRETARY, "", model=config.models.get(SECRETARY_MODEL))
         self._tell(Listed())
         if description.strip():
             await manager.say(description.strip())

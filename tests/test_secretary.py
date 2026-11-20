@@ -218,3 +218,17 @@ async def test_a_team_with_a_folder_of_its_own_finds_it_there(tmp_path: Path):
         await service.add_fleet(made.id, "elsewhere", "Go", work=str(tmp_path / "nowhere"))
     assert not (tmp_path / "nowhere").exists()
     await service.aclose()
+
+
+async def test_a_secretary_runs_on_the_model_set_for_secretaries(tmp_path: Path):
+    """Else on the top rank's, as she is of that rank."""
+    for models, expected in (({"secretary": "small-1", "K5": "big-1"}, "small-1"),
+                             ({"K5": "big-1"}, "big-1")):
+        harness = FakeHarness({"Secretary": [{"do": [("say", "Hello.")]}]})
+        home = tmp_path / expected
+        (home / "work").mkdir(parents=True)
+        service = LocalService(home, harness=harness, config=FleetConfig(models=models))
+        await service.create_project("Studio", str(home / "work"), "Run my studio")
+        await until(lambda harness=harness: harness.models)
+        assert harness.models == [("Secretary", expected)]
+        await service.aclose()

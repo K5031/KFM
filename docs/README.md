@@ -274,6 +274,7 @@ config = "~/.kadence/config.toml"   # the provider, key and options every agent 
 [models]                  # a model per rank; "default" for the rest
 K5 = "claude-opus-5-5"
 default = "claude-sonnet-5-5"
+secretary = "claude-sonnet-5-5"   # a project's secretary; without it, the top rank's
 
 [teams]                   # a team's model wins over its rank's
 marketing = "claude-sonnet-5-5"

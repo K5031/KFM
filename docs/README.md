@@ -334,6 +334,9 @@ agent's supervisor gave.
 ## Not there yet
 
 - The service uses a Unix socket: Linux and macOS, not Windows.
+- After an update, KFM ends the service that was still running the version from before
+  and starts the new one. Fleets that were running are stopped by that; the window says
+  how many, with **Resume**.
 - The secretary proposes new teams; ending a team or rewriting what one does is yours
   to do, or hers to ask its lead.
 - Agents share one folder, and nothing stops two from editing the same file.

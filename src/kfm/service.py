@@ -117,6 +117,9 @@ class Service(abc.ABC):
     # It was started before the code this frontend runs was installed, and so runs what
     # was there before: only a service in another process can be.
     stale: bool = False
+    # The fleets that ran in a service of another version, which was ended for this one
+    # when the frontend attached: they are stopped, and can be resumed.
+    interrupted: Sequence[str] = ()
 
     # ── Projects ─────────────────────────────────────────────────────────
 

@@ -230,6 +230,9 @@ async def _attached(args: argparse.Namespace) -> int:
     service = await RemoteService.connect(args.home)
     if service.stale:
         print(STALE, file=sys.stderr)
+    if service.interrupted:
+        print(f"kfm: KFM was updated and its service started again. Stopped by it, to "
+              f"resume: {', '.join(service.interrupted)}", file=sys.stderr)
     try:
         return await _COMMANDS[args.command](service, args)
     finally:

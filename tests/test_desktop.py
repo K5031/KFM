@@ -1173,6 +1173,22 @@ async def test_the_window_has_rounded_corners_and_a_shadow_unless_maximized(
     assert shown.contentsRect() == shown.rect()
 
 
+async def test_fleets_an_update_stopped_are_resumed_from_the_strip(window, tmp_path: Path):
+    shown, harness = window({"K5001": [{"do": [("say", "On watch.")]}] * 2})
+    view = await start(shown, tmp_path, "Keep watch", duty=True)
+    await until(lambda: "K5001" in harness.heard)
+    await view.stop()
+    await until(lambda: not view.running)
+    shown._interrupted = [view.id]  # as a service that replaced an older one says
+    shown.back_button.click()
+    await until(lambda: len(shown.attention.rows) == 1)
+    [row] = shown.attention.rows
+    assert row.text.text() == "KFM was updated · 1 fleet stopped"
+    assert [b.text() for b in row.buttons] == ["Resume", "Dismiss"]
+    row.buttons[0].click()
+    await until(lambda: view.running and not shown.attention.rows)
+
+
 @pytest.fixture
 async def kadence_window(tmp_path: Path, qapp: QApplication, monkeypatch: pytest.MonkeyPatch):
     """make(scripts) -> a window on a service whose agents are real Kadence processes

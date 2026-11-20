@@ -24,6 +24,7 @@ from kfm.config import HOME, FleetConfig
 from kfm.draft import Draft, Team
 from kfm.events import Approval, FleetEvent
 from kfm.fleet import Fleet, FleetError
+from kfm.project import SECRETARY
 from kfm.server import LINE_LIMIT, SOCKET
 from kfm.service import (
     VERSION,
@@ -40,6 +41,7 @@ from kfm.service import (
 )
 
 START_S = 15.0  # for a service that was started to answer
+ANSWER_S = 5.0  # for one of another version to say it ends
 END_S = 30.0  # for one that was asked to end to be gone: it stops its fleets first
 _ERRORS: dict[str, type[Exception]] = {
     "FleetError": FleetError, "UnitError": UnitError,
@@ -70,6 +72,7 @@ class RemoteService(Service):
         self._reader, self._writer = reader, writer
         self._path, self.pid, self.since = path, pid, since
         self.stale = False
+        self.interrupted = []
         self._ids = itertools.count(1)
         self._waiting: dict[int, asyncio.Future[Any]] = {}
         self._fleets: dict[str, Fleet] = {}
@@ -80,31 +83,37 @@ class RemoteService(Service):
     @classmethod
     async def connect(cls, home: Path = HOME, *, socket: Path | None = None,
                       start: bool = True) -> RemoteService:
-        """The service of `home`, started if none runs (`start`). ServiceError when it
-        cannot be reached, or speaks another version of the contract."""
+        """The service of `home`, started if none runs (`start`). One that speaks another
+        version of the contract, left running by the program from before an update, is
+        ended first: its fleets stop, and `interrupted` names those that ran. ServiceError
+        when none can be reached."""
         path = socket or home / SOCKET
-        try:
-            reader, writer = await asyncio.open_unix_connection(str(path), limit=LINE_LIMIT)
-        except (OSError, ValueError):
-            if not start:
-                raise ServiceError("No KFM service runs.") from None
-            reader, writer = await _started(home, path)
-        try:
-            hello = json.loads(await asyncio.wait_for(reader.readline(), START_S))
-        except (TimeoutError, ValueError) as e:
-            raise ServiceError(f"The KFM service did not answer: {e}") from None
-        if hello.get("kfm") != VERSION:
-            writer.close()
-            end = f"kill {hello['pid']}" if "pid" in hello else "pkill -f 'kfm.*serve'"
-            raise ServiceError(
-                f"A KFM service of another version is running (it speaks version "
-                f"{hello.get('kfm')}, this program version {VERSION}). With no fleet "
-                f"running and no window open it ends by itself within seconds: start KFM "
-                f"again then. Otherwise end it with: {end}\nIts fleets stop and can be "
-                f"resumed.")
+        interrupted: list[str] = []
+        for replacing in (True, False):
+            try:
+                reader, writer = await asyncio.open_unix_connection(str(path),
+                                                                    limit=LINE_LIMIT)
+            except (OSError, ValueError):
+                if not start:
+                    raise ServiceError("No KFM service runs.") from None
+                reader, writer = await _started(home, path)
+            try:
+                hello = json.loads(await asyncio.wait_for(reader.readline(), START_S))
+            except (TimeoutError, ValueError) as e:
+                raise ServiceError(f"The KFM service did not answer: {e}") from None
+            if hello.get("kfm") == VERSION:
+                break
+            if not replacing:
+                writer.close()
+                raise ServiceError(
+                    f"The KFM service speaks version {hello.get('kfm')} of its contract and "
+                    f"this program version {VERSION}: they are not of one installation.")
+            interrupted = await asyncio.to_thread(_ran_under, home, hello.get("pid"))
+            await _ended(reader, writer, path, hello.get("pid"))
         service = cls(reader, writer, path=path, pid=hello.get("pid", 0),
                       since=hello.get("since", 0.0))
         service.stale = service.since < await asyncio.to_thread(installed_at)
+        service.interrupted = interrupted
         return service
 
     # ── Projects ─────────────────────────────────────────────────────────
@@ -325,6 +334,66 @@ class RemoteService(Service):
     def _tell(self, update: Update) -> None:
         for listener in list(self._listeners):
             listener(update)
+
+
+def _ran_under(home: Path, pid: int | None) -> list[str]:
+    """The ids of the fleets whose records say that process runs them. Blocking."""
+    found = []
+    for record in sorted((home / "projects").glob("*/fleets/*/fleet.json")):
+        try:
+            runs = json.loads(record.read_text()).get("manager_pid")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if pid is not None and runs == pid and record.parent.name != SECRETARY:
+            found.append(f"{record.parent.parent.parent.name}/{record.parent.name}")
+    return found
+
+
+async def _ended(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, path: Path,
+                 pid: int | None) -> None:
+    """End a service this program cannot talk to: asked to, as a frontend asks (that much
+    every version understands), and its process ended if it does not go. ServiceError
+    when it is still there."""
+    writer.write(json.dumps({"id": 0, "method": "end", "args": [], "kwargs": {}}).encode()
+                 + b"\n")
+    asked, line = False, b"-"
+    try:
+        async with asyncio.timeout(ANSWER_S):
+            while not asked and (line := await reader.readline()):
+                with contextlib.suppress(ValueError, AttributeError):
+                    answer = json.loads(line)
+                    asked = answer.get("id") == 0 and "error" not in answer
+            asked = asked or not line  # it closed: gone already
+    except (TimeoutError, ConnectionError, OSError):
+        pass
+    if not asked and pid:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.kill(pid, signal.SIGTERM)
+    try:
+        async with asyncio.timeout(END_S):  # it stops its fleets first
+            while await reader.read(65536):
+                pass
+    except (TimeoutError, ConnectionError, OSError):
+        pass
+    writer.close()
+    waited = 0.0
+    while _alive(pid) if pid else path.exists():
+        if waited >= END_S:
+            raise ServiceError(
+                "The KFM service from before the update did not end"
+                + (f": end it with kill {pid}." if pid else "."))
+        await asyncio.sleep(0.1)
+        waited += 0.1
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 async def _started(home: Path, path: Path) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:

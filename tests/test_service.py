@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
 
+from kfm import remote
 from kfm.api import UnitError
 from kfm.config import FleetConfig
 from kfm.events import Delivered, Said, Told, units
@@ -226,20 +228,50 @@ async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
     assert Fleet.load(home / "projects" / made.id / "fleets" / fleet.split("/")[1]).name == "dev"
 
 
-async def test_a_service_of_another_version_is_refused_and_named(tmp_path: Path):
+async def test_a_service_of_another_version_is_ended_for_this_one(tmp_path: Path):
+    """The program from before an update left it running. It is asked to end, as any
+    frontend asks, and the fleets it ran are named."""
     socket = tmp_path / "s"
+    record = tmp_path / "projects" / "p1" / "fleets" / "f1" / "fleet.json"
+    record.parent.mkdir(parents=True)
+    record.write_text('{"manager_pid": 4242}')
+    (record.parent.parent / "f2").mkdir()
+    (record.parent.parent / "f2" / "fleet.json").write_text('{"manager_pid": null}')
+    asked: list[dict] = []
 
     async def old(reader, writer):  # speaks a version this program does not
-        writer.write(b'{"kfm": 0, "pid": 4242}\n')
-        await reader.read()
+        writer.write(b'{"kfm": 0}\n')
+        asked.append(json.loads(await reader.readline()))
+        writer.write(b'{"id": 0, "result": null}\n')
+        server.close()
+        socket.unlink()
         writer.close()
 
     server = await asyncio.start_unix_server(old, path=str(socket))
-    started = asyncio.get_running_loop().time()
-    with pytest.raises(ServiceError, match="kill 4242") as refused:
+    with pytest.raises(ServiceError, match="No KFM service runs"):  # and none is started
         await RemoteService.connect(tmp_path, socket=socket, start=False)
-    assert asyncio.get_running_loop().time() - started < 1.0  # at once: it is not waited out
-    assert "version 0" in str(refused.value) and "can be resumed" in str(refused.value)
+    assert asked == [{"id": 0, "method": "end", "args": [], "kwargs": {}}]
+    assert remote._ran_under(tmp_path, 4242) == ["p1/f1"]
+
+
+async def test_a_service_that_does_not_end_when_asked_has_its_process_ended(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(remote, "ANSWER_S", 0.2)
+    monkeypatch.setattr(remote, "END_S", 0.5)
+    socket = tmp_path / "s"
+    process = await asyncio.create_subprocess_exec("sleep", "60")
+
+    async def old(reader, writer):  # one from before a frontend could ask it to end
+        writer.write(json.dumps({"kfm": 0, "pid": process.pid}).encode() + b"\n")
+        await reader.readline()
+        writer.write(b'{"id": 0, "error": {"type": "ValueError", "message": "no end"}}\n')
+        await process.wait()
+        writer.close()
+
+    server = await asyncio.start_unix_server(old, path=str(socket))
+    with pytest.raises(ServiceError, match="No KFM service runs|not of one installation"):
+        await RemoteService.connect(tmp_path, socket=socket, start=False)
+    assert process.returncode is not None  # ended
     server.close()
 
 

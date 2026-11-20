@@ -1750,6 +1750,8 @@ class FleetWindow(QMainWindow):
         self.drafts: dict[str, DraftPage] = {}  # by project id, until started
         # What each agent is doing now, as the service last said it: (fleet, unit).
         self._doing: dict[tuple[str, str], tuple[str, str, str]] = {}
+        # The fleets an update of KFM stopped, until they are resumed or it is dismissed.
+        self._interrupted = list(service.interrupted)
         self.closed = asyncio.Event()
         # The fleet the agents list shows, and who is under whom in it.
         self._agents_shape: tuple[str, tuple[tuple[str, str | None], ...]] = ("", ())
@@ -2170,6 +2172,22 @@ class FleetWindow(QMainWindow):
     async def stop(self) -> None:
         if self.view is not None:
             await self.view.stop()
+
+    async def resume_interrupted(self) -> None:
+        """Start the fleets again that an update of KFM stopped."""
+        stopped, self._interrupted = self._interrupted, []
+        self._refresh()
+        for fleet_id in stopped:
+            try:
+                await self.service.fleets(fleet_id.partition("/")[0])  # so that it is read
+                await self.service.start(fleet_id)
+            except REFUSALS as e:
+                self.dialog = QMessageBox(QMessageBox.Icon.Warning, "KFM", str(e), parent=self)
+                self.dialog.show()
+
+    def _forget_interrupted(self) -> None:
+        self._interrupted = []
+        self._refresh()
 
     def offer_restart(self) -> None:
         """Say that the service runs the code from before an update, if it does."""
@@ -2630,6 +2648,12 @@ class FleetWindow(QMainWindow):
         """Every approval and every lead's question that waits for the person, in the
         fleets read so far, of whatever project."""
         rows: list[tuple[str, str, list[tuple[str, Callable[[], None]]]]] = []
+        if self._interrupted:
+            many = len(self._interrupted)
+            said = f"KFM was updated · {many} fleet{'s' * (many != 1)} stopped"
+            rows.append(("updated", said,
+                         [("Resume", lambda: self._run(self.resume_interrupted())),
+                          ("Dismiss", self._forget_interrupted)]))
         for view in self.views.values():
             fleet = view.fleet
             if fleet is None:

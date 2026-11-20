@@ -864,7 +864,15 @@ class SettingsDialog(QDialog):
         self.projects = QLineEdit(config.projects_folder)
         self.projects.setPlaceholderText("None: a folder is chosen for each project")
         self.projects.setToolTip("A new project gets a folder named after it in here")
-        form.addRow("Projects folder", self.projects)
+        self.browse = QToolButton(objectName="folderPicker")
+        self.browse.setIcon(theme.icon("folder", theme.current().muted, 16))
+        self.browse.setToolTip("Choose a folder")
+        self.browse.clicked.connect(self._choose_projects)
+        chosen = QHBoxLayout()
+        chosen.setSpacing(6)
+        chosen.addWidget(self.projects, 1)
+        chosen.addWidget(self.browse)
+        form.addRow("Projects folder", chosen)
         self.warning = label("", role="small", tone="error")
         self.warning.hide()
         self.save = QPushButton("Save")
@@ -879,6 +887,14 @@ class SettingsDialog(QDialog):
         rows.addLayout(form)
         rows.addWidget(self.warning)
         rows.addLayout(foot)
+
+    def _choose_projects(self) -> None:
+        start = Path(self.projects.text().strip() or Path.home()).expanduser()
+        picker = self.picker = QFileDialog(self, "The folder new projects get theirs in",
+                                           str(start))
+        picker.setFileMode(QFileDialog.FileMode.Directory)
+        picker.fileSelected.connect(self.projects.setText)
+        picker.open()
 
     @staticmethod
     def _money(value: float) -> QDoubleSpinBox:

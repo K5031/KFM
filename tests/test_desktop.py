@@ -651,7 +651,10 @@ async def test_a_project_makes_its_folder_in_the_projects_folder(tmp_path: Path,
         assert "Choose a folder" in form.warning.text()  # none is set: as it was
         shown.gear_button.click()
         await until(lambda: shown.dialog is not None and shown.dialog.isVisible())
-        shown.dialog.projects.setText(str(tmp_path / "all"))
+        shown.dialog.browse.click()  # a folder is picked, or its path typed
+        shown.dialog.picker.fileSelected.emit(str(tmp_path / "all"))
+        shown.dialog.picker.reject()
+        assert shown.dialog.projects.text() == str(tmp_path / "all")
         shown.dialog.save.click()
         await until(lambda: form.base == tmp_path / "all")
         again = FleetWindow(shown.service)  # a window that opens later knows it at once

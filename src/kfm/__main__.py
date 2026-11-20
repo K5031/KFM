@@ -20,6 +20,7 @@ from kfm.api import UnitError
 from kfm.config import HOME
 from kfm.events import Across, Approval, Changed, Delivered, Instructed, Notice, Said
 from kfm.fleet import Unit
+from kfm.project import folder_name
 from kfm.remote import RemoteService, ServiceError
 from kfm.service import Happened, ProjectInfo, Service, Update, Updated
 from kfm.units import SECRETARY
@@ -71,8 +72,9 @@ def main(argv: list[str] | None = None) -> int:
     what = project.add_subparsers(dest="action", required=True)
     new = what.add_parser("new")
     new.add_argument("name")
-    new.add_argument("--work", type=Path, default=Path.cwd(),
-                     help="the folder its fleets work in (default: this one)")
+    new.add_argument("--work", type=Path,
+                     help="the folder its fleets work in (default: one named after it in "
+                          "the projects folder, if that is set, else this one)")
     new.add_argument("--does", default="",
                      help="what it should do: its secretary proposes its teams")
     rename = what.add_parser("rename")
@@ -142,6 +144,9 @@ def main(argv: list[str] | None = None) -> int:
     settings.add_argument("--budget", type=float, dest="budget_usd")
     settings.add_argument("--unit-budget", type=float, dest="unit_budget_usd")
     settings.add_argument("--max-agents", type=int, dest="max_units")
+    settings.add_argument("--projects-folder", dest="projects_folder", metavar="PATH",
+                          help="a new project gets a folder named after it in here; "
+                               '"" to choose one for each project')
     settings.add_argument("--model", action="append", default=[], metavar="RANK=ID",
                           help="K5=claude-sonnet-5-5; RANK= takes it out")
 
@@ -292,7 +297,12 @@ async def _projects(service: Service, args: argparse.Namespace) -> int:
 
 async def _project(service: Service, args: argparse.Namespace) -> int:
     if args.action == "new":
-        work = args.work.resolve()
+        base = (await service.settings()).projects_folder
+        if args.work is None and base and (own := folder_name(args.name)):
+            work = Path(base).expanduser().resolve() / own
+            work.mkdir(parents=True, exist_ok=True)
+        else:
+            work = (args.work or Path.cwd()).resolve()
         if not work.is_dir():
             raise ValueError(f"There is no folder {work}.")
         made = await service.create_project(args.name, str(work), args.does)
@@ -390,7 +400,8 @@ async def _approve(service: Service, args: argparse.Namespace) -> int:
 
 
 async def _settings(service: Service, args: argparse.Namespace) -> int:
-    changes = {key: value for key in ("budget_usd", "unit_budget_usd", "max_units")
+    changes = {key: value
+               for key in ("budget_usd", "unit_budget_usd", "max_units", "projects_folder")
                if (value := getattr(args, key)) is not None}
     if args.model:
         if not all("=" in each for each in args.model):
@@ -401,6 +412,8 @@ async def _settings(service: Service, args: argparse.Namespace) -> int:
           f"at most {now.max_units} agents in a fleet.")
     for rank, model in sorted(now.models.items(), reverse=True):
         print(f"{rank}: {model}")
+    if now.projects_folder:
+        print(f"Projects folder: {now.projects_folder}")
     return 0
 
 

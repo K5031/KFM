@@ -79,7 +79,7 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm approve FLEET UNIT REQUEST yes\|no\|always` | Answer what an agent asked to do |
 | `kfm service [stop\|restart]` | Since when KFM's background service runs; end it, or end it and start another |
 | `kfm projects` | List the projects |
-| `kfm project new NAME [--work PATH] [--does "text"]`, `rename`, `delete` | Make, rename or delete a project. With `--does`, its secretary proposes its teams |
+| `kfm project new NAME [--work PATH] [--does "text"]`, `rename`, `delete` | Make, rename or delete a project. With `--does`, its secretary proposes its teams. Without `--work` it works in a folder named after it in the projects folder, if one is set, else in the current folder |
 | `kfm proposal PROJECT [--start\|--drop]` | The teams its secretary proposed; start them all, or drop the proposal |
 | `kfm fleet new PROJECT NAME ["task"]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
 | `kfm agent add FLEET [--under u1] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
@@ -117,8 +117,10 @@ opens a window on the same service the commands talk to, without a terminal. It 
 
 - **A project** is an organisation of fleets: a company, with a fleet for each team
   ("marketing", "dev"). Make one with **New project**: give it a name and choose the
-  folder its fleets work in. None is suggested, and your home folder itself is refused,
-  since agents work freely inside the folder they are given. Projects are listed on the
+  folder its fleets work in. Your home folder itself is refused, since agents work
+  freely inside the folder they are given. To skip choosing, set a **Projects folder**
+  in Settings: a new project then gets a folder named after it in there ("Sea Game"
+  works in `Sea-Game`), made when you press Create, unless you choose another. Projects are listed on the
   left; click one to switch to it. Right-click one to **delete** it: its fleets are
   stopped and their records and logs removed, after you confirm. The folder the agents
   worked in, and everything in it, is kept.
@@ -251,6 +253,7 @@ max_units = 12            # agents in one fleet
 budget_usd = 10.0         # the whole fleet
 unit_budget_usd = 2.0     # one agent
 permissions = "allow_workspace"
+projects_folder = "~/Projects"   # a new project gets a folder named after it in here
 
 [harness_options]         # for Kadence, the agent program the units run
 config = "~/.kadence/config.toml"   # the provider, key and options every agent uses

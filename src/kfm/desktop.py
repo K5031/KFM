@@ -71,7 +71,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from kfm import app_menu, draft
+from kfm import app_menu, draft, project
 from kfm.api import UnitError
 from kfm.chart import Chart, ChartFleet, state_tone
 from kfm.config import FleetConfig
@@ -487,6 +487,7 @@ class ProjectForm(QWidget):
         self.setMinimumWidth(480)
         colors = theme.current()
         self.folder: Path | None = None
+        self.base: Path | None = None  # the projects folder: a project's own is made in it
         outer = QVBoxLayout(self)
         outer.setSpacing(0)
         outer.addStretch(3)
@@ -506,6 +507,7 @@ class ProjectForm(QWidget):
         inside.setSpacing(12)
         self.name = _name_field("Project name")
         self.name.returnPressed.connect(lambda: self.does.setFocus())
+        self.name.textChanged.connect(lambda: self._show_folder())
         inside.addWidget(self.name)
         self.does = TaskBox()
         self.does.setPlaceholderText("What it should do, for its secretary (optional)")
@@ -536,11 +538,29 @@ class ProjectForm(QWidget):
 
     def set_folder(self, folder: Path | None) -> None:
         self.folder = Path(folder).expanduser() if folder is not None else None
-        chosen = self.folder
-        self.folder_button.setText(f" {chosen.name or chosen}" if chosen else " Choose a folder")
-        self.folder_button.setToolTip(f"Its fleets work in {chosen}" if chosen
-                                      else "The folder its fleets work in")
+        self._show_folder()
         self.warn("")
+
+    def _show_folder(self) -> None:
+        chosen, made = self.folder, self.own_folder()
+        self.folder_button.setText(
+            f" {chosen.name or chosen}" if chosen
+            else f" {made.parent.name}/{made.name}" if made else " Choose a folder")
+        self.folder_button.setToolTip(
+            f"Its fleets work in {chosen}" if chosen
+            else f"Its fleets work in {made}, which is made for it" if made
+            else "The folder its fleets work in")
+
+    def set_base(self, base: Path | None) -> None:
+        """The projects folder, in which a project gets a folder of its own."""
+        self.base = base
+        self._show_folder()
+
+    def own_folder(self) -> Path | None:
+        """The folder made for the project when none is chosen: named after it, in the
+        projects folder. None without a projects folder, or a name that makes one."""
+        name = project.folder_name(self.name.text())
+        return self.base / name if self.base is not None and name else None
 
     def warn(self, text: str) -> None:
         self.warning.setText(text)
@@ -841,6 +861,10 @@ class SettingsDialog(QDialog):
         form.addRow("A fleet may spend", self.budget)
         form.addRow("An agent may spend", self.each)
         form.addRow("Agents in a fleet, at most", self.agents)
+        self.projects = QLineEdit(config.projects_folder)
+        self.projects.setPlaceholderText("None: a folder is chosen for each project")
+        self.projects.setToolTip("A new project gets a folder named after it in here")
+        form.addRow("Projects folder", self.projects)
         self.warning = label("", role="small", tone="error")
         self.warning.hide()
         self.save = QPushButton("Save")
@@ -868,6 +892,7 @@ class SettingsDialog(QDialog):
     def changes(self) -> dict[str, Any]:
         return {"budget_usd": self.budget.value(), "unit_budget_usd": self.each.value(),
                 "max_units": self.agents.value(),
+                "projects_folder": self.projects.text().strip(),
                 "models": {rank: field.text().strip() for rank, field in self.models.items()}}
 
     def warn(self, text: str) -> None:
@@ -1320,6 +1345,7 @@ class FleetWindow(QMainWindow):
         self._refresh()
         self._run(self._offer_app_menu())
         self._run(self._open_newest())
+        self._run(self._prepare_project())
         self._run(self._show_settings())
 
     def _build(self) -> None:
@@ -1627,8 +1653,10 @@ class FleetWindow(QMainWindow):
         for fleet_id, view in list(self.views.items()):
             if fleet_id.startswith(mine) and fleet_id not in found and view.loaded:
                 self._drop(view)
+        waiting = self.drafts.get(opened.id)
         with contextlib.suppress(*REFUSALS):  # what she proposed while nobody looked
-            if await self.service.proposal(opened.id):
+            if ((waiting is None or waiting.busy)  # not over what the person has changed
+                    and await self.service.proposal(opened.id)):
                 await self._proposed(opened.id)
         self._waited(opened.id)
         page = self.drafts.get(opened.id)
@@ -1644,6 +1672,13 @@ class FleetWindow(QMainWindow):
         self.adding = False
         self._refresh()
         self.project_form.name.setFocus()
+        self._run(self._prepare_project())
+
+    async def _prepare_project(self) -> None:
+        """The form knows the projects folder, if one is set."""
+        with contextlib.suppress(*REFUSALS):
+            base = (await self.service.settings()).projects_folder
+            self.project_form.set_base(Path(base).expanduser() if base else None)
 
     def add_fleet(self) -> None:
         self.view, self.adding = None, True
@@ -2004,6 +2039,7 @@ class FleetWindow(QMainWindow):
                 return dialog.warn(str(e))
             dialog.accept()
             self.start_form.budget.setValue(made.budget_usd)
+            await self._prepare_project()
 
         dialog.save_asked.connect(lambda: self._run(save()))
         dialog.open()
@@ -2018,7 +2054,14 @@ class FleetWindow(QMainWindow):
         if not name:
             form.name.setFocus()
             return
-        work, problem = _work_folder(form.folder)
+        folder = form.folder
+        if folder is None and (folder := form.own_folder()) is not None:
+            try:  # one of its own, in the projects folder
+                folder.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                form.warn(f"{folder} could not be made: {e}")
+                return
+        work, problem = _work_folder(folder)
         if work is None:
             form.warn(problem)
             return

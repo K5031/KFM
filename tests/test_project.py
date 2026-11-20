@@ -55,3 +55,10 @@ def test_a_supervisor_stands_over_the_middle_of_its_agents():
 def _made(folder: Path) -> Path:
     folder.mkdir(parents=True)
     return folder
+
+
+@pytest.mark.parametrize(("name", "folder"), [
+    ("Acme", "Acme"), ("  2d top down  adventure game ", "2d-top-down-adventure-game"),
+    ("R&D / web: v2", "R-D-web-v2"), ("café.app", "café.app"), ("..", ""), ("///", "")])
+def test_a_projects_folder_is_named_after_it(name: str, folder: str):
+    assert project.folder_name(name) == folder

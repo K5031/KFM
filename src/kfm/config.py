@@ -33,6 +33,9 @@ class FleetConfig:
     # A unit's duty intervals: it carries on soon after a turn, and checks in this often
     # when nothing wakes it.
     check_in_s: tuple[float, float] = (5.0, 300.0)
+    # Not a fleet's: where a new project's folder is made, named after it, when the
+    # person chooses none. "": a folder is chosen for each project.
+    projects_folder: str = ""
 
     def model_for(self, rank: int, team: str | None) -> str | None:
         return (self.teams.get(team or "") or self.models.get(f"K{rank}")

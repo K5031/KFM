@@ -638,6 +638,47 @@ async def test_files_are_attached_to_a_message(window, tmp_path: Path):
     assert view.attachments.paths() == [str(note)]
 
 
+async def test_a_project_makes_its_folder_in_the_projects_folder(tmp_path: Path,
+                                                               qapp: QApplication):
+    """With a projects folder set, a project needs no folder chosen: one named after it
+    is made there. One that is chosen is used as before."""
+    shown = FleetWindow(LocalService(tmp_path / "home", harness=FakeHarness({})))
+    shown.show()
+    try:
+        form = shown.project_form
+        form.name.setText("Sea Game")
+        form.create.click()
+        assert "Choose a folder" in form.warning.text()  # none is set: as it was
+        shown.gear_button.click()
+        await until(lambda: shown.dialog is not None and shown.dialog.isVisible())
+        shown.dialog.projects.setText(str(tmp_path / "all"))
+        shown.dialog.save.click()
+        await until(lambda: form.base == tmp_path / "all")
+        again = FleetWindow(shown.service)  # a window that opens later knows it at once
+        await until(lambda: again.project_form.base == tmp_path / "all")
+        again.deleteLater()
+        assert form.folder_button.text().strip() == "all/Sea-Game"
+        form.name.setText("Sea Game 2")
+        assert form.folder_button.text().strip() == "all/Sea-Game-2"
+        form.create.click()
+        await until(lambda: shown.project is not None)
+        assert shown.project.work == str(tmp_path / "all" / "Sea-Game-2")
+        assert (tmp_path / "all" / "Sea-Game-2").is_dir()
+
+        shown.new_project()
+        await until(lambda: form.base == tmp_path / "all")
+        form.name.setText("Elsewhere")
+        (tmp_path / "own").mkdir()
+        form.set_folder(tmp_path / "own")  # a folder that is chosen wins
+        assert form.folder_button.text().strip() == "own"
+        form.create.click()
+        await until(lambda: shown.project is not None and shown.project.name == "Elsewhere")
+        assert shown.project.work == str(tmp_path / "own")
+        assert not (tmp_path / "all" / "Elsewhere").exists()
+    finally:
+        await shown.shut()
+
+
 async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp: QApplication):
     shown = FleetWindow(LocalService(tmp_path / "home", harness=FakeHarness({})))  # its home's
     shown.show()

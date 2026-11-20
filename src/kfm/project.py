@@ -4,6 +4,7 @@ fleets are grouped for a person; a fleet's manager knows nothing of it."""
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import time
 from dataclasses import dataclass
@@ -35,6 +36,12 @@ class Project:
     def new_fleet(self) -> Path:
         """A folder for one more fleet; the fleet's manager makes it. Blocking."""
         return _unused(self.folder / "fleets")
+
+
+def folder_name(name: str) -> str:
+    """What a project's own folder is called: its name, with what a folder's name or a
+    shell would trip over turned into dashes. "" when nothing is left."""
+    return re.sub(r"[^\w.]+", "-", name).strip("-.")
 
 
 def create(home: Path, name: str, work: Path) -> Project:

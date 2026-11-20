@@ -125,3 +125,15 @@ def test_the_service_is_shown_and_stopped_from_the_terminal(tmp_path: Path):
     restarted = kfm("service", "restart", home=tmp_path)
     assert restarted.returncode == 0 and "runs since" in restarted.stdout, restarted.stderr
     kfm("service", "stop", home=tmp_path)
+
+
+def test_a_project_from_the_terminal_gets_its_folder_in_the_projects_folder(tmp_path: Path):
+    settings(tmp_path, {})
+    base = tmp_path / "all"
+    assert "Projects folder" not in kfm("settings", home=tmp_path).stdout
+    set_ = kfm("settings", "--projects-folder", str(base), home=tmp_path)
+    assert f"Projects folder: {base}" in set_.stdout, set_.stderr
+    made = kfm("project", "new", "Sea Game", home=tmp_path)
+    assert made.returncode == 0 and (base / "Sea-Game").is_dir(), made.stderr
+    assert str(base / "Sea-Game") in kfm("projects", home=tmp_path).stdout
+    kfm("service", "stop", home=tmp_path)

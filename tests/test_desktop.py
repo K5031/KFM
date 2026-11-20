@@ -729,11 +729,22 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         await until(lambda: not dialog.isVisible())
         saved = load(tmp_path / "home" / "fleet.toml")
         assert (saved.models, saved.budget_usd, saved.max_units) == ({"K5": "big-1"}, 25.0, 6)
+        assert saved.permissions == "allow_workspace"  # as it was: left alone
         await until(lambda: shown.start_form.budget.value() == 25.0)  # what a new fleet gets
         shown.gear_button.click()
         await until(lambda: shown.dialog is not dialog and shown.dialog.isVisible())
         assert shown.dialog.models["K5"].text() == "big-1"
-        shown.dialog.reject()
+        # What agents may do without asking: Kadence's levels, by Kadence's words.
+        levels = shown.dialog.permissions
+        assert levels.currentData() == "allow_workspace"
+        assert [levels.itemData(i) for i in range(levels.count())] == [
+            "auto", "allow_workspace", "allow_read_only", "ask", "deny"]
+        assert levels.itemText(0) == "Decide automatically, ask me only when unsure"
+        levels.setCurrentIndex(0)
+        again = shown.dialog
+        again.save.click()
+        await until(lambda: not again.isVisible())
+        assert load(tmp_path / "home" / "fleet.toml").permissions == "auto"
     finally:
         await shown.shut()
 

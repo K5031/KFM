@@ -142,3 +142,13 @@ def test_a_project_from_the_terminal_gets_its_folder_in_the_projects_folder(tmp_
     named = kfm("project", "new", "Sea Game", "--work", str(base / "Sea-Game"), home=tmp_path)
     assert named.returncode == 0, named.stderr
     kfm("service", "stop", home=tmp_path)
+
+
+def test_what_agents_may_do_is_set_from_the_terminal(tmp_path: Path):
+    settings(tmp_path, {})
+    assert "Agents: work freely in the work folder" in kfm("settings", home=tmp_path).stdout
+    changed = kfm("settings", "--permissions", "auto", home=tmp_path)
+    assert "Agents: decide automatically, ask me only when unsure" in changed.stdout, changed.stderr
+    refused = kfm("settings", "--permissions", "anything", home=tmp_path)
+    assert refused.returncode != 0
+    kfm("service", "stop", home=tmp_path)

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import kadence.frontends.desktop  # noqa: F401 - before any Qt import
+from kadence.frontends.common import PERMISSION_LABELS
 from kadence.frontends.desktop import theme
 from kadence.frontends.desktop.loop import QtEventLoop
 from kadence.frontends.desktop.window import (
@@ -45,6 +46,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QComboBox,
     QDialog,
     QDoubleSpinBox,
     QFileDialog,
@@ -977,6 +979,12 @@ class SettingsDialog(QDialog):
         form.addRow("A fleet may spend", self.budget)
         form.addRow("An agent may spend", self.each)
         form.addRow("Agents in a fleet, at most", self.agents)
+        self.permissions = QComboBox()  # what agents do without asking: Kadence's levels
+        for level, words in PERMISSION_LABELS.items():
+            self.permissions.addItem(words, level.value)
+        self.permissions.setCurrentIndex(max(0, self.permissions.findData(config.permissions)))
+        self.permissions.setToolTip("For fleets made from now on")
+        form.addRow("Agents", self.permissions)
         self.projects = QLineEdit(config.projects_folder)
         self.projects.setPlaceholderText("None: a folder is chosen for each project")
         self.projects.setToolTip("A new project gets a folder named after it in here")
@@ -1025,6 +1033,7 @@ class SettingsDialog(QDialog):
         return {"budget_usd": self.budget.value(), "unit_budget_usd": self.each.value(),
                 "max_units": self.agents.value(),
                 "projects_folder": self.projects.text().strip(),
+                "permissions": self.permissions.currentData(),
                 "models": {rank: field.text().strip() for rank, field in self.models.items()}}
 
     def warn(self, text: str) -> None:

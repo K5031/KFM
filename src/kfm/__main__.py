@@ -16,6 +16,8 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
+from kadence.frontends.common import PERMISSION_LABELS
+
 from kfm.api import UnitError
 from kfm.config import HOME
 from kfm.events import Across, Approval, Changed, Delivered, Instructed, Notice, Said
@@ -144,6 +146,9 @@ def main(argv: list[str] | None = None) -> int:
     settings.add_argument("--budget", type=float, dest="budget_usd")
     settings.add_argument("--unit-budget", type=float, dest="unit_budget_usd")
     settings.add_argument("--max-agents", type=int, dest="max_units")
+    settings.add_argument("--permissions", choices=[level.value for level in PERMISSION_LABELS],
+                          help="what agents of new fleets do without asking; auto: a "
+                               "check decides, and asks you when unsure")
     settings.add_argument("--projects-folder", dest="projects_folder", metavar="PATH",
                           help="a new project gets a folder named after it in here; "
                                '"" to choose one for each project')
@@ -405,7 +410,8 @@ async def _approve(service: Service, args: argparse.Namespace) -> int:
 
 async def _settings(service: Service, args: argparse.Namespace) -> int:
     changes = {key: value
-               for key in ("budget_usd", "unit_budget_usd", "max_units", "projects_folder")
+               for key in ("budget_usd", "unit_budget_usd", "max_units", "projects_folder",
+                           "permissions")
                if (value := getattr(args, key)) is not None}
     if args.model:
         if not all("=" in each for each in args.model):
@@ -416,6 +422,9 @@ async def _settings(service: Service, args: argparse.Namespace) -> int:
           f"at most {now.max_units} agents in a fleet.")
     for rank, model in sorted(now.models.items(), reverse=True):
         print(f"{rank}: {model}")
+    words = next((words for level, words in PERMISSION_LABELS.items()
+                  if level.value == now.permissions), now.permissions)
+    print(f"Agents: {words[0].lower()}{words[1:]}")
     if now.projects_folder:
         print(f"Projects folder: {now.projects_folder}")
     return 0

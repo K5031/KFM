@@ -43,7 +43,8 @@ While it runs, the terminal shows what happens:
 
 - **Type a message** and press Enter to tell the lead something.
 - **Approvals:** agents work freely inside the work folder. When one wants to do something
-  outside it, KFM asks you: answer `y` or `n`, or `a` (always) to allow it and stop that
+  outside it, KFM asks you (or, with the permission level "auto", only when a check is
+  unsure; see Settings): answer `y` or `n`, or `a` (always) to allow it and stop that
   agent asking for the same kind of action, such as running commands outside its sandbox.
 - **Questions:** when the lead needs a decision only you can make, it asks and waits for
   your message. Agents below ask their supervisor, not you.
@@ -85,7 +86,7 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm fleet new PROJECT NAME ["task"]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
 | `kfm agent add FLEET [--under u1] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
 | `kfm agent remove\|rename\|task\|model FLEET UNIT [...]` | Change an agent |
-| `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID]` | Show or change what new fleets get |
+| `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID] [--permissions LEVEL]` | Show or change what new fleets get |
 | `kfm serve` | Run the service in this terminal instead of in the background |
 
 ## Stop a fleet and start it again
@@ -279,6 +280,26 @@ marketing = "claude-sonnet-5-5"
 ```
 
 Without `[models]`, every agent uses the model in your Kadence configuration.
+
+### What agents do without asking
+
+`permissions`, **Agents** in the window's Settings, is the level every agent of a new
+fleet gets. A fleet keeps the level it was made with.
+
+| Level | Agents |
+|---|---|
+| `auto` | work freely in their folder; anything outside it is first checked by a small model against the task. What is clearly fine runs; the rest asks you, with the reason |
+| `allow_workspace` (default) | work freely in their folder and ask before anything outside it |
+| `allow_read_only` | read freely and ask before any change |
+| `ask` | ask before every action |
+| `deny` | run no tools |
+
+`auto` saves you most questions and is not a guarantee: the check is a model's judgment,
+and what it allows runs with your rights. Deleting or overwriting what the task did not
+name, sending data anywhere, publishing or pushing, spending money, and changes to the
+system are what it is told to ask about, and anything that touches keys, passwords or
+Kadence's own data always asks you. In a fleet the task it judges by is the one the
+agent's supervisor gave. A project's secretary is read-only whatever the level.
 
 ## Another agent program
 

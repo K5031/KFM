@@ -271,7 +271,7 @@ unit_budget_usd = 2.0     # one agent
 permissions = "allow_workspace"
 projects_folder = "~/Projects"   # a new project gets a folder named after it in here
 
-[harness_options]         # for Kadence, the agent program the units run
+[harness_options]         # for Kadence, which every agent is
 config = "~/.kadence/config.toml"   # the provider, key and options every agent uses
 
 [models]                  # a model per rank; "default" for the rest
@@ -326,21 +326,6 @@ name, sending data anywhere, publishing or pushing, spending money, and changes 
 system are what it is told to ask about, and anything that touches keys, passwords or
 Kadence's own data always asks you. In a fleet the task it judges by is the one the
 agent's supervisor gave.
-
-## Another agent program
-
-Every agent of a fleet is a Kadence unless the settings name another program:
-
-```toml
-harness = "my_package.my_harness:factory"   # or the name it is installed under
-
-[harness_options]
-# whatever that program needs
-```
-
-Such a program has to be written for KFM: it works by itself on an instruction, reports,
-asks its supervisor when blocked, and uses the fleet's tools. What exactly it must do is
-in `src/kfm/api.py`, and `tests/fakeharness.py` is a small complete example.
 
 ## Not there yet
 

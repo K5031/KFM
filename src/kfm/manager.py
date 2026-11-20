@@ -184,7 +184,7 @@ class Manager:
                 raise FleetError(f"The fleet has spent ${self.fleet.spent_usd:.2f} of its "
                                  f"${config.budget_usd:.2f}: give it more with --budget.")
             self._harness = self._own_harness or await asyncio.to_thread(
-                harnesses.load, config.harness, config.harness_options)
+                harnesses.load, config.harness_options)
             self.config, self.fleet.settings = config, settings.record(config)
             self._tools = ToolServer(
                 (secretary_tools if self._converses else fleet_tools)(self))

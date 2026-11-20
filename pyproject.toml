@@ -22,8 +22,6 @@ kfm-desktop = "kfm.desktop:main"
 [project.optional-dependencies]
 desktop = ["kadence[desktop]"]  # the window is built on Kadence's desktop code
 
-[project.entry-points."kfm.harnesses"]
-kadence = "kfm.harnesses.kadence:factory"
 
 [tool.uv.sources]
 kadence = { path = "../Kadence", editable = true }

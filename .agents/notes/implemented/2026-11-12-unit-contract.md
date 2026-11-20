@@ -1,6 +1,6 @@
 # Agent Note: The unit contract
 
-Status: implemented — what a fleet needs from the agent program its units run is a contract in `kfm/api.py`; Kadence is the first harness behind it and any other can stand in its place
+Status: implemented — what a fleet needs from the agent program its units run is a contract in `kfm/api.py`, with Kadence behind it; it is a boundary inside KFM and no other program is offered ([KFM runs Kadence only](2026-11-20-kfm-runs-kadence-only.md))
 
 ## Problem
 

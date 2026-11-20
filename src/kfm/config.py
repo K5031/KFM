@@ -19,8 +19,8 @@ CONFIG_FILE = "fleet.toml"
 class FleetConfig:
     """`models` maps a rank ("K5") or "default" to a model id, `teams` a team's name to one;
     a team's model wins over its rank's; a unit with no model here uses its harness's own.
-    `harness` is the agent program every unit runs (kfm.harnesses.load) and
-    `harness_options` what it is made with."""
+    `harness_options` is what Kadence, which every unit runs, is made with
+    (kfm.harnesses.load)."""
 
     top_rank: int = 5
     max_units: int = 12
@@ -29,7 +29,7 @@ class FleetConfig:
     permissions: str = "allow_workspace"  # Kadence's level for every unit
     models: Mapping[str, str] = field(default_factory=dict)
     teams: Mapping[str, str] = field(default_factory=dict)
-    harness: str = "kadence"
+    harness: str = "kadence"  # says nothing: units run Kadence. In records of format 9
     harness_options: Mapping[str, Any] = field(default_factory=dict)
     # A unit's duty intervals: it carries on soon after a turn, and checks in this often
     # when nothing wakes it.

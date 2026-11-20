@@ -235,7 +235,7 @@ class LocalService(Service):
         if self._models is None:  # asked once: starting the program to ask takes a moment
             config = await self.settings()
             harness = self._harness or await asyncio.to_thread(
-                harnesses.load, config.harness, config.harness_options)
+                harnesses.load, config.harness_options)
             try:
                 self._models = [tuple(each) for each in await harness.model_choices(
                     self.home / "models")]

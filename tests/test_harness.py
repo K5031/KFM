@@ -129,15 +129,11 @@ async def test_what_happens_in_a_fleet_is_kept_in_its_record(tmp_path: Path):
     assert log.read(tmp_path / "fleet") == []
 
 
-def test_a_harness_is_found_by_its_name_or_its_import_path(tmp_path: Path):
-    by_name = harnesses.load("kadence", {"config": str(tmp_path / "kadence.toml")})
-    assert isinstance(by_name, KadenceHarness) and by_name.config == tmp_path / "kadence.toml"
-    by_path = harnesses.load("tests.fakeharness:FakeHarness", {})
-    assert isinstance(by_path, FakeHarness)
-    with pytest.raises(ValueError, match="no harness 'nope'.*kadence"):
-        harnesses.load("nope", {})
-    with pytest.raises(ValueError, match="could not be loaded"):
-        harnesses.load("kadence", {"wrong": 1})
+def test_units_run_on_kadence_made_with_the_settings_options(tmp_path: Path):
+    made = harnesses.load({"config": str(tmp_path / "kadence.toml")})
+    assert isinstance(made, KadenceHarness) and made.config == tmp_path / "kadence.toml"
+    with pytest.raises(ValueError, match="harness_options"):
+        harnesses.load({"wrong": 1})
 
 
 async def test_the_person_adds_an_agent_and_sets_models(tmp_path: Path):
@@ -520,7 +516,7 @@ async def test_kadence_says_which_models_it_offers(tmp_path: Path, monkeypatch):
     base.write_text(tomli_w.dumps({
         "core": {"factory": "tests.fakecore:factory", "options": {"scripts": {}}},
         "runtime": {"model": "fake-1"}}))
-    harness = harnesses.load("kadence", {"config": str(base)})
+    harness = harnesses.load({"config": str(base)})
     assert await harness.model_choices(tmp_path / "models") == [
         ("fake-1", "fake-1", "$1 in, $2 out per million tokens"),
         ("fake-2", "fake-2", "$1 in, $2 out per million tokens")]

@@ -3,7 +3,8 @@
 Status: proposed — an agent's page in the window shows that agent's own Kadence conversation, with Kadence's conversation view, in place of KFM's plainer feed
 
 Follows [an agent's live activity](../implemented/2026-11-14-live-agent-activity.md) and
-[the fleet window](../implemented/2026-11-12-fleet-window.md).
+[the fleet window](../implemented/2026-11-12-fleet-window.md). Rests on
+[KFM runs Kadence only](../implemented/2026-11-20-kfm-runs-kadence-only.md).
 
 ## Problem
 
@@ -16,7 +17,9 @@ KFM's window has none of it (the user, 2026-11-20). It reuses Kadence's window f
 message box and text rendering, and draws an agent's page from its own pieces: a name
 with text under it, boxes for reports. What an agent is doing now is three plain lines
 under the feed. Two looks for the same thing drift apart, and what an agent thought is
-not kept and cannot be read back, though the agent's own Kadence keeps all of it.
+not kept and cannot be read back, though the agent's own Kadence keeps all of it. And
+what KFM does not draw is lost: an agent that ends its turn with Kadence's card (a recap,
+a question and buttons that answer it) in place of text shows nothing at all.
 
 ## Proposal
 
@@ -35,9 +38,8 @@ In this order:
    (`desktop.window.ConversationView`, which is there). Kadence looks and behaves as before; its window tests are the check. Done first,
    and confirmed by the user before anything in KFM changes.
 2. **KFM's service passes through to an agent's own conversation**: a frontend can ask
-   an agent's Kadence for its history and gets its events. Optional in the unit
-   contract: an agent program that is not Kadence does not offer it, and its page stays
-   the feed.
+   an agent's Kadence for its history and gets its events. It is Kadence's own channel
+   that is carried, not something the unit contract describes.
 3. **KFM's window: an agent's page is that view.** An adapter makes the service look
    like the channel `RemoteRuntime` expects; Kadence's model and view do the rest.
 4. **KFM's own ways stay where they matter.** What the person writes still goes through
@@ -62,7 +64,8 @@ like in Kadence and stays, with its live blocks.
 - An agent's page shows its thinking line, tool cards, folded steps and checklist as
   Kadence does, for what it does now and for what it did before the page was opened.
 - An agent whose process is closed shows its conversation all the same.
-- With the second harness, an agent's page is the feed as today.
+- An agent that ends its turn with a card shows it, and its buttons answer it.
+- The fleet's feed shows such a card too, as text.
 
 ## Risks
 

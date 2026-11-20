@@ -66,8 +66,7 @@ holds the limits and keeps the record of what happened; it decides nothing about
 work. What an agent is told are facts about where it stands and what its tools do, not
 instructions on how to work.
 
-[PHILOSOPHY.md](PHILOSOPHY.md) says where this is going. The contract an agent program
-has to meet is in `src/kfm/api.py`, so the agents need not be Kadence.
+[PHILOSOPHY.md](PHILOSOPHY.md) says where this is going.
 
 ## Documentation
 

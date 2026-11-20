@@ -44,7 +44,7 @@ class FleetError(ValueError):
 
 @dataclass
 class Unit:
-    id: str  # K5000: its rank, then the count of that rank's agents before it
+    id: str  # K5001: its rank, then which of that rank's agents it is, from 001
     name: str  # "": it has none, and is known by its id
     rank: int  # 5 is K5
     task: str
@@ -85,9 +85,9 @@ class Fleet:
         self.top_rank, self.max_units = top_rank, max_units
         self.name = name  # what a person calls it: "marketing"
         self.units: dict[str, Unit] = {}
-        self._issued: dict[int, int] = {}  # by rank: how many ids of it were given here
-        # By rank: how many ids of it are taken outside the fleet, in the other teams of
-        # its project, so that an agent's id is its own in all of the project.
+        self._issued: dict[int, int] = {}  # by rank: the highest number given here
+        # By rank: the highest number given outside the fleet, in the other teams of its
+        # project, so that an agent's id is its own in all of the project.
         self.elsewhere: Callable[[int], int] = lambda rank: 0
         self.removed_usd = 0.0  # what units taken out of the fleet had spent
         # What starting the fleet again needs (the manager fills these in).
@@ -134,17 +134,17 @@ class Fleet:
             rank = supervisor.rank - 1
         if len(self.units) >= self.max_units:
             raise FleetError(f"The fleet is at its limit of {self.max_units} agents.")
-        number = max(self.issued(rank), self.elsewhere(rank))
+        number = max(self.issued(rank), self.elsewhere(rank)) + 1
         unit = Unit(f"K{rank}{number:03d}", name, rank, task,
                     supervisor.id if supervisor else None,
                     team=team or (supervisor.team if supervisor else None), ongoing=ongoing,
                     budget_usd=budget_usd)
-        self._issued[rank] = number + 1
+        self._issued[rank] = number
         self.units[unit.id] = unit
         return unit
 
     def issued(self, rank: int) -> int:
-        """The number after the highest one an id of that rank was given here."""
+        """The highest number an id of that rank was given here; 0: none was."""
         return self._issued.get(rank, 0)
 
     def remove(self, unit: Unit) -> list[Unit]:

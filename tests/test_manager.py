@@ -83,12 +83,12 @@ def delivered(manager: Manager, events: list[FleetEvent]) -> list[tuple[str, str
 async def test_a_task_is_delegated_and_the_reports_travel_up(fleet, tmp_path: Path):
     manager, events = await fleet({
         "Lead": [call("mcp__fleet__delegate", name="Scout", task="Count the files"),
-                 finish("Scout counted 3 files.", when="[Report from Scout (K4000)] 3")],
+                 finish("Scout counted 3 files.", when="[Report from Scout (K4001)] 3")],
         "Scout": [finish("3 files")]})
     lead = await manager.add(None, "Lead", "Find out how many files there are")
     await asyncio.wait_for(manager.finished.wait(), 30)
-    scout = manager.fleet.units["K4000"]
-    assert (lead.rank, scout.rank, scout.supervisor) == (5, 4, "K5000")
+    scout = manager.fleet.units["K4001"]
+    assert (lead.rank, scout.rank, scout.supervisor) == (5, 4, "K5001")
     assert [e.state for e in events if isinstance(e, Changed) and e.unit == lead.id] == [
         "starting", "working", "done"]
     assert delivered(manager, events) == [("Scout", "Lead", "report", "3 files"),
@@ -104,7 +104,7 @@ async def test_a_task_is_delegated_and_the_reports_travel_up(fleet, tmp_path: Pa
 async def test_a_question_goes_to_the_supervisor_and_its_answer_back(fleet):
     manager, events = await fleet({
         "Lead": [call("mcp__fleet__delegate", name="Scout", task="Tidy the docs"),
-                 {"when": "[Question from Scout", **call("mcp__fleet__message", agent="K4000",
+                 {"when": "[Question from Scout", **call("mcp__fleet__message", agent="K4001",
                                                          text="Use docs/")},
                  finish("Docs are tidy.", when="[Report from Scout")],
         "Scout": [call("ask_for_help", question="Which folder?"),
@@ -114,7 +114,7 @@ async def test_a_question_goes_to_the_supervisor_and_its_answer_back(fleet):
     assert delivered(manager, events) == [("Scout", "Lead", "question", "Which folder?"),
                                  ("Scout", "Lead", "report", "Tidied docs/"),
                                  ("Lead", None, "report", "Docs are tidy.")]
-    states = [e.state for e in events if isinstance(e, Changed) and e.unit == "K4000"]
+    states = [e.state for e in events if isinstance(e, Changed) and e.unit == "K4001"]
     assert "waiting" in states
 
 
@@ -122,15 +122,15 @@ async def test_a_finished_agent_that_is_told_more_has_its_goal_again_and_finishe
         fleet, tmp_path: Path):
     scripts = {
         "Lead": [call("mcp__fleet__delegate", name="Scout", task="Count the files"),
-                 {"when": "go on", **call("mcp__fleet__message", agent="K4000",
+                 {"when": "go on", **call("mcp__fleet__message", agent="K4001",
                                           text="Count again")},
                  finish("Confirmed: 3.", when="] Still 3")],
         "Scout": [finish("3 files")]}
     manager, events = await fleet(scripts)
     await manager.add(None, "Lead", "Find out how many files there are")
     await until(lambda: delivered(manager, events) == [("Scout", "Lead", "report", "3 files")])
-    scout = manager.fleet.units["K4000"]
-    await until(lambda: scout.state == "done" and "K4000" not in manager._sessions)
+    scout = manager.fleet.units["K4001"]
+    await until(lambda: scout.state == "done" and "K4001" not in manager._sessions)
 
     # Its process has ended. Opened again (the scripted model starts its script anew), it
     # takes its turn on the message, and has its goal by then to finish with.
@@ -208,12 +208,12 @@ async def test_stopping_an_agent_stops_those_under_it(fleet):
         top_rank=3)
     lead = await manager.add(None, "Lead", "Run things", ongoing=True)
     await until(lambda: len(manager.fleet.units) == 3
-                and manager.fleet.units["K1000"].state == "working")
-    mid, low = manager.fleet.units["K2000"], manager.fleet.units["K1000"]
-    assert (mid.ongoing, low.rank, low.supervisor) == (True, 1, "K2000")
+                and manager.fleet.units["K1001"].state == "working")
+    mid, low = manager.fleet.units["K2001"], manager.fleet.units["K1001"]
+    assert (mid.ongoing, low.rank, low.supervisor) == (True, 1, "K2001")
     await manager.stop_unit(mid)
     assert (lead.state, mid.state, low.state) == ("working", "stopped", "stopped")
-    assert set(manager._sessions) == {"K3000"}
+    assert set(manager._sessions) == {"K3001"}
 
 
 async def test_the_fleets_spending_limit_stops_everyone_until_it_is_given_more(fleet):
@@ -255,7 +255,7 @@ async def test_a_stopped_fleet_carries_on_where_it_was(fleet, tmp_path: Path):
     session = lead.session
     await manager.aclose()
     stopped = Fleet.load(tmp_path / "fleet")
-    assert stopped.units["K5000"].state == "working"  # interrupted, not failed or stopped
+    assert stopped.units["K5001"].state == "working"  # interrupted, not failed or stopped
     assert not stopped.running
 
     # Its Kadence waits for a message after it was closed: the manager says what happened.
@@ -266,7 +266,7 @@ async def test_a_stopped_fleet_carries_on_where_it_was(fleet, tmp_path: Path):
     await until(lambda: "Back on watch." in said(manager, events, "Lead"))
     await manager.say("anything new?")
     await until(lambda: "All quiet." in said(manager, events, "Lead"))
-    assert manager.fleet.units["K5000"].session == session
+    assert manager.fleet.units["K5001"].session == session
     assert manager.fleet.spent_usd >= stopped.spent_usd
 
 
@@ -277,14 +277,14 @@ async def test_a_resumed_fleet_finishes_what_was_under_way(fleet, tmp_path: Path
     await manager.add(None, "Lead", "Tidy up")
     await until(lambda: ("Scout", "Lead", "question", "Which folder?") in delivered(manager, events))
     await manager.aclose()
-    assert Fleet.load(tmp_path / "fleet").units["K4000"].state == "waiting"
+    assert Fleet.load(tmp_path / "fleet").units["K4001"].state == "waiting"
 
     manager, events = await fleet({
-        "Lead": [{"when": "go ahead", **call("mcp__fleet__message", agent="K4000",
+        "Lead": [{"when": "go ahead", **call("mcp__fleet__message", agent="K4001",
                                              text="Use docs/")},
                  finish("Docs are tidy.", when="[Report from Scout")],
         "Scout": [finish("Tidied docs/", when="your supervisor] Use docs/")]}, resume=True)
-    assert manager.fleet.units["K4000"].state == "working"  # its question went with its process
+    assert manager.fleet.units["K4001"].state == "working"  # its question went with its process
     await manager.say("go ahead")
     await asyncio.wait_for(manager.finished.wait(), 30)
     assert delivered(manager, events) == [("Scout", "Lead", "report", "Tidied docs/"),
@@ -322,7 +322,7 @@ async def test_a_harness_crash_fails_the_unit_instead_of_leaving_it_starting(
     try:
         with contextlib.suppress(RuntimeError):
             await manager.add(None, "Lead", "Do it")
-        lead = manager.fleet.units["K5000"]
+        lead = manager.fleet.units["K5001"]
         assert lead.state == "failed" and "harness broke" in lead.failure
     finally:
         await manager.aclose()

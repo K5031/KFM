@@ -47,8 +47,8 @@ def test_a_supervisor_stands_over_the_middle_of_its_agents():
     fleet.add("B1", "x", b)
     at, columns = slots(fleet)
     assert columns == 3
-    assert at == {"K5000": (1.0, 0), "K4000": (0.5, 1), "K4001": (2.0, 1),
-                  "K3000": (0.0, 2), "K3001": (1.0, 2), "K3002": (2.0, 2)}
+    assert at == {"K5001": (1.0, 0), "K4001": (0.5, 1), "K4002": (2.0, 1),
+                  "K3001": (0.0, 2), "K3002": (1.0, 2), "K3003": (2.0, 2)}
     assert slots(Fleet()) == ({}, 1.0)  # no lead yet
 
 

@@ -54,7 +54,7 @@ class UnitError(Exception):
 class UnitSpec:
     """A unit as its harness needs to know it."""
 
-    id: str  # K5000, K4000, K4001, ...
+    id: str  # K5001, K4001, K4002, ...
     name: str
     rank: int  # 5 is K5
     folder: Path  # the unit's own data folder; the harness keeps what it needs there

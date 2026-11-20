@@ -71,7 +71,7 @@ class Project(Protocol):
         """The project's other teams, a line each."""
 
     def issued(self, rank: int) -> int:
-        """How many ids of that rank the project's other teams have given
+        """The highest number the project's other teams gave an id of that rank
         (Fleet.elsewhere)."""
 
     async def standing(self, team: str | None) -> str:

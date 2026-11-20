@@ -32,7 +32,7 @@ def settings(home: Path, scripts: dict) -> None:
 
 def test_run_follows_a_fleet_and_the_other_commands_reach_it(tmp_path: Path):
     settings(tmp_path, {
-        "K5000": [{"calls": [{"name": "mcp__fleet__delegate",
+        "K5001": [{"calls": [{"name": "mcp__fleet__delegate",
                               "arguments": {"name": "Scout", "task": "Look"}}]},
                   {"when": "[Report from Scout",
                    "calls": [{"name": "finish_goal", "arguments": {"report": "All found."}}]}],
@@ -41,8 +41,8 @@ def test_run_follows_a_fleet_and_the_other_commands_reach_it(tmp_path: Path):
     work.mkdir()
     ran = kfm("run", "Find it", "--work", str(work), "--budget", "1", home=tmp_path)
     assert ran.returncode == 0, ran.stderr
-    assert "[Scout K4000 → K5000] report: Found it." in ran.stdout
-    assert "[K5000 → you] report: All found." in ran.stdout  # a lead has no name
+    assert "[Scout K4001 → K5001] report: Found it." in ran.stdout
+    assert "[K5001 → you] report: All found." in ran.stdout  # a lead has no name
     assert "The fleet spent $" in ran.stdout
     assert "Error" not in ran.stderr  # nothing to type into (stdin is /dev/null) is no fault
 
@@ -51,7 +51,7 @@ def test_run_follows_a_fleet_and_the_other_commands_reach_it(tmp_path: Path):
     lines = shown.stdout.splitlines()
     assert lines[0].startswith("work (") and str(work) in lines[0]
     assert "fleet 1 (" in lines[1] and "stopped, 2 agents" in lines[1] and "of $1.00" in lines[1]
-    assert "agent K5000: done" in shown.stdout and "Scout (K4000): done" in shown.stdout
+    assert "agent K5001: done" in shown.stdout and "Scout (K4001): done" in shown.stdout
     again = kfm("resume", home=tmp_path)
     assert again.returncode == 1 and "nothing was at work" in again.stdout.lower()
 
@@ -59,16 +59,16 @@ def test_run_follows_a_fleet_and_the_other_commands_reach_it(tmp_path: Path):
     assert "work: 1 fleet, 0 running" in kfm("projects", home=tmp_path).stdout
     made = kfm("fleet", "new", "work", "hand", home=tmp_path)
     assert made.returncode == 0 and "no agents" in made.stdout, made.stderr
-    assert "Agent K5001." in kfm("agent", "add", "hand", "--name", "Chief", "--task",
+    assert "Agent K5002." in kfm("agent", "add", "hand", "--name", "Chief", "--task",
                               "Run it", home=tmp_path).stdout
-    assert kfm("agent", "add", "hand", "--under", "K5001", home=tmp_path).returncode == 0
-    assert kfm("agent", "rename", "hand", "K5001", "Boss", home=tmp_path).returncode == 0
-    assert kfm("agent", "model", "hand", "K4001", "small-1", home=tmp_path).returncode == 0
-    assert kfm("agent", "task", "hand", "K4001", "Count the files", home=tmp_path).returncode == 0
+    assert kfm("agent", "add", "hand", "--under", "K5002", home=tmp_path).returncode == 0
+    assert kfm("agent", "rename", "hand", "K5002", "Boss", home=tmp_path).returncode == 0
+    assert kfm("agent", "model", "hand", "K4002", "small-1", home=tmp_path).returncode == 0
+    assert kfm("agent", "task", "hand", "K4002", "Count the files", home=tmp_path).returncode == 0
     built = kfm("status", "hand", home=tmp_path).stdout
-    assert "hand (" in built and "Boss (K5001): planned" in built
-    assert "agent K4001: planned" in built and "Count the files" in built
-    assert kfm("agent", "remove", "hand", "K4001", home=tmp_path).returncode == 0
+    assert "hand (" in built and "Boss (K5002): planned" in built
+    assert "agent K4002: planned" in built and "Count the files" in built
+    assert kfm("agent", "remove", "hand", "K4002", home=tmp_path).returncode == 0
     assert kfm("fleet", "rename", "hand", "built", home=tmp_path).returncode == 0
     wrong = kfm("agent", "model", "built", "u9", "x", home=tmp_path)
     assert wrong.returncode == 2 and wrong.stderr.startswith("kfm:") and "u9" in wrong.stderr
@@ -82,7 +82,7 @@ def test_run_follows_a_fleet_and_the_other_commands_reach_it(tmp_path: Path):
 
 
 def test_a_fleet_keeps_running_after_the_command_that_started_it(tmp_path: Path):
-    settings(tmp_path, {"K5000": [{"text": "On watch."},
+    settings(tmp_path, {"K5001": [{"text": "On watch."},
                                   {"when": "anything new", "text": "All quiet."}]})
     work = tmp_path / "work"
     work.mkdir()
@@ -110,7 +110,7 @@ def test_status_without_a_fleet_says_how_to_start_one(tmp_path: Path):
 
 
 def test_the_service_is_shown_and_stopped_from_the_terminal(tmp_path: Path):
-    settings(tmp_path, {"K5000": [{"text": "On watch."}]})
+    settings(tmp_path, {"K5001": [{"text": "On watch."}]})
     work = tmp_path / "work"
     work.mkdir()
     assert "No KFM service runs" in kfm("service", home=tmp_path).stdout

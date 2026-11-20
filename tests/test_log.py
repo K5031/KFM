@@ -10,14 +10,14 @@ from kfm import events, log
 
 
 def test_a_line_names_the_kind_and_time_and_refers_to_units_by_id():
-    text = log.line(events.Delivered("K4000", "K5000", "report", "done"), 12.3456789)
+    text = log.line(events.Delivered("K4001", "K5001", "report", "done"), 12.3456789)
     data = json.loads(text)
-    assert data == {"t": 12.346, "type": "Delivered", "unit": "K4000", "to": "K5000",
+    assert data == {"t": 12.346, "type": "Delivered", "unit": "K4001", "to": "K5001",
                     "kind": "report", "text": "done"}
 
 
 def test_a_line_keeps_non_ascii_text_readable():
-    assert "café" in log.line(events.Said("K5000", "café"), 0.0)
+    assert "café" in log.line(events.Said("K5001", "café"), 0.0)
 
 
 def test_a_fleet_with_no_record_has_no_events(tmp_path: Path):
@@ -26,14 +26,14 @@ def test_a_fleet_with_no_record_has_no_events(tmp_path: Path):
 
 def test_events_round_trip_through_the_record_in_order(tmp_path: Path):
     sent = [
-        events.Changed("K4000", "working"),
-        events.Said("K4000", "reading files"),
-        events.Delivered("K4000", "K5000", "report", "done"),
-        events.Instructed("K4000", "K5000", "message", "more"),
-        events.Approval("K4000", "r1", "shell", "rm -rf x"),
-        events.Answered("K4000", "r1", False),
-        events.Answered("K4000", "r2", True, always=True),
-        events.Told("start", to="K5000", files=("a.txt", "b.txt")),
+        events.Changed("K4001", "working"),
+        events.Said("K4001", "reading files"),
+        events.Delivered("K4001", "K5001", "report", "done"),
+        events.Instructed("K4001", "K5001", "message", "more"),
+        events.Approval("K4001", "r1", "shell", "rm -rf x"),
+        events.Answered("K4001", "r1", False),
+        events.Answered("K4001", "r2", True, always=True),
+        events.Told("start", to="K5001", files=("a.txt", "b.txt")),
         events.Told("hello"),
         events.Notice("saved"),
     ]
@@ -46,7 +46,7 @@ def test_events_round_trip_through_the_record_in_order(tmp_path: Path):
     assert [event for _, event in read] == sent
     assert read[7][1].files == ("a.txt", "b.txt")  # a tuple again, not a list
     assert [events.units(event) for event in sent[2:4] + sent[8:]] == [
-        {"K4000", "K5000"}, {"K4000", "K5000"}, set(), set()]
+        {"K4001", "K5001"}, {"K4001", "K5001"}, set(), set()]
 
 
 def test_an_events_number_is_its_line_in_the_record(tmp_path: Path):
@@ -59,18 +59,18 @@ def test_an_events_number_is_its_line_in_the_record(tmp_path: Path):
 def test_lines_cut_off_by_a_crash_are_left_out(tmp_path: Path):
     good = log.line(events.Notice("kept"), 1.0)
     (tmp_path / log.FILE).write_text(
-        good + "\n" + '{"t": 2.0, "type": "Said", "unit": "K5000"' + "\n"  # cut off
+        good + "\n" + '{"t": 2.0, "type": "Said", "unit": "K5001"' + "\n"  # cut off
         + '{"t": 3.0, "type": "NoSuchEvent"}' + "\n"  # unknown kind
-        + log.line(events.Said("K5000", "after"), 4.0) + "\n")
+        + log.line(events.Said("K5001", "after"), 4.0) + "\n")
     assert [event for _, event in log.read(tmp_path)] == [
-        events.Notice("kept"), events.Said("K5000", "after")]
+        events.Notice("kept"), events.Said("K5001", "after")]
     assert log.count(tmp_path) == 4  # they keep their numbers
 
 
 async def test_the_log_appends_in_order_and_is_flushed_on_close(tmp_path: Path):
     record = log.Log(tmp_path)
     for index in range(5):
-        record.add(events.Said("K5000", f"line {index}"))
+        record.add(events.Said("K5001", f"line {index}"))
     await asyncio.wait_for(record.aclose(), 5)
     texts = [json.loads(text)["text"] for text in (tmp_path / log.FILE).read_text().splitlines()]
     assert texts == [f"line {index}" for index in range(5)]

@@ -27,7 +27,7 @@ concepts, so none of this can be added to it.
   and how the fleet works from where it stands.
 - **Up the hierarchy, the manager carries what Kadence already emits.** A unit that
   finishes its goal, asks for help, fails or stops ends a turn; the manager turns that
-  into a message in its supervisor's conversation (`[Report from Scout (K4000)] ...`),
+  into a message in its supervisor's conversation (`[Report from Scout (K4001)] ...`),
   which wakes the supervisor. For the lead, whose supervisor is the person, it becomes a
   fleet event the terminal shows.
 - **Down the hierarchy, agents use the fleet tools**, an MCP server in the manager

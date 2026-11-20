@@ -20,17 +20,17 @@ def test_a_kadence_units_folder_holds_the_base_configuration_with_its_own_limits
     base.write_text('[core]\nfactory = "x:y"\n[runtime]\nmodel = "base"\n'
                     'maintenance_model = "light"\n[frontend]\nfactory = "a:b"\n')
     harness = kadence.factory({"config": str(base)})
-    harness.prepare(spec(tmp_path, "K5000"))
-    harness.prepare(spec(tmp_path, "K4000", model="mid", budget_usd=0.5))
-    lead_config = tomllib.loads((tmp_path / "K5000" / "config.toml").read_text())
-    scout_config = tomllib.loads((tmp_path / "K4000" / "config.toml").read_text())
+    harness.prepare(spec(tmp_path, "K5001"))
+    harness.prepare(spec(tmp_path, "K4001", model="mid", budget_usd=0.5))
+    lead_config = tomllib.loads((tmp_path / "K5001" / "config.toml").read_text())
+    scout_config = tomllib.loads((tmp_path / "K4001" / "config.toml").read_text())
     assert lead_config["core"] == {"factory": "x:y"} and "frontend" not in lead_config
     assert lead_config["runtime"] == {"model": "base", "maintenance_model": "light",
                                       "permissions": "allow_workspace",
                                       "budget": {"max_cost_usd": 2.0}}
     assert scout_config["runtime"]["model"] == "mid"
     assert scout_config["runtime"]["budget"] == {"max_cost_usd": 0.5}
-    settings = tomllib.loads((tmp_path / "K4000" / "settings.toml").read_text())
+    settings = tomllib.loads((tmp_path / "K4001" / "settings.toml").read_text())
     assert settings["work_folder"] == str(tmp_path / "work")
     assert settings["mcp_servers"] == [
         {"name": "fleet", "url": "http://127.0.0.1:1/mcp?unit=abc"}]

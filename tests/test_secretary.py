@@ -70,26 +70,26 @@ async def test_a_secretary_sleeps_until_she_is_written_to(tmp_path: Path):
                           ("tool", "message", {"team": "dev", "text": "Ship on Friday."}),
                           ("tool", "message", {"team": "art", "text": "Hello."}),
                           ("say", "Told.")]}],
-        "K5000": [{"do": [("report", "The build is green.")]},
+        "K5001": [{"do": [("report", "The build is green.")]},
                   {"when": "Ship on Friday", "do": [("say", "Noted.")]}]})
     made = await service.create_project("Studio", str(tmp_path / "work"))
     assert not harness.opened  # nothing was said to her: nothing runs
     dev = await service.add_fleet(made.id, "dev", "Keep the build green", ongoing=False)
     await until(lambda: service.state(dev).finished)
     await service.say(dev, "Well done")
-    await until(lambda: any("Well done" in heard for heard in harness.heard["K5000"]))
+    await until(lambda: any("Well done" in heard for heard in harness.heard["K5001"]))
 
     await service.say(made.secretary, "How is it going?")
     await until(lambda: [r for r in harness.results if r[1] == "teams"])
     [(_, _, standing)] = [r for r in harness.results if r[1] == "teams"]
     assert "dev:" in standing and "Keep the build green" in standing
     assert "to the person, report: The build is green." in standing
-    assert "The person to agent K5000: Well done" in standing  # what was said without her
+    assert "The person to agent K5001: Well done" in standing  # what was said without her
     await until(lambda: service.fleet(made.secretary).lead.state == "done")
 
     await service.say(made.secretary, "Tell dev we ship on Friday")
-    await until(lambda: any("Ship on Friday" in heard for heard in harness.heard["K5000"]))
-    heard = next(h for h in harness.heard["K5000"] if "Ship on Friday" in h)
+    await until(lambda: any("Ship on Friday" in heard for heard in harness.heard["K5001"]))
+    heard = next(h for h in harness.heard["K5001"] if "Ship on Friday" in h)
     assert heard == "[Message from the project's secretary] Ship on Friday."
     await until(lambda: len([r for r in harness.results if r[1] == "message"]) == 2)
     sent, refused = [r[2] for r in harness.results if r[1] == "message"]
@@ -113,11 +113,11 @@ async def test_the_secretarys_message_starts_a_team_that_is_stopped(tmp_path: Pa
     service, harness, _ = local(tmp_path, {
         "Secretary": [{"do": [("tool", "message", {"team": "dev", "text": "Carry on."}),
                               ("say", "It is back.")]}],
-        "K5000": [{"do": [("say", "Building.")]},
+        "K5001": [{"do": [("say", "Building.")]},
                   {"when": "Carry on", "do": [("say", "On it.")]}]})
     made = await service.create_project("Studio", str(tmp_path / "work"))
     dev = await service.add_fleet(made.id, "dev", "Build it")
-    await until(lambda: "K5000" in harness.heard)
+    await until(lambda: "K5001" in harness.heard)
     await service.stop(dev)
     assert not service.state(dev).running
 
@@ -126,26 +126,26 @@ async def test_the_secretarys_message_starts_a_team_that_is_stopped(tmp_path: Pa
     assert harness.results[-1][2] == "Sent to dev."
     assert service.state(dev).running
     await until(lambda: "[Message from the project's secretary] Carry on."
-                in harness.heard["K5000"])
+                in harness.heard["K5001"])
     await service.aclose()
 
 
 async def test_leads_reach_each_other_and_the_secretary(tmp_path: Path):
     service, harness, seen = local(tmp_path, {
-        "K5001": [{"when": "Build it", "do": [
+        "K5002": [{"when": "Build it", "do": [
                       ("tool", "status", {}),
                       ("tool", "message", {"agent": "art", "text": "Which palette?"}),
                       ("tool", "message", {"agent": "secretary", "text": "We disagree."}),
                       ("tool", "message", {"agent": "legal", "text": "Anyone?"})]}],
-        "K5000": [{"when": "Draw it", "do": [("say", "Drawing.")]},
+        "K5001": [{"when": "Draw it", "do": [("say", "Drawing.")]},
                   {"when": "Which palette", "do": [("say", "Blue.")]}],
         "Secretary": [{"do": [("say", "I will tell the person.")]}]})
     made = await service.create_project("Studio", str(tmp_path / "work"))
     art = await service.add_fleet(made.id, "art", "Draw it")
-    await until(lambda: any("Draw it" in h for h in harness.heard.get("K5000", [])))
+    await until(lambda: any("Draw it" in h for h in harness.heard.get("K5001", [])))
     dev = await service.add_fleet(made.id, "dev", "Build it")
     await until(lambda: len([r for r in harness.results if r[1] == "message"]) == 3)
-    brief = next(h for h in harness.heard["K5001"] if "Build it" in h)
+    brief = next(h for h in harness.heard["K5002"] if "Build it" in h)
     assert "one team of a project" in brief and "fleet.message" in brief
     [status] = [r[2] for r in harness.results if r[1] == "status"]
     assert "The project's other teams, each with a limit of its own:" in status and "- art (running): Draw it" in status
@@ -153,7 +153,7 @@ async def test_leads_reach_each_other_and_the_secretary(tmp_path: Path):
     assert (to_art, to_secretary) == ("Sent to art.", "Sent to Secretary.")
     assert "no team" in to_nobody and "art" in to_nobody
     assert any(h == "[Message from the lead of the team dev] Which palette?"
-               for h in harness.heard["K5000"])
+               for h in harness.heard["K5001"])
     assert across(service, seen, art) == [("dev", "Which palette?", False)]
     assert across(service, seen, dev) == [("art", "Which palette?", True),
                                          ("Secretary", "We disagree.", True)]
@@ -163,14 +163,14 @@ async def test_leads_reach_each_other_and_the_secretary(tmp_path: Path):
 
     await service.stop(art)  # a team that does not run is started by a message
     assert not service.state(art).running
-    harness.scripts["K5001"] = [{"when": "Try again", "do": [
+    harness.scripts["K5002"] = [{"when": "Try again", "do": [
         ("tool", "message", {"agent": "art", "text": "Still there?"})]}]
     await service.say(dev, "Try again")
     await until(lambda: len([r for r in harness.results if r[1] == "message"]) == 4)
     assert harness.results[-1][2] == "Sent to art."
     assert service.state(art).running
     await until(lambda: any(h == "[Message from the lead of the team dev] Still there?"
-                            for h in harness.heard["K5000"]))
+                            for h in harness.heard["K5001"]))
     await service.aclose()
 
 
@@ -239,7 +239,7 @@ async def test_a_team_with_a_folder_of_its_own_finds_it_there(tmp_path: Path):
     it is made with the team. A folder elsewhere has to be there."""
     import pytest
 
-    service, _, _ = local(tmp_path, {"K5000": [{"do": [("say", "Drawing.")]}]})
+    service, _, _ = local(tmp_path, {"K5001": [{"do": [("say", "Drawing.")]}]})
     work = tmp_path / "work"
     made = await service.create_project("Studio", str(work))
     fleet = await service.add_fleet(made.id, "art", "Draw it", work=str(work / "assets" / "art"))

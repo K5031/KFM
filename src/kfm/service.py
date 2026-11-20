@@ -5,7 +5,7 @@ workings: `kfm.local` is the service in this process, `kfm.remote` the one that
 `kfm serve` runs, reached over a socket.
 
 Ids are text: a project's is its folder's name, a fleet's is "<project>/<its folder's
-name>", a unit's is the one in the fleet's record ("K4000").
+name>", a unit's is the one in the fleet's record ("K4001").
 
 Errors: `FleetError` for what the fleet's rules do not allow, `UnitError` for an agent that
 could not be reached, `ValueError` for a name, a setting or an id that does not fit,

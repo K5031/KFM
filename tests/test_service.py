@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from kfm.api import UnitError
 from kfm.config import FleetConfig
 from kfm.events import Delivered, Said, Told, units
 from kfm.fleet import Fleet, FleetError
@@ -422,6 +423,74 @@ async def test_in_auto_whoever_starts_an_agent_names_its_model(tmp_path: Path):
         await service.add_agent(fleet, "u1", "Extra", "Help")
     extra = await service.add_agent(fleet, "u1", "Extra", "Help", model="small-1")
     assert service.fleet(fleet).units[extra].model == "small-1"
+    await service.aclose()
+
+
+async def test_saved_settings_reach_the_fleets_there_are(tmp_path: Path):
+    harness = FakeHarness({
+        "K5 u1": [{"do": [("tool", "delegate", {"name": "Reader", "task": "Read",
+                                                 "budget_usd": 0.5}),
+                          ("report", "Built.")]},
+                  {"when": "Carry on", "do": [("say", "On it.")]}],
+        "Reader": [{"do": [("report", "Read.")]}],
+        "Secretary": [{"do": [("say", "Hello.")]}]})
+    (tmp_path / "work").mkdir()
+    service = LocalService(tmp_path / "home", harness=harness)  # settings from its home
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    dev = await service.add_fleet(made.id, "dev", "Build it", ongoing=False)
+    await until(lambda: service.state(dev).finished)
+    assert ("K5 u1", "allow_workspace") in harness.permissions
+    assert ("K5 u1", 2.0) in harness.budgets and ("K5 u1", None) in harness.models
+
+    await service.save_settings(unit_budget_usd=9.0, permissions="auto", budget_usd=25.0,
+                                max_units=3, models={"K5": "big-1", "secretary": "small-1"})
+    lead, reader = service.fleet(dev).units.values()
+    # An agent's limit follows the setting, but not past what its supervisor gave it.
+    assert (lead.budget_usd, reader.budget_usd) == (9.0, 0.5)
+    assert service.state(dev).budget_usd == 10.0  # a fleet's limit is its own
+    await service.say(dev, "Carry on")
+    await until(lambda: "Carry on" in harness.heard["K5 u1"][-1])
+    assert harness.permissions[-1] == ("K5 u1", "auto")
+    assert harness.budgets[-1] == ("K5 u1", 9.0) and harness.models[-1] == ("K5 u1", "big-1")
+
+    await service.say(made.secretary, "Hello")  # she still only reads, on her own model
+    await until(lambda: "Secretary" in harness.heard)
+    assert harness.permissions[-1] == ("Secretary", "allow_read_only")
+    assert harness.models[-1] == ("Secretary", "small-1")
+
+    await service.save_settings(unit_budget_usd=1.0)  # and down
+    assert (lead.budget_usd, reader.budget_usd) == (1.0, 0.5)
+    await service.aclose()
+
+
+async def test_an_agent_at_work_is_started_again_on_changed_settings(tmp_path: Path):
+    harness = FakeHarness({"K5 u1": [{"do": [("say", "On watch.")]}]})
+    (tmp_path / "work").mkdir()
+    service = LocalService(tmp_path / "home", harness=harness)
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    dev = await service.add_fleet(made.id, "dev", "Keep watch")  # a duty: it stays up
+    await until(lambda: "K5 u1" in harness.heard)
+    opened = len(harness.opened)
+    await service.save_settings(max_units=5)  # nothing its process is started with
+    assert len(harness.opened) == opened
+    await service.save_settings(permissions="auto")
+    assert harness.permissions[-1] == ("K5 u1", "auto")
+    assert harness.opened[-1] == ("K5 u1", "session-u1")  # in its own conversation
+    await until(lambda: "settings" in harness.heard["K5 u1"][-1])
+    assert service.fleet(dev).lead.state == "working"
+    await service.aclose()
+
+
+async def test_an_agent_that_takes_no_message_has_failed_and_not_begun_work(tmp_path: Path):
+    service, harness, _ = local(tmp_path, {"K5 u1": [{"do": [("report", "Built.")]}]})
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    dev = await service.add_fleet(made.id, "dev", "Build it", ongoing=False)
+    await until(lambda: service.state(dev).finished)
+    harness.refuses = "budget exhausted (2.02 of 2)"
+    with pytest.raises(UnitError):
+        await service.say(dev, "Carry on")
+    lead = service.fleet(dev).lead
+    assert "budget exhausted" in lead.failure
     await service.aclose()
 
 

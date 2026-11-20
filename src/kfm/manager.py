@@ -10,6 +10,7 @@ import logging
 import os
 import shutil
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -48,6 +49,9 @@ STOP_GRACE_S = 10.0  # for a unit to end by itself when it is closed
 LIVE_S = 0.2  # between two tellings of what units are doing
 LIVE_CHARS = 4000  # the end of what a unit thinks or writes that is kept to show
 _OVER = ("done", "idle", "failed", "stopped")
+# The person's settings every fleet follows as they change. Its limit is the fleet's own.
+SHARED = ("max_units", "unit_budget_usd", "permissions", "models", "teams", "model_mode",
+          "auto_models")
 
 
 def _forget(folder: Path, gone: Sequence[Unit]) -> None:
@@ -272,6 +276,38 @@ class Manager:
         if supervisor is not None and supervisor.active:  # one that has ended is not woken
             self._spawn(self._tell_quietly(supervisor, units.overheard(unit, text, files)))
 
+    async def adopt(self, of: FleetConfig, **own: Any) -> None:
+        """Take the person's settings as they now are (`SHARED`), with `own` in place of
+        what this fleet has of its own. A unit's limit becomes the new one, but for a unit
+        its supervisor gave less. A unit whose process is up and whose model, permissions
+        or limit changed by it is started again on them, in its own conversation."""
+        old = self.config
+        config = replace(old, **{**{name: getattr(of, name) for name in SHARED}, **own})
+        if config == old:
+            return
+        everyone = list(self.fleet.units.values())
+        before = {unit.id: self._runs_on(unit) for unit in everyone}
+        for unit in everyone:
+            unit.budget_usd = (config.unit_budget_usd
+                               if unit.budget_usd >= old.unit_budget_usd
+                               else min(unit.budget_usd, config.unit_budget_usd))
+        self.config, self.fleet.settings = config, settings.record(config)
+        self._changed()
+        await self._save()
+        for unit in everyone:
+            if unit.id in self._sessions and self._runs_on(unit) != before[unit.id]:
+                await self._close(unit)
+                if unit.active and self.up:
+                    try:
+                        await (await self._session(unit)).send(units.SETTINGS_CHANGED)
+                    except UnitError as e:
+                        await self._could_not_start(unit, e)
+
+    def _runs_on(self, unit: Unit) -> tuple[str | None, str, float]:
+        """What the unit's process is started with of the settings."""
+        return (unit.model or self.config.model_for(unit.rank, unit.team),
+                self.config.permissions, unit.budget_usd)
+
     async def set_model(self, unit: Unit, model: str | None) -> None:
         """The model the unit runs on from now; None or "": its rank's or team's. A unit
         at work is started again on it, in its own conversation."""
@@ -368,10 +404,16 @@ class Manager:
         unit.question = None  # this is its answer
         self._changed()
         ended = unit.state in ("done", "idle")  # its instruction stands no more
-        if unit.state in _OVER:
+        woken = unit.state in _OVER
+        if woken:
             unit.report = unit.failure = None
             self._set(unit, "working")
-        await session.send(text, files, spoken=spoken)
+        try:
+            await session.send(text, files, spoken=spoken)
+        except UnitError as e:
+            if woken:  # it did not take it, over its limit say: it is not at work
+                await self._could_not_start(unit, e)
+            raise
         if ended:  # the message is what it takes its turn on, with its goal to end again
             await session.instruct(self._instruction(unit))
 
@@ -528,9 +570,7 @@ class Manager:
     async def _open(self, unit: Unit, *, resume: bool) -> Session:
         spec = UnitSpec(
             unit.id, unit.called, unit.rank, self.folder / "units" / unit.id, self.work,
-            unit.model or self.config.model_for(unit.rank, unit.team),
-            self.config.permissions,
-            unit.budget_usd, f"{self._tools.url}?unit={unit.token}")
+            *self._runs_on(unit), f"{self._tools.url}?unit={unit.token}")
         session = await self._harness.open(spec, lambda event: self._event(unit, event),
                                            unit.session if resume else None)
         self._sessions[unit.id] = session

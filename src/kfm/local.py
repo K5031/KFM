@@ -248,7 +248,18 @@ class LocalService(Service):
         return self._config or await asyncio.to_thread(load, self.home / CONFIG_FILE)
 
     async def save_settings(self, **changes: Any) -> FleetConfig:
-        return await asyncio.to_thread(lambda: save(self.home / CONFIG_FILE, **changes))
+        config = await asyncio.to_thread(lambda: save(self.home / CONFIG_FILE, **changes))
+        for each in await self.projects():  # every fleet there is follows them
+            await self.fleets(each.id)
+        for fleet_id, manager in list(self._managers.items()):
+            if not fleet_id.endswith(f"/{project.SECRETARY}"):
+                await manager.adopt(config)
+                continue
+            await manager.adopt(config, permissions=READ_ONLY)  # she only ever reads
+            lead, model = manager.fleet.lead, config.models.get("secretary")
+            if lead is not None and lead.model != model:
+                await manager.set_model(lead, model)
+        return config
 
     def subscribe(self, listener: Callable[[Update], None]) -> Callable[[], None]:
         self._listeners.append(listener)

@@ -1002,7 +1002,7 @@ class Amount(QLineEdit):
 
 
 class SettingsDialog(QDialog):
-    """What new fleets get: the model of each rank and the limits. `save_asked` when the
+    """KFM's settings: the model of each rank and the limits. `save_asked` when the
     person wants them kept; `changes` is what they set."""
 
     save_asked = Signal()
@@ -1072,7 +1072,7 @@ class SettingsDialog(QDialog):
         limits.addRow("Per fleet", self.budget)
         limits.addRow("Per agent", self.each)
         limits.addRow("Agents", self.agents)
-        self.budget.setToolTip("The most a fleet may spend")
+        self.budget.setToolTip("The most a new fleet may spend")
         self.each.setToolTip("The most one agent may spend")
         self.agents.setToolTip("The most agents in a fleet")
         self.permissions = QComboBox()  # what agents do without asking: Kadence's levels

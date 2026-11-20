@@ -17,6 +17,10 @@ RESUMED = (
     "asked that was not answered was not kept.]")
 
 
+SETTINGS_CHANGED = (
+    "[The person changed the fleet's settings, which started you again. Anything you had "
+    "running in the background ended.]")
+
 MODEL_CHANGED = (
     "[Your model was changed, which started you again. Anything you had running in the "
     "background ended.]")

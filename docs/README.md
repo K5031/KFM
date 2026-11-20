@@ -86,7 +86,7 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm fleet new PROJECT NAME ["task"] [--model M]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
 | `kfm agent add FLEET [--under u1] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
 | `kfm agent remove\|rename\|task\|model FLEET UNIT [...]` | Change an agent |
-| `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID] [--model-mode auto\|manual] [--auto-models ID,ID] [--permissions LEVEL]` | Show or change what new fleets get |
+| `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID] [--model-mode auto\|manual] [--auto-models ID,ID] [--permissions LEVEL]` | Show or change the settings. A change reaches every fleet there is; `--budget` is what a new fleet may spend |
 | `kfm serve` | Run the service in this terminal instead of in the background |
 
 ## Stop a fleet and start it again
@@ -237,8 +237,10 @@ opens a window on the same service the commands talk to, without a terminal. It 
   until it is done, **Add to App Menu**, which puts KFM in your app menu with its own
   icon so it starts without a terminal.
 - **The gear** beside it opens **Settings**: the model of each rank, what a fleet and an
-  agent may spend, and how many agents a fleet may have. They apply to fleets made
-  afterwards; a fleet keeps what it was made with.
+  agent may spend, and how many agents a fleet may have. Saving them changes every
+  fleet there is, not only new ones: an agent at work starts again on what changed, in
+  its own conversation. The one exception is **Per fleet**, which is what a new fleet
+  starts with; a fleet's own limit is changed beside its Resume button.
 
 What happens in a fleet is also kept as `log.jsonl` in the fleet's folder, one line per
 event, whichever way the fleet was run.
@@ -307,8 +309,8 @@ secretary = "claude-sonnet-5-5"
 
 ### What agents do without asking
 
-`permissions`, **Permission** in the window's Settings, is the level every agent of a new
-fleet gets. A fleet keeps the level it was made with.
+`permissions`, **Permission** in the window's Settings, is the level every agent has,
+in fleets that are there already too. A project's secretary only ever reads.
 
 | Level | Agents |
 |---|---|

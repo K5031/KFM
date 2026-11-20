@@ -146,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     approve.add_argument("answer", choices=("yes", "no", "always"),
                          help="always: yes, and that agent no longer asks for this kind")
 
-    settings = commands.add_parser("settings", help="show or change what new fleets get")
+    settings = commands.add_parser("settings", help="show or change the settings of every fleet")
     settings.add_argument("--budget", type=float, dest="budget_usd")
     settings.add_argument("--unit-budget", type=float, dest="unit_budget_usd")
     settings.add_argument("--max-agents", type=int, dest="max_units")
@@ -158,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
                                              if each.strip()],
                           help="the models there are to choose from in auto")
     settings.add_argument("--permissions", choices=[level.value for level in PERMISSION_LABELS],
-                          help="what agents of new fleets do without asking; auto: a "
+                          help="what agents do without asking; auto: a "
                                "check decides, and asks you when unsure")
     settings.add_argument("--projects-folder", dest="projects_folder", metavar="PATH",
                           help="a new project gets a folder named after it in here; "

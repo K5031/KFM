@@ -237,7 +237,9 @@ class Service(abc.ABC):
 
     @abc.abstractmethod
     async def save_settings(self, **changes: Any) -> FleetConfig:
-        """`config.save` on KFM's settings."""
+        """`config.save` on KFM's settings. Every fleet there is then follows them, but
+        for its own limit: an agent whose model, permissions or limit changed and whose
+        process is up is started again on them, in its own conversation."""
 
     @abc.abstractmethod
     def subscribe(self, listener: Callable[[Update], None]) -> Callable[[], None]:

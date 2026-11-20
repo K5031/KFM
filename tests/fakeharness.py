@@ -50,6 +50,8 @@ class FakeHarness(Harness):
         self.approved: list[tuple[str, bool]] = []  # (request id, allow)
         self.conversations: list[str] = []  # units begun on a conversation, not a goal
         self.permissions: list[tuple[str, str]] = []  # (unit name, permissions), as opened
+        self.budgets: list[tuple[str, float]] = []  # (unit name, its limit), as opened
+        self.refuses = ""  # why no message is taken, e.g. a unit over its limit
         self.offered = [("big-1", "Big One", "$5 in, $25 out per million tokens"),
                         ("small-1", "Small One", "")]  # its models
         self.open_s = 0.0  # how long a unit's process takes to come up
@@ -74,6 +76,7 @@ class FakeHarness(Harness):
         self.opened.append((spec.name, session))
         self.models.append((spec.name, spec.model))
         self.permissions.append((spec.name, spec.permissions))
+        self.budgets.append((spec.name, spec.budget_usd))
         return FakeSession(self, spec, on_event, session)
 
 
@@ -99,6 +102,8 @@ class FakeSession(Session):
 
     async def send(self, text: str, files: Sequence[str] = (), *,
                    spoken: bool = False) -> None:
+        if self.harness.refuses:
+            raise UnitError(self.harness.refuses)
         if files or spoken:
             self.harness.files.append((self.spec.name, list(files), spoken))
         self._turn(text)

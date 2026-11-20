@@ -197,3 +197,20 @@ async def test_a_proposal_reaches_a_frontend_over_the_socket(tmp_path: Path):
     assert await remote.proposal(made.id) is None
     await remote.aclose()
     await asyncio.wait_for(serving, 10)
+
+
+async def test_a_team_with_a_folder_of_its_own_finds_it_there(tmp_path: Path):
+    """The secretary may propose a folder inside the project's that does not exist yet:
+    it is made with the team. A folder elsewhere has to be there."""
+    import pytest
+
+    service, _, _ = local(tmp_path, {"K5 u1": [{"do": [("say", "Drawing.")]}]})
+    work = tmp_path / "work"
+    made = await service.create_project("Studio", str(work))
+    fleet = await service.add_fleet(made.id, "art", "Draw it", work=str(work / "assets" / "art"))
+    assert (work / "assets" / "art").is_dir()
+    assert service.fleet(fleet).work == str(work / "assets" / "art")
+    with pytest.raises(ValueError, match="There is no folder"):
+        await service.add_fleet(made.id, "elsewhere", "Go", work=str(tmp_path / "nowhere"))
+    assert not (tmp_path / "nowhere").exists()
+    await service.aclose()

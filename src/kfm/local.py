@@ -114,6 +114,8 @@ class LocalService(Service):
         config = await self.settings()
         if budget_usd is not None:
             config = replace(config, budget_usd=budget_usd)
+        if work is not None:
+            await asyncio.to_thread(_own_folder, Path(work), opened.work)
         folder = await asyncio.to_thread(opened.new_fleet)
         fleet_id = f"{project_id}/{folder.name}"
         manager = self._managers[fleet_id] = await asyncio.to_thread(
@@ -389,6 +391,16 @@ class _Side:
 
     def propose(self, teams: Sequence[draft.Team]) -> None:
         self._service._propose(self._fleet, teams)
+
+
+def _own_folder(work: Path, project_work: Path) -> None:
+    """A fleet's own folder is there before its agents start in it: one inside the
+    project's folder is made, as the secretary may propose one that is not there yet;
+    any other has to exist. ValueError when it does not. Blocking."""
+    if work.resolve().is_relative_to(project_work.resolve()):
+        work.mkdir(parents=True, exist_ok=True)
+    elif not work.is_dir():
+        raise ValueError(f"There is no folder {work}.")
 
 
 def _clip(text: str) -> str:

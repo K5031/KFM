@@ -67,6 +67,7 @@ from PySide6.QtWidgets import (
     QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
+    QTreeWidgetItemIterator,
     QVBoxLayout,
     QWidget,
 )
@@ -647,6 +648,7 @@ class DraftPage(QWidget):
         super().__init__()
         self.project = opened
         self.rows: list[DraftRow] = []
+        self.shown: draft.Draft | None = None  # the proposal its rows were made from
         self.busy = True  # the secretary is at it
         self.setStyleSheet(BOX_STYLE.format(line=theme.current().line))
         column = QWidget()
@@ -734,7 +736,11 @@ class DraftPage(QWidget):
         theme.mark(self.note, "tone", "error")
 
     def fill(self, made: draft.Draft) -> None:
-        """Show what the secretary proposed, in place of what was there."""
+        """Show what the secretary proposed, in place of what was there. The proposal it
+        already shows is left as the person has changed it."""
+        if made == self.shown:
+            return
+        self.shown = made
         for row in list(self.rows):
             self._remove(row)
         for team in made.teams:
@@ -1346,8 +1352,8 @@ class FleetWindow(QMainWindow):
         self.dialog: QDialog | None = None  # the one open about an agent
         self.drafts: dict[str, DraftPage] = {}  # by project id, until started
         self.closed = asyncio.Event()
-        self._rows: dict[str, QTreeWidgetItem] = {}
-        self._rows_of: FleetView | None = None
+        # The fleet the agents list shows, and who is under whom in it.
+        self._agents_shape: tuple[str, tuple[tuple[str, str | None], ...]] = ("", ())
         self._tasks: set[asyncio.Task[None]] = set()
         self.setWindowTitle("KFM")
         # No title bar: the bar on top is where the window is grabbed, and has its controls.
@@ -1716,7 +1722,7 @@ class FleetWindow(QMainWindow):
         self.view, self.adding = view, False
         self.fleet_pages.setCurrentWidget(view)
         self._refresh()
-        self.agents.setCurrentItem(self._rows.get(unit_id or ""))
+        self.agents.setCurrentItem(self._agent_row(unit_id))
 
     async def start_fleet(self, name: str, task: str, *, ongoing: bool, work: Path,
                           budget: float, opened: ProjectInfo | None = None,
@@ -2144,6 +2150,19 @@ class FleetWindow(QMainWindow):
             lambda: self._run(view.set_model(unit, dialog.model.text().strip())))
         dialog.open()
 
+    def _agent_rows(self) -> list[QTreeWidgetItem]:
+        """Every row of the agents list, top down. For use at once, not to keep."""
+        rows: list[QTreeWidgetItem] = []
+        walk = QTreeWidgetItemIterator(self.agents)
+        while (row := walk.value()) is not None:
+            rows.append(row)
+            walk += 1
+        return rows
+
+    def _agent_row(self, unit_id: str | None) -> QTreeWidgetItem | None:
+        return next((row for row in self._agent_rows()
+                     if row.data(0, UNIT_ROLE) == unit_id), None)
+
     def _agent_chosen(self, item: QTreeWidgetItem | None, _: object = None) -> None:
         if self.view is not None:
             self.view.choose(item.data(0, UNIT_ROLE) if item is not None else None)
@@ -2208,28 +2227,37 @@ class FleetWindow(QMainWindow):
         self._show_agents(view)
 
     def _show_agents(self, view: FleetView) -> None:
-        if self._rows_of is not view:
-            self._rows.clear()
-            self.agents.clear()
-            self._rows_of = view
+        """The open fleet's agents, each under its supervisor. No row is kept hold of from
+        one call to the next: Qt deletes rows when the list is cleared, and a reference
+        to a deleted row crashes the program. The list is built anew when the fleet or
+        who is under whom changed, and its rows are found by the unit they stand for."""
         fleet = view.fleet
-        if fleet is None:
-            return
-        colors = theme.current()
-        for gone in [unit_id for unit_id in self._rows if unit_id not in fleet.units]:
-            row = self._rows.pop(gone)  # taken out of the fleet
-            (row.parent() or self.agents.invisibleRootItem()).removeChild(row)
-        for unit in fleet.units.values():
-            row = self._rows.get(unit.id)
-            if row is None:
-                parent = self._rows.get(unit.supervisor or "")
-                row = QTreeWidgetItem(parent) if parent is not None else QTreeWidgetItem(
-                    self.agents)
+        units = list(fleet.units.values()) if fleet is not None else []
+        shape = (view.id, tuple((unit.id, unit.supervisor) for unit in units))
+        if shape != self._agents_shape:
+            current = self.agents.currentItem()
+            chosen = current.data(0, UNIT_ROLE) if current is not None else None
+            del current
+            self.agents.blockSignals(True)  # the choice is put back, not given up
+            self.agents.clear()
+            made: dict[str, QTreeWidgetItem] = {}
+            for unit in units:
+                parent = made.get(unit.supervisor or "")
+                row = made[unit.id] = QTreeWidgetItem(
+                    parent if parent is not None else self.agents)
                 row.setData(0, UNIT_ROLE, unit.id)
                 row.setExpanded(True)
-                if parent is not None:
-                    parent.setExpanded(True)
-                self._rows[unit.id] = row
+            kept = made.get(chosen or "") if self._agents_shape[0] == view.id else None
+            self.agents.setCurrentItem(kept)
+            self.agents.blockSignals(False)
+            self._agents_shape = shape
+            if chosen is not None and kept is None:  # the one chosen is gone
+                self._agent_chosen(None)
+            del made, row, kept
+        colors = theme.current()
+        by_id = {unit.id: unit for unit in units}
+        for row in self._agent_rows():
+            unit = by_id[row.data(0, UNIT_ROLE)]
             row.setText(0, f"{unit.name}  K{unit.rank}" if unit.name else f"K{unit.rank}")
             row.setText(1, unit.state)
             row.setText(2, f"${unit.spent_usd:.2f}")
@@ -2237,7 +2265,7 @@ class FleetWindow(QMainWindow):
             row.setForeground(2, QColor(colors.muted))
             row.setToolTip(0, unit.task)
         # As tall as its agents, up to a part of the sidebar: the projects have the rest.
-        rows = min(len(fleet.units), AGENT_ROWS)
+        rows = min(len(units), AGENT_ROWS)
         self.agents.setFixedHeight(max(1, rows) * AGENT_ROW_PX + 6)
 
     def _run(self, work: Coroutine[Any, Any, None]) -> None:

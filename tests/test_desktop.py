@@ -897,6 +897,42 @@ async def test_a_window_on_an_older_service_offers_to_restart(window, tmp_path: 
     await until(lambda: again == [True])
 
 
+async def test_the_agents_list_follows_the_fleet_and_keeps_the_one_chosen(window,
+                                                                         tmp_path: Path):
+    """It is built anew when agents come or go and when another fleet is opened, and the
+    agent that was chosen stays chosen while it is there."""
+    shown, _ = window({
+        "K5 u1": [{"when": task, "do": [
+            ("tool", "delegate", {"name": "Scout", "task": "Look"}),
+            ("tool", "delegate", {"name": "Scribe", "task": "Write"})]}
+            for task in ("Build it", "Draw it")],
+        "Scout": [{"do": [("tool", "delegate", {"name": "Runner", "task": "Run"})]}] * 2,
+        "Scribe": [{"do": [("say", "Writing.")]}] * 2,
+        "Runner": [{"do": [("say", "Running.")]}] * 2})
+    dev = await start(shown, tmp_path, "Build it", name="dev", duty=True)
+    await until(lambda: [name for _, name, _ in agents(shown)] == [
+        "K5", "Scout  K4", "Runner  K3", "Scribe  K4"])
+    scribe = next(u.id for u in dev.fleet.units.values() if u.name == "Scribe")
+    scout = next(u.id for u in dev.fleet.units.values() if u.name == "Scout")
+    shown.agents.setCurrentItem(shown._agent_row(scribe))
+    assert dev.shown == scribe
+    await shown.service.remove_agent(dev.id, scout)  # with the one under it
+    await until(lambda: [name for _, name, _ in agents(shown)] == ["K5", "Scribe  K4"])
+    assert dev.shown == scribe and shown.agents.currentItem().text(0) == "Scribe  K4"
+    await shown.service.remove_agent(dev.id, scribe)  # the one chosen goes: all is shown
+    await until(lambda: [name for _, name, _ in agents(shown)] == ["K5"])
+    assert dev.shown is None
+
+    shown.back_button.click()
+    art = await start(shown, tmp_path, "Draw it", name="art", duty=True)
+    await until(lambda: len(agents(shown)) == 4)  # the other fleet's, built the same way
+    for _ in range(5):  # back and forth: the list is cleared and built each time
+        shown.open_fleet(dev)
+        assert [name for _, name, _ in agents(shown)] == ["K5"]
+        shown.open_fleet(art)
+        assert len(agents(shown)) == 4
+
+
 async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QApplication):
     from PySide6.QtCore import Qt
 

@@ -281,7 +281,8 @@ marketing = "claude-sonnet-5-5"
 
 Without `[models]`, every agent uses the model in your Kadence configuration. In the
 window's Settings each rank has a list of the models your provider offers; one that is
-not listed can be typed.
+not listed can be typed. **Default** there is the model of every rank you set none for,
+and an empty rank says which that is.
 
 ### What agents do without asking
 

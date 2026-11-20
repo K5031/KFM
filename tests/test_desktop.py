@@ -724,6 +724,15 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         assert [field.itemText(i) for i in range(3)] == ["", "big-1", "small-1"]
         assert field.itemData(1, Qt.ItemDataRole.ToolTipRole) == "Big One"
         assert field.currentText() == "" and field.lineEdit().placeholderText() == "Default"
+        # The model of every rank that has none of its own: each such rank says which.
+        every = dialog.models["default"]
+        assert list(dialog.models) == ["default", "K5", "K4", "K3", "K2", "K1"]
+        assert every.lineEdit().placeholderText() == "The agent program's own"
+        every.setCurrentText("small-1")
+        assert field.lineEdit().placeholderText() == "Default: small-1"
+        every.setCurrentText("")
+        assert field.lineEdit().placeholderText() == "Default"
+        every.setCurrentIndex(2)
         field.setCurrentIndex(1)
         dialog.models["K4"].setCurrentText("my-own-model")
         dialog.budget.setValue(25.0)
@@ -736,13 +745,15 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         await until(lambda: not dialog.isVisible())
         saved = load(tmp_path / "home" / "fleet.toml")
         assert (saved.models, saved.budget_usd, saved.max_units) == (
-            {"K5": "big-1", "K4": "my-own-model"}, 25.0, 6)
+            {"default": "small-1", "K5": "big-1", "K4": "my-own-model"}, 25.0, 6)
         assert saved.permissions == "allow_workspace"  # as it was: left alone
         await until(lambda: shown.start_form.budget.value() == 25.0)  # what a new fleet gets
         shown.gear_button.click()
         await until(lambda: shown.dialog is not dialog and shown.dialog.isVisible())
         assert shown.dialog.models["K5"].currentText() == "big-1"
         assert shown.dialog.models["K4"].currentText() == "my-own-model"
+        assert shown.dialog.models["default"].currentText() == "small-1"
+        assert shown.dialog.models["K3"].lineEdit().placeholderText() == "Default: small-1"
         # What agents may do without asking: Kadence's levels, by Kadence's words.
         levels = shown.dialog.permissions
         assert levels.currentData() == "allow_workspace"

@@ -998,14 +998,19 @@ class SettingsDialog(QDialog):
             return form
 
         models = section("Models")
+        # "default" is the model of every rank that has none of its own (FleetConfig.models).
         self.models: dict[str, QComboBox] = {}
-        for rank in range(config.top_rank, 0, -1):
-            field = self.models[f"K{rank}"] = QComboBox(editable=True)
+        for key in ("default", *(f"K{rank}" for rank in range(config.top_rank, 0, -1))):
+            field = self.models[key] = QComboBox(editable=True)
             field.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)  # typed is not listed
-            field.setCurrentText(config.models.get(f"K{rank}", ""))
-            field.lineEdit().setPlaceholderText("Default")
-            field.setToolTip(f"The model K{rank} agents run on; empty: the agent program's own")
-            models.addRow(f"K{rank}", field)
+            field.setCurrentText(config.models.get(key, ""))
+            models.addRow("Default" if key == "default" else key, field)
+        every = self.models["default"]
+        every.lineEdit().setPlaceholderText("The agent program's own")
+        every.setToolTip("The model of every rank that has none of its own; empty: the one "
+                         "the agent program is set to")
+        every.currentTextChanged.connect(lambda _: self._show_default())
+        self._show_default()
         limits = section("Limits")
         self.budget = Amount(config.budget_usd, money=True)
         self.each = Amount(config.unit_budget_usd, money=True)
@@ -1070,6 +1075,16 @@ class SettingsDialog(QDialog):
                 "permissions": self.permissions.currentData(),
                 "models": {rank: field.currentText().strip()
                            for rank, field in self.models.items()}}
+
+    def _show_default(self) -> None:
+        """A rank without a model of its own says which one it then runs on."""
+        default = self.models["default"].currentText().strip()
+        for key, field in self.models.items():
+            if key != "default":
+                field.lineEdit().setPlaceholderText(f"Default: {default}" if default
+                                                    else "Default")
+                field.setToolTip(f"The model {key} agents run on; empty: the default"
+                                 + (f", {default}" if default else ""))
 
     def offer(self, models: Sequence[tuple[str, str]]) -> None:
         """The models there are to choose from, each by its id with its name beside it in

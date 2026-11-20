@@ -482,7 +482,7 @@ class KindSwitch(QFrame):
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             self.group.addButton(button)
             kinds.addWidget(button)
-        self.duty.setChecked(True)  # a fleet in a project holds a role
+        self.task_kind.setChecked(True)
         self.setFixedHeight(36)
 
 
@@ -729,7 +729,7 @@ def _centred(form: QWidget) -> QWidget:
 class DraftRow(QFrame):
     """A fleet of a draft: its name, what it does, Task or Duty, and a way out of it."""
 
-    def __init__(self, name: str = "", does: str = "", ongoing: bool = True) -> None:
+    def __init__(self, name: str = "", does: str = "", ongoing: bool = False) -> None:
         super().__init__(objectName="composer")
         self.folder: str | None = None  # one of its own, in the project's, if proposed
         inside = QVBoxLayout(self)
@@ -862,7 +862,7 @@ class DraftPage(QWidget):
         """Drop the proposal, or stop waiting for one."""
         self.over.emit()
 
-    def add_row(self, name: str = "", does: str = "", ongoing: bool = True) -> DraftRow:
+    def add_row(self, name: str = "", does: str = "", ongoing: bool = False) -> DraftRow:
         row = DraftRow(name, does, ongoing)
         row.lead_model.offer(self.config)
         row.remove.clicked.connect(lambda: self._remove(row))

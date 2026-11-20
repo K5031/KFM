@@ -59,7 +59,7 @@ on when to use which. In place of a lead's tools she has three (`tools.secretary
 |---|---|
 | `teams` | how each team stands: its lead, what it is doing, what it spent, and from the team's record what was lately reported, asked and said to it, the person's own messages to a lead included. With a team's name, more of that record |
 | `message` | write to a team's lead, who reads it as from the project's secretary. It starts a team that is stopped, and a lead that finished or failed |
-| `propose` | put teams to the person: each with a name, what it does, task or duty, and optionally a folder of its own inside the project's |
+| `propose` | put teams to the person: each with a name, what it does, task (unless she says duty) or duty, and optionally a folder of its own inside the project's |
 
 **The project's state is the record, not a file someone keeps.** KFM already writes
 down every report, question, message and change of each team. `teams` reads that

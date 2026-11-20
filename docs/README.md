@@ -83,7 +83,7 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm projects` | List the projects |
 | `kfm project new NAME [--work PATH] [--does "text"]`, `rename`, `delete` | Make, rename or delete a project. With `--does`, its secretary proposes its teams. Without `--work` it works in a folder named after it in the projects folder, if one is set, else in the current folder |
 | `kfm proposal PROJECT [--start\|--drop]` | The teams its secretary proposed; start them all, or drop the proposal |
-| `kfm fleet new PROJECT NAME ["task"] [--model M]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
+| `kfm fleet new PROJECT NAME ["task"] [--duty] [--model M]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
 | `kfm agent add FLEET [--under u1] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
 | `kfm agent remove\|rename\|task\|model FLEET UNIT [...]` | Change an agent |
 | `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID] [--model-mode auto\|manual] [--auto-models ID,ID] [--permissions LEVEL]` | Show or change the settings. A change reaches every fleet there is; `--budget` is what a new fleet may spend |
@@ -155,8 +155,8 @@ opens a window on the same service the commands talk to, without a terminal. It 
   it has spent. How large a fleet is, is what you see here: its lead hires as the work
   needs.
 - **Add fleet**, after the last fleet on the chart: give it a name, write what it does and
-  press Enter. A lead starts on that and hires the agents it needs. Under the text you choose **Duty** (standing work that never ends) or
-  **Task** (ends when the lead reports it done), a folder of its own if it should not
+  press Enter. A lead starts on that and hires the agents it needs. Under the text you choose **Task** (ends when the lead reports it done; what a
+  fleet is unless you say otherwise) or **Duty** (standing work that never ends), a folder of its own if it should not
   work in the project's, and the most the fleet may spend.
 
   ![A new fleet](images/start-light.png)

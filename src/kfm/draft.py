@@ -14,7 +14,7 @@ class Team(BaseModel):
     does: Annotated[str, Field(min_length=1, description=(
         "What it is there to do, written to its lead, who knows nothing else."))]
     ongoing: Annotated[bool, Field(description=(
-        "True for standing work that never ends; false for a task that finishes."))] = True
+        "True for standing work that never ends; false for a task that finishes."))] = False
     folder: Annotated[str | None, Field(description=(
         "A folder of its own to work in, inside the project's; none: the project's."))] = None
     model: Annotated[str | None, Field(description=(

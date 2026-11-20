@@ -106,7 +106,7 @@ class LocalService(Service):
         await self.watch(f"{project_id}/{project.SECRETARY}")
         return found
 
-    async def add_fleet(self, project_id: str, name: str, task: str, *, ongoing: bool = True,
+    async def add_fleet(self, project_id: str, name: str, task: str, *, ongoing: bool = False,
                         work: str | None = None, budget_usd: float | None = None,
                         model: str | None = None) -> str:
         if not name.strip():

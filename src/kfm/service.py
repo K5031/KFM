@@ -140,7 +140,7 @@ class Service(abc.ABC):
         """The project's fleets that can be read, oldest first. Each is being watched."""
 
     @abc.abstractmethod
-    async def add_fleet(self, project: str, name: str, task: str, *, ongoing: bool = True,
+    async def add_fleet(self, project: str, name: str, task: str, *, ongoing: bool = False,
                         work: str | None = None, budget_usd: float | None = None,
                         model: str | None = None) -> str:
         """A new fleet. With a task, a lead starts on it at once; with none the fleet has

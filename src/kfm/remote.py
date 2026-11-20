@@ -142,7 +142,7 @@ class RemoteService(Service):
             await self.watch(fleet_id)
         return found
 
-    async def add_fleet(self, project: str, name: str, task: str, *, ongoing: bool = True,
+    async def add_fleet(self, project: str, name: str, task: str, *, ongoing: bool = False,
                         work: str | None = None, budget_usd: float | None = None,
                         model: str | None = None) -> str:
         fleet_id = await self._request("add_fleet", project, name, task, ongoing=ongoing,

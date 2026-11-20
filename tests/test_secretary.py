@@ -102,6 +102,13 @@ async def test_a_secretary_sleeps_until_she_is_written_to(tmp_path: Path):
     await service.aclose()
 
 
+def test_a_proposed_team_is_a_task_unless_she_says_it_is_standing_work():
+    from kfm.draft import Team
+
+    assert not Team(name="dev", does="Build it.").ongoing
+    assert Team(name="support", does="Answer mail.", ongoing=True).ongoing
+
+
 async def test_the_secretarys_message_starts_a_team_that_is_stopped(tmp_path: Path):
     service, harness, _ = local(tmp_path, {
         "Secretary": [{"do": [("tool", "message", {"team": "dev", "text": "Carry on."}),

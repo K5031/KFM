@@ -163,9 +163,10 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
     assert shown.project_form.name.placeholderText() == "Project name"
     assert "(optional)" in shown.project_form.does.placeholderText()  # both may stay empty
     assert "(optional)" in form.task.placeholderText()
-    assert form.duty.isChecked() and "until you stop" in form.hint.text()
+    assert form.task_kind.isChecked() and "Ends" in form.hint.text()  # a task unless said
+    form.duty.setChecked(True)
+    assert "until you stop" in form.hint.text()
     form.task_kind.setChecked(True)
-    assert "Ends" in form.hint.text()
     form.task.setPlainText("Tidy up")
     form.start.click()  # not without a name
     await asyncio.sleep(0.05)

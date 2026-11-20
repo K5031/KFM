@@ -93,8 +93,8 @@ def main(argv: list[str] | None = None) -> int:
     new.add_argument("project")
     new.add_argument("name")
     new.add_argument("task", nargs="?", default="")
-    new.add_argument("--goal", action="store_true",
-                     help="a task that finishes, instead of standing work")
+    new.add_argument("--duty", action="store_true",
+                     help="standing work that never ends, instead of a task that finishes")
     new.add_argument("--work", type=Path, help="default: the project's folder")
     new.add_argument("--budget", type=float, dest="budget_usd")
     new.add_argument("--model", help="the model its lead runs on, where models are chosen "
@@ -366,7 +366,7 @@ async def _fleet(service: Service, args: argparse.Namespace) -> int:
     if args.action == "new":
         owner = _one_project(await service.projects(), args.project)
         fleet = await service.add_fleet(
-            owner.id, args.name, args.task, ongoing=not args.goal,
+            owner.id, args.name, args.task, ongoing=args.duty,
             work=str(args.work.resolve()) if args.work else None, budget_usd=args.budget_usd,
             model=args.model)
         print(f"Fleet {fleet} ({args.name})." + ("" if args.task else

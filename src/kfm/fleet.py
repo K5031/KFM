@@ -7,12 +7,12 @@ import json
 import os
 import secrets
 import shutil
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-FORMAT = 8  # of fleet.json; a file of another format is refused
+FORMAT = 9  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
 # planned: in the fleet and not begun; it begins when the fleet runs and it has a task.
@@ -44,8 +44,8 @@ class FleetError(ValueError):
 
 @dataclass
 class Unit:
-    id: str
-    name: str  # "": it has none, and is known by its rank and id
+    id: str  # K5000: its rank, then the count of that rank's agents before it
+    name: str  # "": it has none, and is known by its id
     rank: int  # 5 is K5
     task: str
     supervisor: str | None  # a unit's id; None: the person the fleet works for
@@ -63,14 +63,13 @@ class Unit:
 
     @property
     def called(self) -> str:
-        """What people read for it: its name, or its rank and id."""
-        return self.name or f"K{self.rank} {self.id}"
+        """What people read for it: its name, or its id."""
+        return self.name or self.id
 
     @property
     def label(self) -> str:
         """What agents read for it, with the id they address it by."""
-        return (f"{self.name} (K{self.rank}, {self.id})" if self.name
-                else f"K{self.rank} agent {self.id}")
+        return f"{self.name} ({self.id})" if self.name else f"agent {self.id}"
 
     @property
     def active(self) -> bool:
@@ -86,7 +85,10 @@ class Fleet:
         self.top_rank, self.max_units = top_rank, max_units
         self.name = name  # what a person calls it: "marketing"
         self.units: dict[str, Unit] = {}
-        self._next = 1
+        self._issued: dict[int, int] = {}  # by rank: how many ids of it were given here
+        # By rank: how many ids of it are taken outside the fleet, in the other teams of
+        # its project, so that an agent's id is its own in all of the project.
+        self.elsewhere: Callable[[int], int] = lambda rank: 0
         self.removed_usd = 0.0  # what units taken out of the fleet had spent
         # What starting the fleet again needs (the manager fills these in).
         self.work = ""  # the folder the fleet works in
@@ -132,12 +134,18 @@ class Fleet:
             rank = supervisor.rank - 1
         if len(self.units) >= self.max_units:
             raise FleetError(f"The fleet is at its limit of {self.max_units} agents.")
-        unit = Unit(f"u{self._next}", name, rank, task, supervisor.id if supervisor else None,
+        number = max(self.issued(rank), self.elsewhere(rank))
+        unit = Unit(f"K{rank}{number:03d}", name, rank, task,
+                    supervisor.id if supervisor else None,
                     team=team or (supervisor.team if supervisor else None), ongoing=ongoing,
                     budget_usd=budget_usd)
-        self._next += 1
+        self._issued[rank] = number + 1
         self.units[unit.id] = unit
         return unit
+
+    def issued(self, rank: int) -> int:
+        """The number after the highest one an id of that rank was given here."""
+        return self._issued.get(rank, 0)
 
     def remove(self, unit: Unit) -> list[Unit]:
         """Take the unit and everything under it out of the fleet; returns them. Their
@@ -179,7 +187,8 @@ class Fleet:
     def record(self) -> dict[str, Any]:
         """The fleet as fleet.json holds it."""
         return {"format": FORMAT, "name": self.name, "top_rank": self.top_rank,
-                "max_units": self.max_units, "next": self._next,
+                "max_units": self.max_units,
+                "issued": {str(rank): count for rank, count in self._issued.items()},
                 "removed_usd": self.removed_usd,
                 "work": self.work, "settings": self.settings,
                 "manager_pid": self.manager_pid,
@@ -193,7 +202,8 @@ class Fleet:
         fleet = cls(data["top_rank"], data["max_units"], data["name"])
         fleet.work, fleet.settings = data["work"], data["settings"]
         fleet.manager_pid = data["manager_pid"]
-        fleet._next, fleet.removed_usd = data["next"], data["removed_usd"]
+        fleet._issued = {int(rank): count for rank, count in data["issued"].items()}
+        fleet.removed_usd = data["removed_usd"]
         fleet.units = {record["id"]: Unit(**record) for record in data["units"]}
         return fleet
 

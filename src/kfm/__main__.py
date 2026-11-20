@@ -109,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
     add = what.add_parser("add", help="under another agent, or as the lead of a fleet "
                                       "that has none")
     add.add_argument("fleet")
-    add.add_argument("--under", help="its supervisor's id, such as u1")
+    add.add_argument("--under", help="its supervisor's id, such as K5000")
     add.add_argument("--name", default="")
     add.add_argument("--task", default="",
                      help="with none it waits for its first message")
@@ -119,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
                         ("model", ("model",))):
         change = what.add_parser(name)
         change.add_argument("fleet")
-        change.add_argument("unit", help="the agent's id, such as u2")
+        change.add_argument("unit", help="the agent's id, such as K4000")
         for argument in extra:
             if argument == "model":
                 change.add_argument(argument, nargs="?", default="",
@@ -616,7 +616,7 @@ class Console:
 
 
 def _tag(unit: Unit) -> str:
-    return f"{unit.name} K{unit.rank} {unit.id}" if unit.name else unit.called
+    return f"{unit.name} {unit.id}" if unit.name else unit.id
 
 
 def _clip(text: str, chars: int = LINE_CHARS) -> str:

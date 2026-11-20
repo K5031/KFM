@@ -18,7 +18,7 @@ from kfm.service import Happened, Listed, Live, Service, Update, Updated
 from tests.fakeharness import FakeHarness
 
 TEAM = {
-    "K5 u1": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Tidy the docs"})]},
+    "K5000": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Tidy the docs"})]},
               {"when": "[Report from Scout", "do": [("report", "Docs are tidy.")]}],
     "Scout": [{"do": [("report", "Tidied docs/")]}]}
 
@@ -54,10 +54,10 @@ async def test_a_project_and_a_fleet_through_the_service(tmp_path: Path):
     fleet = await service.add_fleet(made.id, "dev", "Tidy up", ongoing=False, budget_usd=3.0)
     assert fleet.startswith(f"{made.id}/") and await service.fleets(made.id) == [fleet]
     await until(lambda: reports(service, seen) == [("Scout", "Tidied docs/"),
-                                                   ("K5 u1", "Docs are tidy.")])
+                                                   ("K5000", "Docs are tidy.")])
     await until(lambda: service.state(fleet).finished)
     record = service.fleet(fleet)
-    assert [(u.called, u.state) for u in record.units.values()] == [("K5 u1", "done"),
+    assert [(u.called, u.state) for u in record.units.values()] == [("K5000", "done"),
                                                                      ("Scout", "done")]
     assert service.state(fleet).running and service.state(fleet).budget_usd == 3.0
     assert service.state(fleet).status == "finished"  # its lead reported, nothing is at work
@@ -66,7 +66,7 @@ async def test_a_project_and_a_fleet_through_the_service(tmp_path: Path):
     assert (listed.fleets, listed.running) == (1, 1)
 
     await service.say(fleet, "Thanks")  # to the lead
-    await until(lambda: any("Thanks" in heard for heard in harness.heard["K5 u1"]))
+    await until(lambda: any("Thanks" in heard for heard in harness.heard["K5000"]))
     await service.stop(fleet)
     assert not service.state(fleet).running and (await service.projects())[0].running == 0
     stopped = service.state(fleet)  # the lead, told more, was at work again
@@ -159,7 +159,7 @@ async def test_settings_and_a_draft_through_the_service(tmp_path: Path):
 
 async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
     harness = FakeHarness({
-        "K5 u1": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Tidy the docs"})]},
+        "K5000": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Tidy the docs"})]},
                   {"when": "hello", "do": [("say", "Hi there.")]}],
         "Scout": [{"do": [("say", "Tidying.")]}]})
     (tmp_path / "work").mkdir()
@@ -181,7 +181,7 @@ async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
     fleet = await first.add_fleet(made.id, "dev", "Tidy up", budget_usd=3.0)
     await until(lambda: first.fleet(fleet) is not None and len(first.fleet(fleet).units) == 2)
     await until(lambda: any(isinstance(u, Happened) and isinstance(u.event, Said)
-                            and u.event.unit == "u2" for u in seen))
+                            and u.event.unit == "K4000" for u in seen))
     assert first.state(fleet).running and first.state(fleet).budget_usd == 3.0
     assert first.state(fleet).status == "running" and first.state(fleet).has_run
     assert Listed() in seen and Updated(fleet) in seen
@@ -193,7 +193,7 @@ async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
     [listed] = await second.projects()
     assert (listed.name, listed.fleets, listed.running) == ("Acme", 1, 1)
     assert await second.fleets(made.id) == [fleet]
-    assert [u.called for u in second.fleet(fleet).units.values()] == ["K5 u1", "Scout"]
+    assert [u.called for u in second.fleet(fleet).units.values()] == ["K5000", "Scout"]
     history, upto = await second.history(fleet)
     assert "Instructed" in [type(event).__name__ for event in history] and upto >= len(history)
 
@@ -207,9 +207,9 @@ async def test_two_frontends_on_one_service_over_its_socket(tmp_path: Path):
     assert all(u.number > upto for u in later if isinstance(u, Happened))  # after the history
     assert not strangers  # a frontend's record had every unit an event named
     assert first.fleet(fleet).spent_usd > 0  # spending is a change like any other
-    await second.rename_agent(fleet, "u2", "Tidier")
-    await until(lambda: second.fleet(fleet).units["u2"].name == "Tidier"
-                and first.fleet(fleet).units["u2"].name == "Tidier")
+    await second.rename_agent(fleet, "K4000", "Tidier")
+    await until(lambda: second.fleet(fleet).units["K4000"].name == "Tidier"
+                and first.fleet(fleet).units["K4000"].name == "Tidier")
     with pytest.raises(FleetError, match="no agent"):
         await first.set_model(fleet, "u9", "x")
     assert (await first.settings()).budget_usd == 10.0
@@ -245,7 +245,7 @@ async def test_a_service_of_another_version_is_refused_and_named(tmp_path: Path)
 
 async def test_the_service_is_ended_by_a_frontend(tmp_path: Path):
     """Its fleets stop and can be resumed; the next frontend starts another."""
-    harness = FakeHarness({"K5 u1": [{"do": [("say", "On watch.")]}]})
+    harness = FakeHarness({"K5000": [{"do": [("say", "On watch.")]}]})
     (tmp_path / "work").mkdir()
     home, socket = tmp_path / "home", tmp_path / "s"
     server = Server(LocalService(home, harness=harness, config=FleetConfig()), socket,
@@ -287,7 +287,7 @@ async def test_a_frontend_knows_a_service_started_before_the_code_it_runs(tmp_pa
 async def test_what_the_person_says_is_shown_before_the_agent_is_woken(tmp_path: Path):
     """An agent that has finished has no process: starting one takes a moment, and the
     person's message is in the feed at once, not after it."""
-    service, harness, seen = local(tmp_path, {"K5 u1": [
+    service, harness, seen = local(tmp_path, {"K5000": [
         {"do": [("report", "Done.")]},
         {"when": "One more thing", "do": [("report", "That too.")]}]})
     made = await service.create_project("Acme", str(tmp_path / "work"))
@@ -303,7 +303,7 @@ async def test_what_the_person_says_is_shown_before_the_agent_is_woken(tmp_path:
     await until(lambda: told() == ["One more thing"], timeout=0.3)  # while it comes up
     assert not saying.done()
     await saying
-    await until(lambda: any("One more thing" in heard for heard in harness.heard["K5 u1"]))
+    await until(lambda: any("One more thing" in heard for heard in harness.heard["K5000"]))
 
     await until(lambda: service.fleet(fleet).lead.report == "That too.")
     await until(lambda: service.fleet(fleet).lead.state == "done")
@@ -312,14 +312,14 @@ async def test_what_the_person_says_is_shown_before_the_agent_is_woken(tmp_path:
         await service.say(fleet, "Hello?")
     notices = [u.event.text for u in seen
                if isinstance(u, Happened) and type(u.event).__name__ == "Notice"]
-    assert told()[-1] == "Hello?" and "did not reach K5 u1" in notices[-1]
+    assert told()[-1] == "Hello?" and "did not reach K5000" in notices[-1]
     await service.aclose()
 
 
 async def test_what_an_agent_does_is_seen_as_it_does_it(tmp_path: Path):
     """Its reasoning, the message it is writing and the tool it uses reach a frontend
     while they happen, a few times a second at most, and are no part of the record."""
-    service, _, seen = local(tmp_path, {"K5 u1": [{"do": [
+    service, _, seen = local(tmp_path, {"K5000": [{"do": [
         ("think", "Which file "), ("think", "first?"),
         ("doing", "Read the notes: read_file notes.md"), ("wait", 0.3),
         ("doing", None), *[("write", word) for word in ["It", "says", "to", "ship", "on", "Friday", "."]],
@@ -330,7 +330,7 @@ async def test_what_an_agent_does_is_seen_as_it_does_it(tmp_path: Path):
 
     def live() -> list[tuple[str, str, str]]:
         return [(u.thinking, u.writing, u.doing) for u in seen
-                if isinstance(u, Live) and u.fleet == fleet and u.unit == "u1"]
+                if isinstance(u, Live) and u.fleet == fleet and u.unit == "K5000"]
 
     await until(lambda: ("Which file first?", "", "Read the notes: read_file notes.md")
                 in live())
@@ -347,7 +347,7 @@ async def test_what_an_agent_does_is_seen_as_it_does_it(tmp_path: Path):
 async def test_what_waits_for_the_person_is_known_without_opening_a_fleet(tmp_path: Path):
     """An agent that asks for approval stands still: its state, its fleet's state and its
     project's count say so, here and over the socket."""
-    harness = FakeHarness({"K5 u1": [
+    harness = FakeHarness({"K5000": [
         {"do": [("approval", "r1", "shell", "uv run pytest"), ("say", "Ran them.")]}]})
     (tmp_path / "work").mkdir()
     home, socket = tmp_path / "home", tmp_path / "s"
@@ -361,12 +361,12 @@ async def test_what_waits_for_the_person_is_known_without_opening_a_fleet(tmp_pa
     await until(lambda: remote.state(fleet).approvals)
     [asked] = remote.state(fleet).approvals
     assert (asked.unit, asked.request_id, asked.tool, asked.arguments) == (
-        "u1", "r1", "shell", "uv run pytest")
-    assert remote.fleet(fleet).units["u1"].state == "asking"
+        "K5000", "r1", "shell", "uv run pytest")
+    assert remote.fleet(fleet).units["K5000"].state == "asking"
     assert (await remote.projects())[0].waiting == 1
-    await remote.approve(fleet, "u1", "r1", True)
+    await remote.approve(fleet, "K5000", "r1", True)
     await until(lambda: not remote.state(fleet).approvals)
-    await until(lambda: remote.fleet(fleet).units["u1"].state == "working")
+    await until(lambda: remote.fleet(fleet).units["K5000"].state == "working")
     assert (await remote.projects())[0].waiting == 0
     await remote.stop(fleet)
     await remote.aclose()
@@ -398,7 +398,7 @@ async def test_in_auto_whoever_starts_an_agent_names_its_model(tmp_path: Path):
     """The person for a lead they add, a supervisor for each agent it hires. One that
     names none, or one the person did not allow, is refused and told the list."""
     harness = FakeHarness({
-        "K5 u1": [{"do": [
+        "K5000": [{"do": [
             ("tool", "delegate", {"name": "Reader", "task": "Read", "model": "small-1"}),
             ("tool", "delegate", {"name": "Plain", "task": "Wait"}),
             ("tool", "delegate", {"name": "Dear", "task": "Think", "model": "huge-1"})]}],
@@ -414,21 +414,40 @@ async def test_in_auto_whoever_starts_an_agent_names_its_model(tmp_path: Path):
     fleet = await service.add_fleet(made.id, "dev", "Build it", model="big-1")
     await until(lambda: len([r for r in harness.results if r[1] == "delegate"]) == 4)
     units = {unit.called: unit.model for unit in service.fleet(fleet).units.values()}
-    assert units == {"K5 u1": "big-1", "Reader": "small-1", "Sub": "big-1"}
-    assert set(harness.models) == {("K5 u1", "big-1"), ("Reader", "small-1"), ("Sub", "big-1")}
+    assert units == {"K5000": "big-1", "Reader": "small-1", "Sub": "big-1"}
+    assert set(harness.models) == {("K5000", "big-1"), ("Reader", "small-1"), ("Sub", "big-1")}
     refused = [r[2] for r in harness.results if "Started" not in r[2]]
     assert "Name the model it runs on, one of: small-1, big-1" in refused[0]
     assert "'huge-1' is not one of the models to choose from" in refused[1]
     with pytest.raises(ValueError, match="Name the model"):
-        await service.add_agent(fleet, "u1", "Extra", "Help")
-    extra = await service.add_agent(fleet, "u1", "Extra", "Help", model="small-1")
+        await service.add_agent(fleet, "K5000", "Extra", "Help")
+    extra = await service.add_agent(fleet, "K5000", "Extra", "Help", model="small-1")
     assert service.fleet(fleet).units[extra].model == "small-1"
+    await service.aclose()
+
+
+async def test_an_agents_id_is_its_own_in_all_of_a_project(tmp_path: Path):
+    service, _, _ = local(tmp_path, {
+        "K5000": [{"do": [("tool", "delegate", {"name": "Coder", "task": "Code"})]}],
+        "K5001": [{"do": [("tool", "delegate", {"name": "Painter", "task": "Paint"})]}]})
+    made = await service.create_project("Studio", str(tmp_path / "work"))
+    await service.say(made.secretary, "Hello")  # she is not a team: she takes no K5 of theirs
+    dev = await service.add_fleet(made.id, "dev", "Build it")
+    await until(lambda: len(service.fleet(dev).units) == 2)
+    art = await service.add_fleet(made.id, "art", "Draw it")
+    await until(lambda: len(service.fleet(art).units) == 2)
+    assert list(service.fleet(dev).units) == ["K5000", "K4000"]
+    assert list(service.fleet(art).units) == ["K5001", "K4001"]
+    other = await service.create_project("Other", str(tmp_path / "work"))
+    hr = await service.add_fleet(other.id, "hr", "Hire")  # another project counts anew
+    await until(lambda: service.fleet(hr).lead is not None)
+    assert service.fleet(hr).lead.id == "K5000"
     await service.aclose()
 
 
 async def test_saved_settings_reach_the_fleets_there_are(tmp_path: Path):
     harness = FakeHarness({
-        "K5 u1": [{"do": [("tool", "delegate", {"name": "Reader", "task": "Read",
+        "K5000": [{"do": [("tool", "delegate", {"name": "Reader", "task": "Read",
                                                  "budget_usd": 0.5}),
                           ("report", "Built.")]},
                   {"when": "Carry on", "do": [("say", "On it.")]}],
@@ -439,8 +458,8 @@ async def test_saved_settings_reach_the_fleets_there_are(tmp_path: Path):
     made = await service.create_project("Acme", str(tmp_path / "work"))
     dev = await service.add_fleet(made.id, "dev", "Build it", ongoing=False)
     await until(lambda: service.state(dev).finished)
-    assert ("K5 u1", "allow_workspace") in harness.permissions
-    assert ("K5 u1", 2.0) in harness.budgets and ("K5 u1", None) in harness.models
+    assert ("K5000", "allow_workspace") in harness.permissions
+    assert ("K5000", 2.0) in harness.budgets and ("K5000", None) in harness.models
 
     await service.save_settings(unit_budget_usd=9.0, permissions="auto", budget_usd=25.0,
                                 max_units=3, models={"K5": "big-1", "secretary": "small-1"})
@@ -449,9 +468,9 @@ async def test_saved_settings_reach_the_fleets_there_are(tmp_path: Path):
     assert (lead.budget_usd, reader.budget_usd) == (9.0, 0.5)
     assert service.state(dev).budget_usd == 10.0  # a fleet's limit is its own
     await service.say(dev, "Carry on")
-    await until(lambda: "Carry on" in harness.heard["K5 u1"][-1])
-    assert harness.permissions[-1] == ("K5 u1", "auto")
-    assert harness.budgets[-1] == ("K5 u1", 9.0) and harness.models[-1] == ("K5 u1", "big-1")
+    await until(lambda: "Carry on" in harness.heard["K5000"][-1])
+    assert harness.permissions[-1] == ("K5000", "auto")
+    assert harness.budgets[-1] == ("K5000", 9.0) and harness.models[-1] == ("K5000", "big-1")
 
     await service.say(made.secretary, "Hello")  # she still only reads, on her own model
     await until(lambda: "Secretary" in harness.heard)
@@ -464,25 +483,25 @@ async def test_saved_settings_reach_the_fleets_there_are(tmp_path: Path):
 
 
 async def test_an_agent_at_work_is_started_again_on_changed_settings(tmp_path: Path):
-    harness = FakeHarness({"K5 u1": [{"do": [("say", "On watch.")]}]})
+    harness = FakeHarness({"K5000": [{"do": [("say", "On watch.")]}]})
     (tmp_path / "work").mkdir()
     service = LocalService(tmp_path / "home", harness=harness)
     made = await service.create_project("Acme", str(tmp_path / "work"))
     dev = await service.add_fleet(made.id, "dev", "Keep watch")  # a duty: it stays up
-    await until(lambda: "K5 u1" in harness.heard)
+    await until(lambda: "K5000" in harness.heard)
     opened = len(harness.opened)
     await service.save_settings(max_units=5)  # nothing its process is started with
     assert len(harness.opened) == opened
     await service.save_settings(permissions="auto")
-    assert harness.permissions[-1] == ("K5 u1", "auto")
-    assert harness.opened[-1] == ("K5 u1", "session-u1")  # in its own conversation
-    await until(lambda: "settings" in harness.heard["K5 u1"][-1])
+    assert harness.permissions[-1] == ("K5000", "auto")
+    assert harness.opened[-1] == ("K5000", "session-K5000")  # in its own conversation
+    await until(lambda: "settings" in harness.heard["K5000"][-1])
     assert service.fleet(dev).lead.state == "working"
     await service.aclose()
 
 
 async def test_an_agent_that_takes_no_message_has_failed_and_not_begun_work(tmp_path: Path):
-    service, harness, _ = local(tmp_path, {"K5 u1": [{"do": [("report", "Built.")]}]})
+    service, harness, _ = local(tmp_path, {"K5000": [{"do": [("report", "Built.")]}]})
     made = await service.create_project("Acme", str(tmp_path / "work"))
     dev = await service.add_fleet(made.id, "dev", "Build it", ongoing=False)
     await until(lambda: service.state(dev).finished)
@@ -495,7 +514,7 @@ async def test_an_agent_that_takes_no_message_has_failed_and_not_begun_work(tmp_
 
 
 async def test_in_manual_models_go_by_rank_and_are_not_an_agents_to_choose(tmp_path: Path):
-    harness = FakeHarness({"K5 u1": [{"do": [
+    harness = FakeHarness({"K5000": [{"do": [
         ("tool", "delegate", {"name": "Reader", "task": "Read", "model": "small-1"}),
         ("tool", "delegate", {"name": "Plain", "task": "Wait"})]}]})
     (tmp_path / "work").mkdir()
@@ -505,14 +524,14 @@ async def test_in_manual_models_go_by_rank_and_are_not_an_agents_to_choose(tmp_p
     await service.add_fleet(made.id, "dev", "Build it")
     await until(lambda: len([r for r in harness.results if r[1] == "delegate"]) == 2)
     assert "not yours to choose" in harness.results[0][2]
-    assert set(harness.models) == {("K5 u1", "big-1"), ("Plain", "mid-1")}
+    assert set(harness.models) == {("K5000", "big-1"), ("Plain", "mid-1")}
     await service.aclose()
 
 
 async def test_the_hiring_tool_says_which_models_there_are_to_choose(tmp_path: Path):
     from mcp import Client
 
-    harness = FakeHarness({"K5 u1": [{"do": [("say", "On it.")]}]})
+    harness = FakeHarness({"K5000": [{"do": [("say", "On it.")]}]})
     (tmp_path / "work").mkdir()
     service = LocalService(tmp_path / "home", harness=harness, config=FleetConfig(**AUTO))
     made = await service.create_project("Acme", str(tmp_path / "work"))

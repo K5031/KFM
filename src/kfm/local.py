@@ -438,6 +438,13 @@ class _Side:
     async def send(self, sender: Unit, team: str, text: str) -> str:
         return await self._service._send(self._fleet, sender, team, text)
 
+    def issued(self, rank: int) -> int:
+        if self.secretary:  # she is not one of the teams, and her id is not theirs
+            return 0
+        return max((manager.fleet.issued(rank)
+                    for name, _, manager in self._service._teams(self._fleet)
+                    if name != SECRETARY), default=0)
+
     def propose(self, teams: Sequence[draft.Team]) -> None:
         self._service._propose(self._fleet, teams)
 

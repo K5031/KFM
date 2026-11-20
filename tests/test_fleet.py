@@ -13,7 +13,21 @@ def test_the_lead_has_the_top_rank_and_each_agent_one_below_its_supervisor():
     assert (lead.rank, scout.rank, helper.rank) == (3, 2, 1)
     assert fleet.lead is lead
     assert fleet.supervisor_of(helper) is scout
-    assert [u.id for u in fleet.subtree(lead)] == ["u1", "u2", "u3"]
+    assert [u.id for u in fleet.subtree(lead)] == ["K3000", "K2000", "K1000"]
+
+
+def test_an_id_is_the_rank_and_a_count_that_is_not_given_twice():
+    fleet = Fleet()
+    lead = fleet.add("", "Do it", None)
+    first, second = fleet.add("", "a", lead), fleet.add("", "b", lead)
+    assert [u.id for u in (lead, first, second)] == ["K5000", "K4000", "K4001"]
+    assert (lead.called, first.label, fleet.add("Scout", "c", first).label) == (
+        "K5000", "agent K4000", "Scout (K3000)")
+    fleet.remove(second)
+    assert fleet.add("", "d", lead).id == "K4002"
+    # The project's other teams have given K4000 to K4006.
+    fleet.elsewhere = lambda rank: {4: 7}.get(rank, 0)
+    assert fleet.add("", "e", lead).id == "K4007" and fleet.issued(4) == 8
 
 
 def test_the_lowest_rank_cannot_delegate():
@@ -38,8 +52,8 @@ def test_an_agent_reaches_only_those_it_supervises():
     lead = fleet.add("Lead", "Do it", None)
     a = fleet.add("A", "a", lead)
     below = fleet.add("Below", "b", a)
-    assert fleet.subordinate(lead, " u2 ") is a
-    with pytest.raises(FleetError, match="Your agents: u2"):
+    assert fleet.subordinate(lead, " K4000 ") is a
+    with pytest.raises(FleetError, match="Your agents: K4000"):
         fleet.subordinate(lead, below.id)  # its agent's agent, not its own
     assert fleet.by_token(a.token) is a
     with pytest.raises(FleetError):
@@ -64,8 +78,8 @@ def test_the_record_round_trips_and_another_format_is_refused(tmp_path: Path):
     again = Fleet.load(tmp_path)
     assert (again.top_rank, again.max_units) == (4, 7)
     assert [(u.id, u.name, u.state) for u in again.units.values()] == [
-        ("u1", "Lead", "planned"), ("u2", "A", "done")]
-    assert again.add("B", "b", again.lead).id == "u3"
+        ("K4000", "Lead", "planned"), ("K3000", "A", "done")]
+    assert again.add("B", "b", again.lead).id == "K3001"
     (tmp_path / "fleet.json").write_text('{"format": 99}')
     with pytest.raises(ValueError, match="format 99"):
         Fleet.load(tmp_path)

@@ -142,7 +142,7 @@ own, chosen by the person or proposed by the secretary.
   to do, or hers to ask of its lead by message.
 - **A proposal is held by the running service.** One that is neither started nor
   dropped is gone when the service ends; she can be asked for it again.
-- **Projects are of format 2** and those made before it are not read.
+- **Projects are of format 3** and those made before it are not read.
 - **Her brief is an ordinary message.** In a conversation long enough for Kadence to
   summarise its beginning, the brief is summarised with it.
 - **Tried once with a real model** (2026-11-19, as a goal): asked how the project

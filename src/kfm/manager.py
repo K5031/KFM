@@ -70,6 +70,10 @@ class Project(Protocol):
     def listing(self) -> str:
         """The project's other teams, a line each."""
 
+    def issued(self, rank: int) -> int:
+        """How many ids of that rank the project's other teams have given
+        (Fleet.elsewhere)."""
+
     async def standing(self, team: str | None) -> str:
         """How each team stands, with what its record holds of late; more of `team`."""
 
@@ -99,6 +103,8 @@ class Manager:
         the fleet is a team of, if it is one."""
         self.folder, self.fleet, self.work = folder, fleet, Path(fleet.work)
         self.project = project
+        if project is not None:
+            fleet.elsewhere = project.issued
         # What each unit is doing as it does it: [thinking, writing, the tool in use], for
         # whoever watches (`on_live`: the unit's id, then these). It is not recorded.
         self._on_live = on_live

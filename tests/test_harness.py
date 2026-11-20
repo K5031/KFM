@@ -42,7 +42,7 @@ async def test_a_fleet_runs_on_another_harness(tmp_path: Path):
     harness = FakeHarness({
         "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Tidy the docs"})]},
                  {"when": "[Question from Scout",
-                  "do": [("tool", "message", {"agent": "u2", "text": "Use docs/"})]},
+                  "do": [("tool", "message", {"agent": "K4000", "text": "Use docs/"})]},
                  {"when": "[Report from Scout", "do": [("report", "Docs are tidy.")]}],
         "Scout": [{"do": [("ask", "Which folder?")]},
                   {"when": "Use docs/", "do": [("say", "On it."), ("report", "Tidied docs/")]}]})
@@ -52,11 +52,11 @@ async def test_a_fleet_runs_on_another_harness(tmp_path: Path):
     assert delivered(manager, events) == [("Scout", "Lead", "question", "Which folder?"),
                                  ("Scout", "Lead", "report", "Tidied docs/"),
                                  ("Lead", None, "report", "Docs are tidy.")]
-    assert lead.session == "session-u1" and lead.spent_usd > 0
+    assert lead.session == "session-K5000" and lead.spent_usd > 0
     # The words KFM wrote to the units name this harness's tools, not Kadence's.
     brief, question = harness.heard["Lead"][0], harness.heard["Lead"][1]
     assert "fleet.delegate" in brief and "done with a report ends the task" in brief
-    assert "fleet.message(agent=\"u2\"" in question
+    assert "fleet.message(agent=\"K4000\"" in question
     assert not any("mcp__" in text or "finish_goal" in text
                    for heard in harness.heard.values() for text in heard)
     await manager.aclose()
@@ -69,13 +69,13 @@ async def test_a_fleet_on_another_harness_is_resumed_on_its_sessions(tmp_path: P
     while "Lead" not in harness.heard:
         await asyncio.sleep(0.01)
     await manager.aclose()
-    assert Fleet.load(tmp_path / "fleet").units["u1"].session == "session-u1"
+    assert Fleet.load(tmp_path / "fleet").units["K5000"].session == "session-K5000"
 
     harness.scripts["Lead"] = [{"when": "started again", "do": [("say", "Back on watch.")]}]
     manager, _ = await run(tmp_path, harness, resume=True)
     while len(harness.heard["Lead"]) < 2:
         await asyncio.sleep(0.01)
-    assert harness.opened == [("Lead", None), ("Lead", "session-u1")]
+    assert harness.opened == [("Lead", None), ("Lead", "session-K5000")]
     assert "started again" in harness.heard["Lead"][1]
     await manager.aclose()
 
@@ -94,12 +94,12 @@ async def test_a_supervisor_that_acts_at_once_after_a_resume_finds_its_agents_op
     harness.opened.clear()
     harness.scripts.update({
         "Lead": [{"when": "started again",
-                  "do": [("tool", "message", {"agent": "u2", "text": "Use docs/"})]},
+                  "do": [("tool", "message", {"agent": "K4000", "text": "Use docs/"})]},
                  {"when": "[Report from Scout", "do": [("report", "Docs are tidy.")]}],
         "Scout": [{"when": "Use docs/", "do": [("report", "Tidied docs/")]}]})
     manager, events = await run(tmp_path, harness, resume=True)
     await asyncio.wait_for(manager.finished.wait(), 10)
-    assert sorted(harness.opened) == [("Lead", "session-u1"), ("Scout", "session-u2")]
+    assert sorted(harness.opened) == [("Lead", "session-K5000"), ("Scout", "session-K4000")]
     assert delivered(manager, events)[-1] == ("Lead", None, "report", "Docs are tidy.")
     await manager.aclose()
 
@@ -121,7 +121,7 @@ async def test_what_happens_in_a_fleet_is_kept_in_its_record(tmp_path: Path):
     assert all(earlier <= later for (earlier, _), (later, _) in itertools.pairwise(kept))
     assert [event for _, event in kept] == events  # units by their ids, as they happened
     reports = [(e.unit, e.to, e.text) for _, e in kept if isinstance(e, Delivered)]
-    assert reports[:2] == [("u2", "u1", "Tidied docs/"), ("u1", None, "Docs are tidy.")]
+    assert reports[:2] == [("K4000", "K5000", "Tidied docs/"), ("K5000", None, "Docs are tidy.")]
     assert [e.text for _, e in kept if isinstance(e, Told)] == ["Thanks"]
     assert log.count(tmp_path / "fleet") == len(events) == manager.count
     assert [event for _, event in log.read(tmp_path / "fleet", 3)] == events[:3]
@@ -152,19 +152,19 @@ async def test_the_person_adds_an_agent_and_sets_models(tmp_path: Path):
     assert harness.models == [("Lead", None), ("Tester", "small-1")]
     await until(lambda: len(harness.heard.get("Lead", [])) == 2)
     told = harness.heard["Lead"][1]  # its supervisor knows it has it
-    assert "Tester (K4, u2)" in told and "Run the tests" in told and "fleet.message" in told
+    assert "Tester (K4000)" in told and "Run the tests" in told and "fleet.message" in told
     assert "Your task: Run the tests" in harness.heard["Tester"][0]
     await until(lambda: tester.state == "working" and len(harness.heard["Tester"]) == 1)
 
     await manager.set_model(tester, "big-1")  # at once: its process starts again
     await until(lambda: ("Tester", "big-1") in harness.models)
-    assert harness.opened[-1] == ("Tester", "session-u2")  # on its own conversation
+    assert harness.opened[-1] == ("Tester", "session-K4000")  # on its own conversation
     await until(lambda: any("model was changed" in heard for heard in harness.heard["Tester"]))
     await manager.set_model(lead, "")  # none of its own: its rank's again
     await until(lambda: harness.models[-1] == ("Lead", None))
     await manager.aclose()
 
-    assert Fleet.load(tmp_path / "fleet").units["u2"].model == "big-1"
+    assert Fleet.load(tmp_path / "fleet").units["K4000"].model == "big-1"
 
 
 async def test_a_fleet_built_while_it_does_not_run_starts_as_it_was_built(tmp_path: Path):
@@ -193,21 +193,21 @@ async def test_a_fleet_built_while_it_does_not_run_starts_as_it_was_built(tmp_pa
     await until(lambda: delivered(manager, events) == [("Writer", "Chief", "report", "Written.")])
     assert harness.models == [("Chief", "big-1"), ("Writer", None), ("Checker", None)]
     brief = harness.heard["Chief"][0]  # it knows whom it was given
-    assert "Your task: Run content" in brief and "Writer (K4, u2): Write the posts" in brief
-    assert "Checker" not in brief and "Checker (K3, u3)" in harness.heard["Writer"][0]
+    assert "Your task: Run content" in brief and "Writer (K4000): Write the posts" in brief
+    assert "Checker" not in brief and "Checker (K3000)" in harness.heard["Writer"][0]
     units = manager.fleet.units
-    assert units["u1"].state == units["u3"].state == "working" and units["u2"].state == "done"
+    assert units["K5000"].state == units["K3000"].state == "working" and units["K4000"].state == "done"
 
     # The same manager holds the fleet while it is stopped: an agent added then begins
     # when it starts, and its supervisor's instruction names it.
     await manager.stop()
-    assert not manager.running and Fleet.load(folder).units["u1"].state == "working"
+    assert not manager.running and Fleet.load(folder).units["K5000"].state == "working"
     editor = await manager.add(chief, "Editor", "Edit the posts")
-    assert editor.state == "planned" and Fleet.load(folder).units["u4"].state == "planned"
+    assert editor.state == "planned" and Fleet.load(folder).units["K4001"].state == "planned"
     harness.scripts["Editor"] = [{"do": [("say", "Editing.")]}]
     await manager.start()
-    await until(lambda: manager.fleet.units["u4"].state == "working")
-    assert any(name == "Chief" and "Editor (K4, u4): Edit the posts" in instruction
+    await until(lambda: manager.fleet.units["K4001"].state == "working")
+    assert any(name == "Chief" and "Editor (K4001): Edit the posts" in instruction
                for name, instruction in harness.instructed)
     await until(lambda: "started again" in harness.heard["Chief"][-1])
     await manager.aclose()
@@ -237,14 +237,14 @@ async def test_an_agent_that_has_run_is_given_another_task_while_its_fleet_is_st
 
     await manager.retask(lead, "Count the files")  # no process is there to be told
     assert (lead.task, lead.state, lead.report) == ("Count the files", "working", None)
-    assert Fleet.load(tmp_path / "fleet").units["u1"].task == "Count the files"
+    assert Fleet.load(tmp_path / "fleet").units["K5000"].task == "Count the files"
     assert not harness.instructed and len(harness.heard["Lead"]) == 1
     harness.scripts["Lead"] = [{"when": "started again", "do": [("report", "3 files.")]}]
     await manager.start()  # it is opened on its conversation, with the task it now has
     await until(lambda: delivered(manager, events)[-1] == ("Lead", None, "report", "3 files."))
     [(name, instruction)] = harness.instructed
     assert name == "Lead" and "Your task: Count the files" in instruction
-    assert harness.opened == [("Lead", None), ("Lead", "session-u1")]
+    assert harness.opened == [("Lead", None), ("Lead", "session-K5000")]
     await manager.aclose()
 
 
@@ -252,7 +252,7 @@ async def test_an_agent_with_no_task_takes_its_first_message_as_its_task(tmp_pat
     harness = FakeHarness({
         "Lead": [{"do": [("say", "On watch.")]},
                  {"when": "added Scout",
-                  "do": [("tool", "message", {"agent": "u2", "text": "Map the docs"})]}],
+                  "do": [("tool", "message", {"agent": "K4000", "text": "Map the docs"})]}],
         "Scout": [{"do": [("report", "Mapped.")]}]})
     manager, events = await run(tmp_path, harness)
     lead = await manager.add(None, "Lead", "Keep watch", ongoing=True)
@@ -260,7 +260,7 @@ async def test_an_agent_with_no_task_takes_its_first_message_as_its_task(tmp_pat
     assert (scout.state, scout.session) == ("planned", None)  # nothing started, nothing spent
     await until(lambda: delivered(manager, events) == [("Scout", "Lead", "report", "Mapped.")])
     told = harness.heard["Lead"][1]
-    assert "no task yet" in told and 'fleet.message(agent="u2"' in told
+    assert "no task yet" in told and 'fleet.message(agent="K4000"' in told
     assert "Your task: Map the docs" in harness.heard["Scout"][0]
     assert scout.task == "Map the docs" and "[Message from" not in scout.task
     assert len(harness.heard["Scout"]) == 1  # the message was its task, and nothing more
@@ -268,23 +268,23 @@ async def test_an_agent_with_no_task_takes_its_first_message_as_its_task(tmp_pat
 
     # Built by hand with no names and no tasks: nothing runs until the person says what to
     # do, and the agents are known by rank and id.
-    harness = FakeHarness({"K5 u1": [{"do": [("say", "On it.")]}]})
+    harness = FakeHarness({"K5000": [{"do": [("say", "On it.")]}]})
     folder = tmp_path / "fleet2"
     manager = Manager.new(FleetConfig(), folder, tmp_path / "work", "content", harness=harness)
     chief = await manager.add(None, " ", "")
     worker = await manager.add(chief, "", "")
-    assert (chief.name, chief.called, worker.label) == ("", "K5 u1", "K4 agent u2")
+    assert (chief.name, chief.called, worker.label) == ("", "K5000", "agent K4000")
     await manager.start()
     assert not harness.models
     assert [u.state for u in manager.fleet.units.values()] == ["planned", "planned"]
     with pytest.raises(FleetError, match="empty"):  # files alone are no task
         await manager.say("", files=["/tmp/brief.pdf"])
     await manager.say("Run content")
-    await until(lambda: harness.heard.get("K5 u1"))
-    brief = harness.heard["K5 u1"][0]
+    await until(lambda: harness.heard.get("K5000"))
+    brief = harness.heard["K5000"][0]
     assert brief.startswith("You are a K5 agent in a fleet")
-    assert "Your task: Run content" in brief and "K4 agent u2: no task yet" in brief
-    assert harness.models == [("K5 u1", None)]
+    assert "Your task: Run content" in brief and "agent K4000: no task yet" in brief
+    assert harness.models == [("K5000", None)]
     await manager.aclose()
 
 
@@ -318,17 +318,17 @@ async def test_a_renamed_agent_is_known_by_its_new_name(tmp_path: Path):
                   {"when": "go on", "do": [("report", "Mapped.")]}]})
     manager, events = await run(tmp_path, harness)
     await manager.add(None, "Lead", "Tidy up", ongoing=True)
-    await until(lambda: "u2" in manager.fleet.units)
-    scout = manager.fleet.units["u2"]
+    await until(lambda: "K4000" in manager.fleet.units)
+    scout = manager.fleet.units["K4000"]
     await manager.rename("Mapper", scout)
     await manager.rename("docs")
     await manager.tell(scout, "go on")
     await until(lambda: delivered(manager, events) == [("Mapper", "Lead", "report", "Mapped.")])
-    await until(lambda: any("[Report from Mapper (K4, u2)]" in heard
+    await until(lambda: any("[Report from Mapper (K4000)]" in heard
                             for heard in harness.heard["Lead"]))
     await manager.aclose()
     saved = Fleet.load(tmp_path / "fleet")
-    assert saved.name == "docs" and saved.units["u2"].name == "Mapper"
+    assert saved.name == "docs" and saved.units["K4000"].name == "Mapper"
 
 
 async def test_the_person_messages_one_agent_and_its_supervisor_is_told(tmp_path: Path):
@@ -340,12 +340,12 @@ async def test_the_person_messages_one_agent_and_its_supervisor_is_told(tmp_path
     manager, events = await run(tmp_path, harness)
     lead = await manager.add(None, "Lead", "Tidy up", ongoing=True)
     await until(lambda: harness.heard.get("Scout"))
-    scout = manager.fleet.units["u2"]
+    scout = manager.fleet.units["K4000"]
     await manager.say("Skip the drafts", scout)
     await until(lambda: len(harness.heard["Scout"]) == 2)
     heard = harness.heard["Scout"][1]  # it knows who spoke, and that it outranks its supervisor
     assert "Skip the drafts" in heard and "the person" in heard and "supervisor" in heard
-    await until(lambda: any("The person told Scout (K4, u2)" in told and "Skip the drafts" in told
+    await until(lambda: any("The person told Scout (K4000)" in told and "Skip the drafts" in told
                             for told in harness.heard["Lead"]))
     await manager.say("Thanks")  # with nobody named: the lead
     await until(lambda: "Thanks" in harness.heard["Lead"][-1])
@@ -353,31 +353,31 @@ async def test_the_person_messages_one_agent_and_its_supervisor_is_told(tmp_path
         ("Skip the drafts", scout.id), ("Thanks", lead.id)]
     await manager.aclose()
     kept = log.read(tmp_path / "fleet")
-    assert [e.to for _, e in kept if isinstance(e, Told)] == ["u2", "u1"]
+    assert [e.to for _, e in kept if isinstance(e, Told)] == ["K4000", "K5000"]
 
 
 async def test_what_goes_down_the_chain_is_shown_too(tmp_path: Path):
     harness = FakeHarness({
         "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]},
                  {"when": "[Question from Scout",
-                  "do": [("tool", "message", {"agent": "u2", "text": "Use docs/"})]}],
+                  "do": [("tool", "message", {"agent": "K4000", "text": "Use docs/"})]}],
         "Scout": [{"do": [("ask", "Which folder?")]},
                   {"when": "Use docs/", "do": [("say", "On it.")]}]})
     manager, events = await run(tmp_path, harness)
     lead = await manager.add(None, "Lead", "Tidy up", ongoing=True)
     await until(lambda: len(harness.heard.get("Scout", [])) == 2)
-    scout = manager.fleet.units["u2"]
+    scout = manager.fleet.units["K4000"]
     down = [(e.by, e.unit, e.kind, e.text) for e in events if isinstance(e, Instructed)]
     assert down == [(None, lead.id, "task", "Tidy up"),  # None: the person
                     (lead.id, scout.id, "task", "Map the docs"),
                     (lead.id, scout.id, "message", "Use docs/")]
     await manager.add(scout, "", "Check the links")  # the person's, though under Scout
-    await until(lambda: "u3" in manager.fleet.units)
-    assert [(e.by, e.unit) for e in events if isinstance(e, Instructed)][-1] == (None, "u3")
+    await until(lambda: "K3000" in manager.fleet.units)
+    assert [(e.by, e.unit) for e in events if isinstance(e, Instructed)][-1] == (None, "K3000")
     await manager.aclose()
     kept = [e for _, e in log.read(tmp_path / "fleet") if isinstance(e, Instructed)]
     assert [(e.by, e.unit) for e in kept] == [
-        (None, "u1"), ("u1", "u2"), ("u1", "u2"), (None, "u3")]
+        (None, "K5000"), ("K5000", "K4000"), ("K5000", "K4000"), (None, "K3000")]
 
 
 async def test_files_go_with_a_message_to_the_agent_it_is_for(tmp_path: Path):
@@ -387,7 +387,7 @@ async def test_files_go_with_a_message_to_the_agent_it_is_for(tmp_path: Path):
     manager, events = await run(tmp_path, harness)
     await manager.add(None, "Lead", "Tidy up", ongoing=True)
     await until(lambda: harness.heard.get("Scout"))
-    scout = manager.fleet.units["u2"]
+    scout = manager.fleet.units["K4000"]
     await manager.say("Start from this", files=["/tmp/brief.pdf"])
     await manager.say("And this", scout, files=["/tmp/map.png"], spoken=True)
     assert harness.files == [("Lead", ["/tmp/brief.pdf"], False),
@@ -398,7 +398,7 @@ async def test_files_go_with_a_message_to_the_agent_it_is_for(tmp_path: Path):
     # A first message that is an agent's task brings its files after the task.
     waiting = await manager.add(scout, "", "")
     await manager.say("Check the links", waiting, files=["/tmp/links.txt"])
-    await until(lambda: harness.files[-1] == ("K3 u3", ["/tmp/links.txt"], False))
+    await until(lambda: harness.files[-1] == ("K3000", ["/tmp/links.txt"], False))
     await manager.aclose()
 
 
@@ -411,46 +411,46 @@ async def test_an_agent_is_given_another_task_and_an_agent_is_removed(tmp_path: 
     manager, events = await run(tmp_path, harness)
     lead = await manager.add(None, "Lead", "Tidy up", ongoing=True)
     await until(lambda: harness.heard.get("Helper"))
-    scout, helper = manager.fleet.units["u2"], manager.fleet.units["u3"]
+    scout, helper = manager.fleet.units["K4000"], manager.fleet.units["K3000"]
 
     await manager.retask(scout, "Map the code")
     await until(lambda: any("task was changed" in heard for heard in harness.heard["Scout"]))
     [(name, instruction)] = harness.instructed  # its standing instruction, not only a message
     assert name == "Scout" and "Your task: Map the code" in instruction
-    assert scout.task == "Map the code" and scout.session == "session-u2"  # same conversation
+    assert scout.task == "Map the code" and scout.session == "session-K4000"  # same conversation
     assert [(e.by, e.unit, e.text) for e in events if isinstance(e, Instructed)][-1] == (
         None, scout.id, "Map the code")
-    await until(lambda: any("changed the task of Scout (K4, u2)" in heard and "Map the code" in heard
+    await until(lambda: any("changed the task of Scout (K4000)" in heard and "Map the code" in heard
                             for heard in harness.heard["Lead"]))
     with pytest.raises(FleetError, match="empty"):
         await manager.retask(scout, "  ")
     waiting = await manager.add(lead, "", "")  # with no task: it begins on the one given
     await manager.retask(waiting, "Check the links")
     await until(lambda: any("Your task: Check the links" in heard
-                            for heard in harness.heard.get("K4 u4", [])))
+                            for heard in harness.heard.get("K4001", [])))
 
-    await until(lambda: any("changed the task of K4 agent u4" in heard
+    await until(lambda: any("changed the task of agent K4001" in heard
                             for heard in harness.heard["Lead"]))  # its supervisor knows
 
-    (tmp_path / "fleet" / "units" / "u3").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "fleet" / "units" / "K3000").mkdir(parents=True, exist_ok=True)
     await until(lambda: all(  # every turn has ended
         unit.spent_usd == pytest.approx(0.01 * len(harness.heard.get(unit.called, [])))
         for unit in manager.fleet.units.values()))
     spent = manager.fleet.spent_usd
     await manager.remove(scout)  # with everything under it
-    assert list(manager.fleet.units) == ["u1", "u4"]
+    assert list(manager.fleet.units) == ["K5000", "K4001"]
     # What they spent still counts against the fleet's limit.
     assert manager.fleet.spent_usd == pytest.approx(spent)
     assert manager.fleet.spent_usd > sum(u.spent_usd for u in manager.fleet.units.values())
-    assert not (tmp_path / "fleet" / "units" / "u3").exists()
-    await until(lambda: any("removed Scout (K4, u2)" in heard for heard in harness.heard["Lead"]))
+    assert not (tmp_path / "fleet" / "units" / "K3000").exists()
+    await until(lambda: any("removed Scout (K4000)" in heard for heard in harness.heard["Lead"]))
     with pytest.raises(FleetError):
         await manager.tell(helper, "still there?")
     again = await manager.add(lead, "Scout", "Map the docs again")
-    assert again.id == "u5"  # a number is not given twice
+    assert again.id == "K4002"  # a number is not given twice
     await manager.aclose()
     kept = Fleet.load(tmp_path / "fleet")
-    assert list(kept.units) == ["u1", "u4", "u5"]
+    assert list(kept.units) == ["K5000", "K4001", "K4002"]
     assert kept.spent_usd > sum(u.spent_usd for u in kept.units.values())  # and is kept
 
 

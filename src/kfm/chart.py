@@ -146,10 +146,10 @@ class Node(_Box):
         self.rename_action.setEnabled(editable)
         self.remove_action.setEnabled(editable)
         self.task_action.setEnabled(editable)
-        room = NODE_W - 24 - 30  # beside the rank
+        room = NODE_W - 24 - 56  # beside the id
         self.name.setText(QFontMetrics(self.name.font()).elidedText(
-            unit.name or f"K{unit.rank}", Qt.TextElideMode.ElideRight, room))
-        self.rank.setText(f"K{unit.rank}" if unit.name else "")  # a nameless one is its rank
+            unit.name or unit.id, Qt.TextElideMode.ElideRight, room))
+        self.rank.setText(unit.id if unit.name else "")  # a nameless one is its id
         self.state.setText(unit.state)
         self.state.setStyleSheet(f"color: {state_tone(unit.state, running)};")
         self.spent.setText(f"${unit.spent_usd:.2f}")

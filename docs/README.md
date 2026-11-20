@@ -35,10 +35,10 @@ kfm run "Audit the docs in this repository and fix what is out of date" --budget
 While it runs, the terminal shows what happens:
 
 ```
-[K5 u1] working
-[Researcher K4 u2] working
-[Researcher K4 u2 → K5 u1] report: Three pages are out of date: ...
-[K5 u1 → you] report: Fixed the three pages; details in CHANGES.md.
+[K5000] working
+[Researcher K4000] working
+[Researcher K4000 → K5000] report: Three pages are out of date: ...
+[K5000 → you] report: Fixed the three pages; details in CHANGES.md.
 ```
 
 - **Type a message** and press Enter to tell the lead something.
@@ -77,14 +77,14 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm watch [FLEET]` | Follow a running fleet and talk to its lead; Ctrl+C lets go of it |
 | `kfm stop [FLEET]` | Stop a fleet |
 | `kfm resume [FLEET] [--budget N]` | Start a stopped fleet again and follow it |
-| `kfm say FLEET "text" [--to u2] [--file F]` | A message to the lead, or to one agent, with files. `PROJECT/Secretary` as the fleet reaches a project's secretary |
+| `kfm say FLEET "text" [--to K4000] [--file F]` | A message to the lead, or to one agent, with files. `PROJECT/Secretary` as the fleet reaches a project's secretary |
 | `kfm approve FLEET UNIT REQUEST yes\|no\|always` | Answer what an agent asked to do |
 | `kfm service [stop\|restart]` | Since when KFM's background service runs; end it, or end it and start another |
 | `kfm projects` | List the projects |
 | `kfm project new NAME [--work PATH] [--does "text"]`, `rename`, `delete` | Make, rename or delete a project. With `--does`, its secretary proposes its teams. Without `--work` it works in a folder named after it in the projects folder, if one is set, else in the current folder |
 | `kfm proposal PROJECT [--start\|--drop]` | The teams its secretary proposed; start them all, or drop the proposal |
 | `kfm fleet new PROJECT NAME ["task"] [--duty] [--model M]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
-| `kfm agent add FLEET [--under u1] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
+| `kfm agent add FLEET [--under K5000] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
 | `kfm agent remove\|rename\|task\|model FLEET UNIT [...]` | Change an agent |
 | `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID] [--model-mode auto\|manual] [--auto-models ID,ID] [--permissions LEVEL]` | Show or change the settings. A change reaches every fleet there is; `--budget` is what a new fleet may spend |
 | `kfm serve` | Run the service in this terminal instead of in the background |
@@ -164,8 +164,8 @@ opens a window on the same service the commands talk to, without a terminal. It 
 - **Build a fleet yourself** by leaving "what it does" empty. The fleet appears on the
   chart with no agents and runs nothing. **Add agent** makes its lead; a name, a task
   and a model of its own are all optional. Agents have no name unless given one: a nameless
-  agent is shown by its rank ("K4"), and by rank and number ("K4 u2") where agents have
-  to be told apart. A lead may name the agents it hires by their role. An agent with no task does not start: it
+  agent is shown by its id. An id is the agent's rank and a count ("K5000", "K4000",
+  "K4001"), and no two agents of a project share one: the second team's lead is K5001. A lead may name the agents it hires by their role. An agent with no task does not start: it
   takes the first message it gets as its task (its supervisor's, or yours for the lead),
   so you can set up who is on the team and leave the work to be handed out. Right-click an agent to add agents under it.
   **Start**, beside the fleet's name, starts them all, each on the task you gave it; a

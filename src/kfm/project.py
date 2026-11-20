@@ -13,7 +13,7 @@ from pathlib import Path
 from kfm.fleet import RECORD
 
 PROJECT = "project.json"
-FORMAT = 2
+FORMAT = 3  # also of what its fleets hold: an agent's id is its own in all of the project
 SECRETARY = "secretary"  # the folder of its secretary, among its fleets'
 
 

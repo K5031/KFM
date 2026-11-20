@@ -182,9 +182,9 @@ class SaidEntry(QWidget):
         who = QHBoxLayout(self.header)
         who.setContentsMargins(0, 0, 0, 0)
         who.setSpacing(6)
-        name, rank = (unit.name, f"K{unit.rank}") if unit is not None else ("", unit_id)
-        who.addWidget(label(name or rank, role="strong", wrap=False))
-        who.addWidget(label(rank if name else unit_id, role="small", tone="muted", wrap=False))
+        name = unit.name if unit is not None else ""
+        who.addWidget(label(name or unit_id, role="strong", wrap=False))
+        who.addWidget(label(unit_id if name else "", role="small", tone="muted", wrap=False))
         who.addStretch(1)
         self.body = MarkdownView()
         self.body.setMarkdown(text)
@@ -256,9 +256,9 @@ class LiveEntry(QWidget):
         who = QHBoxLayout(self.header)
         who.setContentsMargins(0, 0, 0, 0)
         who.setSpacing(6)
-        name, rank = (unit.name, f"K{unit.rank}") if unit is not None else ("", unit_id)
-        who.addWidget(label(name or rank, role="strong", wrap=False))
-        who.addWidget(label(rank if name else unit_id, role="small", tone="muted", wrap=False))
+        name = unit.name if unit is not None else ""
+        who.addWidget(label(name or unit_id, role="strong", wrap=False))
+        who.addWidget(label(unit_id if name else "", role="small", tone="muted", wrap=False))
         who.addStretch(1)
         self.doing = label("", role="small", tone="muted")
         self.thinking = label("", role="small", tone="muted")
@@ -2626,7 +2626,7 @@ class FleetWindow(QMainWindow):
         by_id = {unit.id: unit for unit in units}
         for row in self._agent_rows():
             unit = by_id[row.data(0, UNIT_ROLE)]
-            row.setText(0, f"{unit.name}  K{unit.rank}" if unit.name else f"K{unit.rank}")
+            row.setText(0, f"{unit.name}  {unit.id}" if unit.name else unit.id)
             row.setText(1, unit.state)
             row.setText(2, f"${unit.spent_usd:.2f}")
             row.setForeground(1, QColor(state_tone(unit.state, view.running)))

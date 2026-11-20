@@ -116,7 +116,7 @@ def fleet_tools(manager: Manager) -> MCPServer:
         "the project's secretary by \"secretary\"; a team that is not running, or whose "
         "lead finished or failed, is started by it."))
     async def message(
-        agent: Annotated[str, Field(description="The agent's id, such as u3.")],
+        agent: Annotated[str, Field(description="The agent's id, such as K4002.")],
         text: Annotated[str, Field(min_length=1)],
         ctx: Context,
     ) -> str:

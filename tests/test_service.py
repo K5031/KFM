@@ -370,3 +370,19 @@ async def test_what_waits_for_the_person_is_known_without_opening_a_fleet(tmp_pa
     await remote.stop(fleet)
     await remote.aclose()
     await asyncio.wait_for(serving, 10)
+
+
+async def test_the_models_an_agent_program_offers_are_listed(tmp_path: Path):
+    """For a frontend to choose from; here and over the socket, and asked for once."""
+    harness = FakeHarness({})
+    home, socket = tmp_path / "home", tmp_path / "s"
+    server = Server(LocalService(home, harness=harness, config=FleetConfig()), socket,
+                    idle_s=0.2)
+    serving = asyncio.ensure_future(server.run())
+    await until(socket.exists)
+    remote = await RemoteService.connect(home, socket=socket, start=False)
+    assert await remote.models() == [("big-1", "Big One"), ("small-1", "Small One")]
+    harness.offered = []
+    assert len(await remote.models()) == 2  # kept: the program is not asked each time
+    await remote.aclose()
+    await asyncio.wait_for(serving, 10)

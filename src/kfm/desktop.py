@@ -998,10 +998,12 @@ class SettingsDialog(QDialog):
             return form
 
         models = section("Models")
-        self.models: dict[str, QLineEdit] = {}
+        self.models: dict[str, QComboBox] = {}
         for rank in range(config.top_rank, 0, -1):
-            field = self.models[f"K{rank}"] = QLineEdit(config.models.get(f"K{rank}", ""))
-            field.setPlaceholderText("Default")
+            field = self.models[f"K{rank}"] = QComboBox(editable=True)
+            field.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)  # typed is not listed
+            field.setCurrentText(config.models.get(f"K{rank}", ""))
+            field.lineEdit().setPlaceholderText("Default")
             field.setToolTip(f"The model K{rank} agents run on; empty: the agent program's own")
             models.addRow(f"K{rank}", field)
         limits = section("Limits")
@@ -1066,7 +1068,20 @@ class SettingsDialog(QDialog):
                 "max_units": self.agents.value(),
                 "projects_folder": self.projects.text().strip(),
                 "permissions": self.permissions.currentData(),
-                "models": {rank: field.text().strip() for rank, field in self.models.items()}}
+                "models": {rank: field.currentText().strip()
+                           for rank, field in self.models.items()}}
+
+    def offer(self, models: Sequence[tuple[str, str]]) -> None:
+        """The models there are to choose from, each by its id with its name beside it in
+        a tooltip; what a field holds stays, listed or not."""
+        for field in self.models.values():
+            held = field.currentText()
+            field.clear()
+            field.addItem("")  # the agent program's own
+            for model_id, name in models:
+                field.addItem(model_id)
+                field.setItemData(field.count() - 1, name, Qt.ItemDataRole.ToolTipRole)
+            field.setCurrentText(held)
 
     def warn(self, text: str) -> None:
         self.warning.setText(text)
@@ -2259,6 +2274,10 @@ class FleetWindow(QMainWindow):
 
         dialog.save_asked.connect(lambda: self._run(save()))
         dialog.open()
+        with contextlib.suppress(*REFUSALS):  # asked while the dialog is already there
+            offered = await self.service.models()
+            if self.dialog is dialog:
+                dialog.offer(offered)
 
     async def _show_settings(self) -> None:
         with contextlib.suppress(*REFUSALS):

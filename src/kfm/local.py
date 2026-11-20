@@ -11,9 +11,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from kfm import draft, log, project
+from kfm import draft, harnesses, log, project
 from kfm import fleet as records
-from kfm.api import Harness
+from kfm.api import Harness, UnitError
 from kfm.config import CONFIG_FILE, HOME, FleetConfig, load, save
 from kfm.events import Across, Delivered, FleetEvent, Notice, Told, units
 from kfm.fleet import Fleet, FleetError, Unit
@@ -47,6 +47,7 @@ class LocalService(Service):
         self._managers: dict[str, Manager] = {}  # of every fleet read, running or not
         self._listeners: list[Callable[[Update], None]] = []
         self._proposals: dict[str, draft.Draft] = {}  # by project, until settled
+        self._models: list[tuple[str, str]] | None = None  # what the agent program offers
         self._tasks: set[asyncio.Task[Any]] = set()
 
     # ── Projects ─────────────────────────────────────────────────────────
@@ -223,6 +224,18 @@ class LocalService(Service):
         await manager.approve(self._unit(manager, unit_id), request_id, allow, always=always)
 
     # ── Settings, and what happens ───────────────────────────────────────
+
+    async def models(self) -> list[tuple[str, str]]:
+        if self._models is None:  # asked once: starting the program to ask takes a moment
+            config = await self.settings()
+            harness = self._harness or await asyncio.to_thread(
+                harnesses.load, config.harness, config.harness_options)
+            try:
+                self._models = [tuple(each) for each in await harness.model_choices(
+                    self.home / "models")]
+            except UnitError:
+                return []  # it could not say now: asked again the next time
+        return list(self._models)
 
     async def settings(self) -> FleetConfig:
         return self._config or await asyncio.to_thread(load, self.home / CONFIG_FILE)

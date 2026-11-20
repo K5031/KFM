@@ -718,7 +718,14 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         await until(lambda: shown.dialog is not None and shown.dialog.isVisible())
         dialog = shown.dialog
         assert dialog.budget.value() == 10.0
-        dialog.models["K5"].setText("big-1")
+        # The models the agent program offers are there to pick; another can be typed.
+        field = dialog.models["K5"]
+        await until(lambda: field.count() == 3)
+        assert [field.itemText(i) for i in range(3)] == ["", "big-1", "small-1"]
+        assert field.itemData(1, Qt.ItemDataRole.ToolTipRole) == "Big One"
+        assert field.currentText() == "" and field.lineEdit().placeholderText() == "Default"
+        field.setCurrentIndex(1)
+        dialog.models["K4"].setCurrentText("my-own-model")
         dialog.budget.setValue(25.0)
         dialog.agents.setValue(0)  # no fleet has no agents
         dialog.save.click()
@@ -728,12 +735,14 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         dialog.save.click()
         await until(lambda: not dialog.isVisible())
         saved = load(tmp_path / "home" / "fleet.toml")
-        assert (saved.models, saved.budget_usd, saved.max_units) == ({"K5": "big-1"}, 25.0, 6)
+        assert (saved.models, saved.budget_usd, saved.max_units) == (
+            {"K5": "big-1", "K4": "my-own-model"}, 25.0, 6)
         assert saved.permissions == "allow_workspace"  # as it was: left alone
         await until(lambda: shown.start_form.budget.value() == 25.0)  # what a new fleet gets
         shown.gear_button.click()
         await until(lambda: shown.dialog is not dialog and shown.dialog.isVisible())
-        assert shown.dialog.models["K5"].text() == "big-1"
+        assert shown.dialog.models["K5"].currentText() == "big-1"
+        assert shown.dialog.models["K4"].currentText() == "my-own-model"
         # What agents may do without asking: Kadence's levels, by Kadence's words.
         levels = shown.dialog.permissions
         assert levels.currentData() == "allow_workspace"

@@ -223,6 +223,11 @@ class Service(abc.ABC):
     # ── Settings, and what happens ───────────────────────────────────────
 
     @abc.abstractmethod
+    async def models(self) -> list[tuple[str, str]]:
+        """The models the agent program offers, each its id and its name, for a person to
+        choose from; none when it cannot say."""
+
+    @abc.abstractmethod
     async def settings(self) -> FleetConfig:
         """What a new fleet gets."""
 

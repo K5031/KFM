@@ -507,3 +507,19 @@ async def until(predicate, timeout: float = 10.0) -> None:
             await asyncio.sleep(0.01)
 
     await asyncio.wait_for(poll(), timeout)
+
+
+async def test_kadence_says_which_models_it_offers(tmp_path: Path, monkeypatch):
+    """Asked of a Kadence started for that alone, with the configuration units get."""
+    import tomli_w
+
+    from kfm import harnesses
+
+    monkeypatch.setenv("PYTHONPATH", str(Path(__file__).resolve().parents[1]))
+    base = tmp_path / "kadence.toml"
+    base.write_text(tomli_w.dumps({
+        "core": {"factory": "tests.fakecore:factory", "options": {"scripts": {}}},
+        "runtime": {"model": "fake-1"}}))
+    harness = harnesses.load("kadence", {"config": str(base)})
+    assert await harness.model_choices(tmp_path / "models") == [
+        ("fake-1", "fake-1"), ("fake-2", "fake-2")]

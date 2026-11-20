@@ -66,6 +66,8 @@ WORDS = Vocabulary(finish="finish_goal", ask="ask_for_help", tools=f"mcp__{TOOLS
 UNIT_RECORD = "unit.json"
 _LINE_LIMIT = 16 * 1024 * 1024
 DOING_CHARS = 160  # of a tool call, as it is shown while it runs
+MODELS_S = 30.0  # for a Kadence asked which models it offers to answer
+MODELS_GRACE_S = 5.0  # for it to end afterwards
 _ACTIVE = (AgentState.THINKING, AgentState.RUNNING_TOOLS, AgentState.AWAITING_PERMISSION,
            AgentState.FINISHING)  # a turn is over when what follows the answer is too
 
@@ -108,6 +110,34 @@ class KadenceHarness(Harness):
         if session is not None:
             await opened.attach()
         return opened
+
+    async def model_choices(self, folder: Path) -> Sequence[tuple[str, str]]:
+        """What the configured provider lists: asked of a Kadence started for that alone,
+        which makes no request to a model. UnitError when it cannot be asked."""
+        def configure() -> None:
+            folder.mkdir(parents=True, exist_ok=True)
+            base = tomllib.loads(self.config.read_text()) if self.config.exists() else {}
+            base.pop("frontend", None)
+            (folder / "config.toml").write_text(tomli_w.dumps(base))
+            (folder / UNIT_RECORD).write_text(json.dumps({"id": "", "name": "", "rank": 0}))
+
+        try:
+            await asyncio.to_thread(configure)
+            process = await asyncio.create_subprocess_exec(
+                *self.command, "--headless", "--data-dir", str(folder),
+                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE, limit=_LINE_LIMIT, start_new_session=True)
+        except (OSError, ValueError) as e:
+            raise UnitError(str(e)) from e
+        channel = Channel(process)
+        try:
+            listed = await asyncio.wait_for(channel.request("list_models"), MODELS_S)
+        except (RuntimeStateError, RuntimeError, ValueError, KeyError, OSError,
+                TimeoutError) as e:
+            raise UnitError(f"Kadence could not list its models: {e}") from e
+        finally:
+            await channel.close(MODELS_GRACE_S)
+        return [(each["id"], each.get("name") or each["id"]) for each in listed]
 
     def prepare(self, spec: UnitSpec) -> None:
         """The unit's Kadence data folder: the base configuration with this unit's model,

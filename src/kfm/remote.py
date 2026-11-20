@@ -123,6 +123,9 @@ class RemoteService(Service):
         for fleet_id in [each for each in self._fleets if each.startswith(f"{project}/")]:
             self._drop(fleet_id)
 
+    async def models(self) -> list[tuple[str, str]]:
+        return [(each[0], each[1]) for each in await self._request("models")]
+
     async def proposal(self, project: str) -> Draft | None:
         made = await self._request("proposal", project)
         return made and Draft(tuple(Team(**team) for team in made["teams"]),

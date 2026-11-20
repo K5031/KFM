@@ -35,7 +35,7 @@ CALLS = frozenset({
     "projects", "create_project", "rename_project", "delete_project", "proposal", "settle_proposal",
     "fleets", "add_fleet", "watch", "history", "start", "stop", "rename_fleet", "delete_fleet",
     "add_agent", "remove_agent", "rename_agent", "set_task", "set_model", "say", "approve",
-    "settings", "save_settings"})
+    "settings", "save_settings", "models"})
 _REFUSALS = (FleetError, UnitError, ValueError, OSError, TypeError)
 
 

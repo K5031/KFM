@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any
 
 from mcp import Client
@@ -49,6 +50,7 @@ class FakeHarness(Harness):
         self.approved: list[tuple[str, bool]] = []  # (request id, allow)
         self.conversations: list[str] = []  # units begun on a conversation, not a goal
         self.permissions: list[tuple[str, str]] = []  # (unit name, permissions), as opened
+        self.offered = [("big-1", "Big One"), ("small-1", "Small One")]  # its models
         self.open_s = 0.0  # how long a unit's process takes to come up
         self.broken = False  # no process comes up
         self.results: list[tuple[str, str, str]] = []  # (unit name, tool, what it answered)
@@ -59,6 +61,9 @@ class FakeHarness(Harness):
     @property
     def vocabulary(self) -> Vocabulary:
         return WORDS
+
+    async def model_choices(self, folder: Path) -> Sequence[tuple[str, str]]:
+        return self.offered
 
     async def open(self, spec: UnitSpec, on_event: Callable[[UnitEvent], None],
                    session: str | None = None) -> Session:

@@ -26,6 +26,8 @@ from kfm.units import SECRETARY
 
 LINE_CHARS = 300  # of what an agent below the lead says, in the log
 NO_FLEET = 'There is no fleet yet. Start one with: kfm run "<task>"'
+STALE = ("kfm: KFM was updated since its service started, which still runs the code from "
+         "before. To change that: kfm service restart")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -166,7 +168,9 @@ async def _service(args: argparse.Namespace) -> int:
     """Show KFM's service, end it, or end it and start another."""
     def shown(service: RemoteService) -> str:
         since = time.strftime("%H:%M on %d %b", time.localtime(service.since))
-        return f"KFM's service runs since {since} (process {service.pid})."
+        return (f"KFM's service runs since {since} (process {service.pid})."
+                + (" KFM was updated since: it runs the code from before."
+                   if service.stale else ""))
 
     service: RemoteService | None
     try:
@@ -203,6 +207,8 @@ async def _serve(args: argparse.Namespace) -> int:
 
 async def _attached(args: argparse.Namespace) -> int:
     service = await RemoteService.connect(args.home)
+    if service.stale:
+        print(STALE, file=sys.stderr)
     try:
         return await _COMMANDS[args.command](service, args)
     finally:

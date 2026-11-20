@@ -44,6 +44,18 @@ _ERRORS: dict[str, type[Exception]] = {
     "ValueError": ValueError, "KeyError": ValueError, "TypeError": ValueError}
 
 
+def installed_at() -> float:
+    """When the code this program runs was last changed: the newest of KFM's own files and
+    of Kadence's, which its agents run. Blocking."""
+    import kadence
+
+    import kfm
+
+    return max((path.stat().st_mtime
+                for package in (kfm, kadence) if package.__file__ is not None
+                for path in Path(package.__file__).parent.rglob("*.py")), default=0.0)
+
+
 class ServiceError(RuntimeError):
     """The service failed at something, or cannot be reached; the text is for the person."""
 
@@ -55,6 +67,7 @@ class RemoteService(Service):
         started, which is the code it runs."""
         self._reader, self._writer = reader, writer
         self._path, self.pid, self.since = path, pid, since
+        self.stale = False
         self._ids = itertools.count(1)
         self._waiting: dict[int, asyncio.Future[Any]] = {}
         self._fleets: dict[str, Fleet] = {}
@@ -87,8 +100,10 @@ class RemoteService(Service):
                 f"running and no window open it ends by itself within seconds: start KFM "
                 f"again then. Otherwise end it with: {end}\nIts fleets stop and can be "
                 f"resumed.")
-        return cls(reader, writer, path=path, pid=hello.get("pid", 0),
-                   since=hello.get("since", 0.0))
+        service = cls(reader, writer, path=path, pid=hello.get("pid", 0),
+                      since=hello.get("since", 0.0))
+        service.stale = service.since < await asyncio.to_thread(installed_at)
+        return service
 
     # ── Projects ─────────────────────────────────────────────────────────
 

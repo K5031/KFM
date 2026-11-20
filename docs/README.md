@@ -59,9 +59,10 @@ in the other, and both can follow it at once.
   stopped, finishes, or reaches its spending limit. `kfm status` shows what runs.
 - **A reboot stops every fleet;** `kfm resume` starts one again where it was.
 - **After an update** the service still running is the old one, on the code it was
-  started with, for as long as a fleet runs or a window is open. Restart it: **Restart
-  KFM** in the menu at the bottom left of the window, or `kfm service restart`. Its
-  fleets stop and can be resumed. `kfm service` says since when it runs.
+  started with, for as long as a fleet runs or a window is open. The window says so when
+  it opens and offers to restart, and each `kfm` command says so in a line. Restart it:
+  **Restart KFM** in the menu at the bottom left of the window, or `kfm service restart`.
+  Its fleets stop and can be resumed. `kfm service` says since when it runs.
 
 ## The command line
 

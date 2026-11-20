@@ -263,3 +263,21 @@ async def test_the_service_is_ended_by_a_frontend(tmp_path: Path):
                           / fleet.partition("/")[2]).running
     with pytest.raises(ServiceError, match="No KFM service runs"):
         await RemoteService.connect(home, socket=socket, start=False)
+
+
+async def test_a_frontend_knows_a_service_started_before_the_code_it_runs(tmp_path: Path):
+    """The service outlives the window: after an update it runs what it was started on."""
+    from kfm.remote import installed_at
+
+    home, socket = tmp_path / "home", tmp_path / "s"
+    for since, stale in ((installed_at() - 60, True), (installed_at() + 60, False)):
+        server = Server(LocalService(home, harness=FakeHarness({}), config=FleetConfig()),
+                        socket, idle_s=0.2)
+        server._since = since
+        serving = asyncio.ensure_future(server.run())
+        await until(socket.exists)
+        remote = await RemoteService.connect(home, socket=socket, start=False)
+        assert remote.stale is stale
+        await remote.aclose()
+        await asyncio.wait_for(serving, 10)
+    assert LocalService(home).stale is False  # the one in this process is this code

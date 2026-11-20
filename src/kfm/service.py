@@ -85,6 +85,10 @@ type Update = Happened | Updated | Listed | Proposed
 
 
 class Service(abc.ABC):
+    # It was started before the code this frontend runs was installed, and so runs what
+    # was there before: only a service in another process can be.
+    stale: bool = False
+
     # ── Projects ─────────────────────────────────────────────────────────
 
     @abc.abstractmethod

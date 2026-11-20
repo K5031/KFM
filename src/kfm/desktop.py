@@ -1409,7 +1409,7 @@ class FleetWindow(QMainWindow):
         self.app_menu_action = menu.addAction("Add to App Menu")
         self.app_menu_action.triggered.connect(lambda: self._run(self._add_to_app_menu()))
         self.app_menu_action.setVisible(False)
-        menu.addAction("Restart KFM").triggered.connect(self.ask_restart)
+        menu.addAction("Restart KFM").triggered.connect(lambda: self.ask_restart())
         menu.addSeparator()
         menu.addAction("Quit").triggered.connect(self.close)
         self.profile_button.setMenu(menu)
@@ -1702,13 +1702,20 @@ class FleetWindow(QMainWindow):
         if self.view is not None:
             await self.view.stop()
 
-    def ask_restart(self) -> None:
+    def offer_restart(self) -> None:
+        """Say that the service runs the code from before an update, if it does."""
+        if self.service.stale:
+            self.ask_restart("KFM was updated, and its service still runs the version "
+                             "from before. Restart? Fleets that run stop and can be resumed.")
+
+    def ask_restart(self, question: str = "Restart KFM? Fleets that run stop and can be "
+                                          "resumed.") -> None:
         """End the service that holds the fleets and start the window again, on what is
         installed now: the service outlives the window, and so runs the code it was
         started on."""
         dialog = self.dialog = QMessageBox(self)
         dialog.setWindowTitle("Restart KFM")
-        dialog.setText("Restart KFM? Fleets that run stop and can be resumed.")
+        dialog.setText(question)
         dialog.setStandardButtons(QMessageBox.StandardButton.Yes
                                   | QMessageBox.StandardButton.Cancel)
         dialog.button(QMessageBox.StandardButton.Yes).setText("Restart")
@@ -2199,6 +2206,7 @@ def main() -> None:
         window = FleetWindow(service)
         window.resize(1180, 760)
         window.show()
+        window.offer_restart()
         loop.run_until_complete(window.closed.wait())
 
 

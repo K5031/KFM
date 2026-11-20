@@ -840,6 +840,19 @@ async def test_kfm_is_restarted_from_the_profile_corner(window, tmp_path: Path):
     assert not shown.service.state(view.id).running
 
 
+async def test_a_window_on_an_older_service_offers_to_restart(window, tmp_path: Path):
+    shown, _ = window({})
+    shown.offer_restart()
+    assert shown.dialog is None  # the service is this code: nothing to say
+    shown.service.stale = True
+    again: list[bool] = []
+    shown.relaunch = lambda: again.append(True)
+    shown.offer_restart()
+    assert "updated" in shown.dialog.text() and "resumed" in shown.dialog.text()
+    shown.dialog.button(shown.dialog.StandardButton.Yes).click()
+    await until(lambda: again == [True])
+
+
 async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QApplication):
     from PySide6.QtCore import Qt
 

@@ -47,7 +47,8 @@ home (`kfm/server.py`), one JSON object a line, as Kadence's headless channel sp
 Any number of frontends attach. One that finds no service starts it, detached. It ends
 when no fleet runs and no frontend is attached, or when a frontend ends it
 (`Service.end`): it outlives the window, so after an update it still runs the code it
-was started on, and the person restarts it. The first line of a connection names the
+was started on, which a frontend notices (the service says when it started) and says,
+and the person restarts it. The first line of a connection names the
 contract's version, the service's process and when it started, and a frontend of
 another version is told so.
 

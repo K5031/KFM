@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import kadence.frontends.desktop  # noqa: F401 - before any Qt import
-from kadence.frontends.common import PERMISSION_LABELS
+from kadence.frontends.common import PERMISSION_LABELS, PERMISSION_SHORT
 from kadence.frontends.desktop import theme
 from kadence.frontends.desktop.loop import QtEventLoop
 from kadence.frontends.desktop.window import (
@@ -48,7 +48,6 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -65,7 +64,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QSpinBox,
     QStackedWidget,
     QToolButton,
     QTreeWidget,
@@ -952,6 +950,26 @@ class DeleteDialog(QDialog):
         rows.addLayout(foot)
 
 
+class Amount(QLineEdit):
+    """A number in a field like the text fields beside it: dollars, or a count."""
+
+    def __init__(self, value: float, *, money: bool = False) -> None:
+        super().__init__()
+        self._money = money
+        self.setValue(value)
+
+    def setValue(self, value: float) -> None:
+        self.setText(f"${value:.2f}" if self._money else str(int(value)))
+
+    def value(self) -> float:
+        """What is written; 0 for what is no number."""
+        try:
+            number = float(self.text().strip().lstrip("$").replace(",", ".") or 0)
+        except ValueError:
+            return 0
+        return number if self._money else int(number)
+
+
 class SettingsDialog(QDialog):
     """What new fleets get: the model of each rank and the limits. `save_asked` when the
     person wants them kept; `changes` is what they set."""
@@ -961,42 +979,65 @@ class SettingsDialog(QDialog):
     def __init__(self, parent: QWidget, config: FleetConfig) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(460)
+        colors = theme.current()
         rows = QVBoxLayout(self)
-        rows.setSpacing(12)
-        form = QFormLayout()
-        form.setSpacing(8)
+        rows.setContentsMargins(22, 18, 22, 18)
+        rows.setSpacing(6)
+
+        def section(title: str) -> QFormLayout:
+            """A part of the settings: its name, and its rows under it."""
+            if rows.count():
+                rows.addSpacing(12)
+            rows.addWidget(label(title, role="small", tone="muted", wrap=False))
+            form = QFormLayout()
+            form.setHorizontalSpacing(16)
+            form.setVerticalSpacing(8)
+            form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+            rows.addLayout(form)
+            return form
+
+        models = section("Models")
         self.models: dict[str, QLineEdit] = {}
         for rank in range(config.top_rank, 0, -1):
             field = self.models[f"K{rank}"] = QLineEdit(config.models.get(f"K{rank}", ""))
-            field.setPlaceholderText("The agent program's own")
-            form.addRow(f"K{rank} model", field)
-        self.budget = self._money(config.budget_usd)
-        self.each = self._money(config.unit_budget_usd)
-        self.agents = QSpinBox()
-        self.agents.setRange(0, 999)
-        self.agents.setValue(config.max_units)
-        form.addRow("A fleet may spend", self.budget)
-        form.addRow("An agent may spend", self.each)
-        form.addRow("Agents in a fleet, at most", self.agents)
+            field.setPlaceholderText("Default")
+            field.setToolTip(f"The model K{rank} agents run on; empty: the agent program's own")
+            models.addRow(f"K{rank}", field)
+        limits = section("Limits")
+        self.budget = Amount(config.budget_usd, money=True)
+        self.each = Amount(config.unit_budget_usd, money=True)
+        self.agents = Amount(config.max_units)
+        limits.addRow("Per fleet", self.budget)
+        limits.addRow("Per agent", self.each)
+        limits.addRow("Agents", self.agents)
+        self.budget.setToolTip("The most a fleet may spend")
+        self.each.setToolTip("The most one agent may spend")
+        self.agents.setToolTip("The most agents in a fleet")
         self.permissions = QComboBox()  # what agents do without asking: Kadence's levels
-        for level, words in PERMISSION_LABELS.items():
+        for level, words in PERMISSION_SHORT.items():
             self.permissions.addItem(words, level.value)
+            self.permissions.setItemData(self.permissions.count() - 1,
+                                         PERMISSION_LABELS[level], Qt.ItemDataRole.ToolTipRole)
         self.permissions.setCurrentIndex(max(0, self.permissions.findData(config.permissions)))
-        self.permissions.setToolTip("For fleets made from now on")
-        form.addRow("Agents", self.permissions)
+        self.permissions.setToolTip("What agents do without asking, in fleets made from now on")
+        section("Permission").addRow("Level", self.permissions)
         self.projects = QLineEdit(config.projects_folder)
-        self.projects.setPlaceholderText("None: a folder is chosen for each project")
-        self.projects.setToolTip("A new project gets a folder named after it in here")
+        self.projects.setPlaceholderText("None")
+        self.projects.setToolTip("A new project gets a folder named after it in here; "
+                                 "empty: a folder is chosen for each project")
         self.browse = QToolButton(objectName="folderPicker")
-        self.browse.setIcon(theme.icon("folder", theme.current().muted, 16))
+        self.browse.setIcon(theme.icon("folder", colors.muted, 16))
         self.browse.setToolTip("Choose a folder")
         self.browse.clicked.connect(self._choose_projects)
         chosen = QHBoxLayout()
         chosen.setSpacing(6)
         chosen.addWidget(self.projects, 1)
         chosen.addWidget(self.browse)
-        form.addRow("Projects folder", chosen)
+        section("Projects").addRow("Folder", chosen)
+        for form in self.findChildren(QFormLayout):  # one column of names, of one width
+            for row in range(form.rowCount()):
+                form.itemAt(row, QFormLayout.ItemRole.LabelRole).widget().setFixedWidth(76)
         self.warning = label("", role="small", tone="error")
         self.warning.hide()
         self.save = QPushButton("Save")
@@ -1008,7 +1049,7 @@ class SettingsDialog(QDialog):
         foot.addStretch(1)
         foot.addWidget(cancel)
         foot.addWidget(self.save)
-        rows.addLayout(form)
+        rows.addSpacing(8)
         rows.addWidget(self.warning)
         rows.addLayout(foot)
 
@@ -1019,15 +1060,6 @@ class SettingsDialog(QDialog):
         picker.setFileMode(QFileDialog.FileMode.Directory)
         picker.fileSelected.connect(self.projects.setText)
         picker.open()
-
-    @staticmethod
-    def _money(value: float) -> QDoubleSpinBox:
-        field = QDoubleSpinBox()
-        field.setRange(0.0, 100_000.0)
-        field.setDecimals(2)
-        field.setPrefix("$ ")
-        field.setValue(value)
-        return field
 
     def changes(self) -> dict[str, Any]:
         return {"budget_usd": self.budget.value(), "unit_budget_usd": self.each.value(),

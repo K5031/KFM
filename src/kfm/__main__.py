@@ -424,7 +424,7 @@ async def _settings(service: Service, args: argparse.Namespace) -> int:
         print(f"{rank}: {model}")
     words = next((words for level, words in PERMISSION_LABELS.items()
                   if level.value == now.permissions), now.permissions)
-    print(f"Agents: {words[0].lower()}{words[1:]}")
+    print(f"Permission: {now.permissions} ({words[0].lower()}{words[1:]})")
     if now.projects_folder:
         print(f"Projects folder: {now.projects_folder}")
     return 0

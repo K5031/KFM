@@ -283,16 +283,16 @@ Without `[models]`, every agent uses the model in your Kadence configuration.
 
 ### What agents do without asking
 
-`permissions`, **Agents** in the window's Settings, is the level every agent of a new
+`permissions`, **Permission** in the window's Settings, is the level every agent of a new
 fleet gets. A fleet keeps the level it was made with.
 
 | Level | Agents |
 |---|---|
-| `auto` | work freely in their folder; anything outside it is first checked by a small model against the task. What is clearly fine runs; the rest asks you, with the reason |
-| `allow_workspace` (default) | work freely in their folder and ask before anything outside it |
-| `allow_read_only` | read freely and ask before any change |
-| `ask` | ask before every action |
-| `deny` | run no tools |
+| `auto` (Auto) | work freely in their folder; anything outside it is first checked by a small model against the task. What is clearly fine runs; the rest asks you, with the reason |
+| `allow_workspace` (Work folder, the default) | work freely in their folder and ask before anything outside it |
+| `allow_read_only` (Read only) | read freely and ask before any change |
+| `ask` (Ask first) | ask before every action |
+| `deny` (No tools) | run no tools |
 
 `auto` saves you most questions and is not a guarantee: the check is a model's judgment,
 and what it allows runs with your rights. Deleting or overwriting what the task did not

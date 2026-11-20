@@ -739,7 +739,10 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         assert levels.currentData() == "allow_workspace"
         assert [levels.itemData(i) for i in range(levels.count())] == [
             "auto", "allow_workspace", "allow_read_only", "ask", "deny"]
-        assert levels.itemText(0) == "Decide automatically, ask me only when unsure"
+        assert [levels.itemText(i) for i in range(levels.count())] == [
+            "Auto", "Work folder", "Read only", "Ask first", "No tools"]
+        assert levels.itemData(0, Qt.ItemDataRole.ToolTipRole) == (
+            "Decide automatically, ask me only when unsure")
         levels.setCurrentIndex(0)
         again = shown.dialog
         again.save.click()

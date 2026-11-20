@@ -76,7 +76,7 @@ from PySide6.QtWidgets import (
 from kfm import app_menu, draft, project
 from kfm.api import UnitError
 from kfm.chart import Chart, ChartFleet, state_tone
-from kfm.config import AUTO, FleetConfig
+from kfm.config import AUTO, MANUAL, FleetConfig
 from kfm.events import (
     Across,
     Answered,
@@ -433,6 +433,29 @@ class Budget(QFrame):
             return self.LEAST
 
 
+class LeadModel(QComboBox):
+    """The model of the lead a fleet starts with, where whoever starts an agent names its
+    model: one of the person's list. Hidden where models go by rank."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setToolTip("The model its lead runs on")
+        self.setAccessibleName("The model its lead runs on")
+        self.hide()
+
+    def offer(self, config: FleetConfig, chosen: str | None = None) -> None:
+        """Show the models there are to choose, with `chosen`, else what is chosen now,
+        else the secretary's, else the first."""
+        wanted = chosen or self.currentText() or config.models.get("secretary", "")
+        self.clear()
+        self.addItems(config.auto_models)
+        self.setCurrentIndex(max(0, self.findText(wanted)))
+        self.setVisible(config.auto)
+
+    def model(self) -> str | None:
+        return self.currentText() or None if not self.isHidden() else None
+
+
 class KindSwitch(QFrame):
     """Task or Duty, as two segments."""
 
@@ -516,6 +539,7 @@ class StartForm(QWidget):
         self.folder_button.setToolTip("The folder the agents work in")
         self.folder_button.clicked.connect(self._choose)
         self.budget = Budget()
+        self.lead_model = LeadModel()
         self.start = QToolButton(objectName="send")
         self.start.setProperty("active", True)
         self.start.setIcon(theme.icon("send", colors.on_accent, 18))
@@ -526,6 +550,7 @@ class StartForm(QWidget):
         row.addWidget(segments)
         row.addWidget(self.folder_button)
         row.addWidget(self.budget)
+        row.addWidget(self.lead_model)
         row.addStretch(1)
         row.addWidget(self.start)
         inside.addLayout(row)
@@ -727,8 +752,10 @@ class DraftRow(QFrame):
         inside.addWidget(self.does)
         self.kind = KindSwitch()
         (self.kind.duty if ongoing else self.kind.task_kind).setChecked(True)
+        self.lead_model = LeadModel()
         row = QHBoxLayout()
         row.addWidget(self.kind)
+        row.addWidget(self.lead_model)
         row.addStretch(1)
         inside.addLayout(row)
 
@@ -744,6 +771,7 @@ class DraftPage(QWidget):
         super().__init__()
         self.project = opened
         self.rows: list[DraftRow] = []
+        self.config = FleetConfig()  # what the rows' model lists are made from
         self.shown: draft.Draft | None = None  # the proposal its rows were made from
         self.busy = True  # the secretary is at it
         self.setStyleSheet(BOX_STYLE.format(line=theme.current().line))
@@ -836,6 +864,7 @@ class DraftPage(QWidget):
 
     def add_row(self, name: str = "", does: str = "", ongoing: bool = True) -> DraftRow:
         row = DraftRow(name, does, ongoing)
+        row.lead_model.offer(self.config)
         row.remove.clicked.connect(lambda: self._remove(row))
         self.rows.append(row)
         self._column.insertWidget(self._column.count() - 2, row)  # above the foot
@@ -854,7 +883,9 @@ class DraftPage(QWidget):
         for row in list(self.rows):
             self._remove(row)
         for team in made.teams:
-            self.add_row(team.name, team.does, team.ongoing).folder = team.folder
+            row = self.add_row(team.name, team.does, team.ongoing)
+            row.folder = team.folder
+            row.lead_model.offer(self.config, team.model)
         self.busy = False
         self._show()
         theme.mark(self.note, "tone", "muted")
@@ -997,36 +1028,43 @@ class SettingsDialog(QDialog):
             rows.addLayout(form)
             return form
 
-        models = section("Models")
-        # "default" is the model of every rank that has none of its own (FleetConfig.models).
-        self.models: dict[str, QComboBox] = {}
-        top = f"K{config.top_rank}"
-        for key in ("default", "secretary",
-                    *(f"K{rank}" for rank in range(config.top_rank, 0, -1))):
-            field = self.models[key] = QComboBox(editable=True)
-            field.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)  # typed is not listed
-            field.setCurrentText(config.models.get(key, ""))
-            models.addRow({"default": "Default", "secretary": "Secretary"}.get(key, key), field)
-        self.models["secretary"].lineEdit().setPlaceholderText(f"As {top}")
-        self.models["secretary"].setToolTip(
-            f"The model a project's secretary runs on; empty: {top}'s")
-        # Which models whoever hires an agent may choose from, for a rank set to "auto".
+        models = self._models_form = section("Models")
+        # Auto: whoever starts an agent names its model, from the ones allowed; only a
+        # secretary's, whom nobody starts, is set here. Manual: a model for each rank.
+        self.mode = QComboBox()
+        self.mode.addItem("Auto", AUTO)
+        self.mode.addItem("Manual", MANUAL)
+        self.mode.setItemData(0, "Whoever starts an agent chooses its model, from the "
+                                 "ones you allow", Qt.ItemDataRole.ToolTipRole)
+        self.mode.setItemData(1, "You set the model of each rank", Qt.ItemDataRole.ToolTipRole)
+        self.mode.setCurrentIndex(self.mode.findData(config.model_mode))
+        models.addRow("Mode", self.mode)
         self.auto = QToolButton(objectName="folderPicker")
         self.auto.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.auto.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self.auto.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.auto.setMenu(QMenu(self.auto))
-        self.auto.setToolTip('For a rank set to "auto", whoever hires the agent chooses its '
-                             "model from these")
+        self.auto.setToolTip("The models there are to choose from")
         self.auto_models = list(config.auto_models)
-        models.addRow("Auto from", self.auto)
+        models.addRow("Allowed", self.auto)
         self._show_auto()
+        # "default" is the model of every rank that has none of its own (FleetConfig.models).
+        self.models: dict[str, QComboBox] = {}
+        for key in ("secretary", "default",
+                    *(f"K{rank}" for rank in range(config.top_rank, 0, -1))):
+            field = self.models[key] = QComboBox(editable=True)
+            field.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)  # typed is not listed
+            field.setCurrentText(config.models.get(key, ""))
+            models.addRow({"default": "Default", "secretary": "Secretary"}.get(key, key), field)
+        self.models["secretary"].setToolTip("The model a project's secretary runs on")
         every = self.models["default"]
         every.lineEdit().setPlaceholderText("The agent program's own")
         every.setToolTip("The model of every rank that has none of its own; empty: the one "
                          "the agent program is set to")
         every.currentTextChanged.connect(lambda _: self._show_default())
+        self.mode.currentIndexChanged.connect(lambda _: self._show_mode())
         self._show_default()
+        self._show_mode()
         limits = section("Limits")
         self.budget = Amount(config.budget_usd, money=True)
         self.each = Amount(config.unit_budget_usd, money=True)
@@ -1090,6 +1128,7 @@ class SettingsDialog(QDialog):
                 "projects_folder": self.projects.text().strip(),
                 "permissions": self.permissions.currentData(),
                 "auto_models": list(self.auto_models),
+                "model_mode": self.mode.currentData(),
                 "models": {rank: field.currentText().strip()
                            for rank, field in self.models.items()}}
 
@@ -1113,19 +1152,26 @@ class SettingsDialog(QDialog):
             self.auto_models.remove(model_id)
         self._show_auto()
 
+    def _show_mode(self) -> None:
+        """Auto shows the models allowed and the secretary's; manual, a model for the
+        secretary, the default and each rank."""
+        auto = self.mode.currentData() == AUTO
+        form = self._models_form
+        form.setRowVisible(self.auto, auto)
+        for key, field in self.models.items():
+            form.setRowVisible(field, key == "secretary" or not auto)
+        top = next(key for key in self.models if key.startswith("K"))
+        self.models["secretary"].lineEdit().setPlaceholderText(
+            "The agent program's own" if auto else f"As {top}")
+        self.adjustSize()
+
     def offer(self, models: Sequence[tuple[str, str, str]]) -> None:
         """The models there are to choose from, each by its id with its name and price
-        beside it in a tooltip; what a field holds stays, listed or not. A rank below the
-        top can also be "auto": whoever hires the agent chooses."""
-        top = next(key for key in self.models if key.startswith("K"))
-        for key, field in self.models.items():
+        beside it in a tooltip; what a field holds stays, listed or not."""
+        for field in self.models.values():
             held = field.currentText()
             field.clear()
             field.addItem("")  # the default
-            if key.startswith("K") and key != top:
-                field.addItem(AUTO)
-                field.setItemData(1, "Whoever hires the agent chooses, from the models "
-                                     'under "Auto from"', Qt.ItemDataRole.ToolTipRole)
             for model_id, name, about in models:
                 field.addItem(model_id)
                 field.setItemData(field.count() - 1, ", ".join(p for p in (name, about) if p),
@@ -1834,7 +1880,8 @@ class FleetWindow(QMainWindow):
         if (page := self.drafts.get(opened.id)) is None:
             page = self.drafts[opened.id] = DraftPage(opened)
             with contextlib.suppress(*REFUSALS):
-                page.budget.setValue((await self.service.settings()).budget_usd)
+                page.config = await self.service.settings()
+                page.budget.setValue(page.config.budget_usd)
             page.start_asked.connect(lambda: self._run(self.start_draft(page)))
             page.over.connect(lambda: self._drop_draft(page))
             self.draft_pages.addWidget(page)
@@ -1865,20 +1912,21 @@ class FleetWindow(QMainWindow):
     async def start_draft(self, page: DraftPage) -> None:
         """Start every fleet of the draft, and show the project's chart."""
         fleets = [(row.name.text().strip(), row.does.toPlainText().strip(),
-                   row.kind.duty.isChecked(), row.folder) for row in page.rows]
-        names = [name.lower() for name, _, _, _ in fleets]
-        if not fleets or not all(name and does for name, does, _, _ in fleets):
+                   row.kind.duty.isChecked(), row.folder, row.lead_model.model())
+                  for row in page.rows]
+        names = [fleet[0].lower() for fleet in fleets]
+        if not fleets or not all(fleet[0] and fleet[1] for fleet in fleets):
             return page.warn("Each fleet needs a name and what it does.")
         if len(set(names)) < len(names):
             return page.warn("Two fleets have the same name.")
         page.start.setEnabled(False)
         await self._settle(page.project.id)  # before the teams are listed again
-        for name, does, ongoing, folder in fleets:
+        for name, does, ongoing, folder, model in fleets:
             work = Path(page.project.work)
             await self.start_fleet(name, does, ongoing=ongoing,
                                    work=work / folder if folder else work,
                                    budget=page.budget.value(), opened=page.project,
-                                   show=False)
+                                   show=False, model=model)
         self._drop_draft(page)
 
     def _drop_draft(self, page: DraftPage) -> None:
@@ -1954,8 +2002,10 @@ class FleetWindow(QMainWindow):
     async def _prepare_project(self) -> None:
         """The form knows the projects folder, if one is set."""
         with contextlib.suppress(*REFUSALS):
-            base = (await self.service.settings()).projects_folder
+            config = await self.service.settings()
+            base = config.projects_folder
             self.project_form.set_base(Path(base).expanduser() if base else None)
+            self.start_form.lead_model.offer(config)
 
     def add_fleet(self) -> None:
         self.view, self.adding = None, True
@@ -1981,7 +2031,7 @@ class FleetWindow(QMainWindow):
 
     async def start_fleet(self, name: str, task: str, *, ongoing: bool, work: Path,
                           budget: float, opened: ProjectInfo | None = None,
-                          show: bool = True) -> None:
+                          show: bool = True, model: str | None = None) -> None:
         """A new fleet on the task, in `opened` or the open project; `show` opens it. With
         no task it has no agents and runs nothing: the person builds it on the chart."""
         opened = opened or self.project
@@ -1989,7 +2039,7 @@ class FleetWindow(QMainWindow):
         try:
             fleet_id = await self.service.add_fleet(
                 opened.id, name, task, ongoing=ongoing, work=str(work),
-                budget_usd=budget)
+                budget_usd=budget, model=model if task else None)
             view = self.views.get(fleet_id) or self._view(fleet_id)
             await view.load()
         except REFUSALS as e:
@@ -2388,7 +2438,8 @@ class FleetWindow(QMainWindow):
             form.warn(problem)
             return
         self._run(self.start_fleet(name, task, ongoing=form.duty.isChecked(), work=work,
-                                   budget=form.budget.value()))
+                                   budget=form.budget.value(),
+                                   model=form.lead_model.model()))
 
     def _chart_clicked(self, key: str, unit_id: str) -> None:
         if (view := self.views.get(key)) is not None:

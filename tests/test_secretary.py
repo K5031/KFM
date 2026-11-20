@@ -232,3 +232,29 @@ async def test_a_secretary_runs_on_the_model_set_for_secretaries(tmp_path: Path)
         await until(lambda harness=harness: harness.models)
         assert harness.models == [("Secretary", expected)]
         await service.aclose()
+
+
+async def test_in_auto_the_secretary_names_the_model_of_each_teams_lead(tmp_path: Path):
+    """She starts the teams, through what she proposes, so their leads' models are hers
+    to name; her own is the person's, since nobody starts her."""
+    plain = [{"name": "dev", "does": "Build the game."}]
+    named = [{"name": "dev", "does": "Build the game.", "model": "big-1"},
+             {"name": "art", "does": "Draw it.", "model": "small-1"}]
+    harness = FakeHarness({"Secretary": [{"do": [
+        ("tool", "propose", {"teams": plain}), ("tool", "propose", {"teams": named})]}]})
+    (tmp_path / "work").mkdir()
+    service = LocalService(tmp_path / "home", harness=harness, config=FleetConfig(
+        model_mode="auto", auto_models=("small-1", "big-1"), models={"secretary": "small-1"}))
+    seen: list[Update] = []
+    service.subscribe(seen.append)
+    made = await service.create_project("Studio", str(tmp_path / "work"), "Run my studio")
+    await until(lambda: Proposed(made.id) in seen)
+    assert harness.models == [("Secretary", "small-1")]
+    await until(lambda: len([r for r in harness.results if r[1] == "propose"]) == 2)
+    refused, shown = [r[2] for r in harness.results if r[1] == "propose"]
+    assert "dev: Name the model it runs on, one of: small-1, big-1" in refused
+    assert "Shown to the person" in shown
+    proposed = await service.proposal(made.id)
+    assert [(team.name, team.model) for team in proposed.teams] == [
+        ("dev", "big-1"), ("art", "small-1")]
+    await service.aclose()

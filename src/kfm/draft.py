@@ -17,6 +17,8 @@ class Team(BaseModel):
         "True for standing work that never ends; false for a task that finishes."))] = True
     folder: Annotated[str | None, Field(description=(
         "A folder of its own to work in, inside the project's; none: the project's."))] = None
+    model: Annotated[str | None, Field(description=(
+        "The model its lead runs on, where that is yours to name."))] = None
 
 
 @dataclass(frozen=True, slots=True)

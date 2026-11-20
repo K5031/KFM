@@ -389,31 +389,54 @@ async def test_the_models_an_agent_program_offers_are_listed(tmp_path: Path):
     await asyncio.wait_for(serving, 10)
 
 
-async def test_whoever_hires_an_agent_chooses_its_model_where_the_rank_is_auto(tmp_path: Path):
-    """With a rank's model "auto", its supervisor names one of the models the person
-    allows when it hires; without a choice the agent runs on the default. A rank whose
-    model the person set is not the supervisor's to choose."""
+AUTO = {"model_mode": "auto", "auto_models": ("small-1", "big-1"),
+        "models": {"secretary": "big-1", "K4": "ignored-1", "default": "ignored-2"}}
+
+
+async def test_in_auto_whoever_starts_an_agent_names_its_model(tmp_path: Path):
+    """The person for a lead they add, a supervisor for each agent it hires. One that
+    names none, or one the person did not allow, is refused and told the list."""
     harness = FakeHarness({
         "K5 u1": [{"do": [
             ("tool", "delegate", {"name": "Reader", "task": "Read", "model": "small-1"}),
             ("tool", "delegate", {"name": "Plain", "task": "Wait"}),
             ("tool", "delegate", {"name": "Dear", "task": "Think", "model": "huge-1"})]}],
         "Reader": [{"do": [("tool", "delegate", {"name": "Sub", "task": "Dig",
-                                                 "model": "small-1"})]}]})
+                                                 "model": "big-1"})]}]})
+    (tmp_path / "work").mkdir()
+    service = LocalService(tmp_path / "home", harness=harness, config=FleetConfig(**AUTO))
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    with pytest.raises(ValueError, match="Name the model it runs on, one of: small-1, big-1"):
+        await service.add_fleet(made.id, "dev", "Build it")
+    with pytest.raises(ValueError, match="'huge-1' is not one of"):
+        await service.add_fleet(made.id, "dev", "Build it", model="huge-1")
+    fleet = await service.add_fleet(made.id, "dev", "Build it", model="big-1")
+    await until(lambda: len([r for r in harness.results if r[1] == "delegate"]) == 4)
+    units = {unit.called: unit.model for unit in service.fleet(fleet).units.values()}
+    assert units == {"K5 u1": "big-1", "Reader": "small-1", "Sub": "big-1"}
+    assert set(harness.models) == {("K5 u1", "big-1"), ("Reader", "small-1"), ("Sub", "big-1")}
+    refused = [r[2] for r in harness.results if "Started" not in r[2]]
+    assert "Name the model it runs on, one of: small-1, big-1" in refused[0]
+    assert "'huge-1' is not one of the models to choose from" in refused[1]
+    with pytest.raises(ValueError, match="Name the model"):
+        await service.add_agent(fleet, "u1", "Extra", "Help")
+    extra = await service.add_agent(fleet, "u1", "Extra", "Help", model="small-1")
+    assert service.fleet(fleet).units[extra].model == "small-1"
+    await service.aclose()
+
+
+async def test_in_manual_models_go_by_rank_and_are_not_an_agents_to_choose(tmp_path: Path):
+    harness = FakeHarness({"K5 u1": [{"do": [
+        ("tool", "delegate", {"name": "Reader", "task": "Read", "model": "small-1"}),
+        ("tool", "delegate", {"name": "Plain", "task": "Wait"})]}]})
     (tmp_path / "work").mkdir()
     service = LocalService(tmp_path / "home", harness=harness, config=FleetConfig(
-        models={"default": "mid-1", "K4": "auto", "K3": "big-1"},
-        auto_models=("small-1", "big-1")))
+        models={"K5": "big-1", "default": "mid-1"}, auto_models=("small-1",)))
     made = await service.create_project("Acme", str(tmp_path / "work"))
-    fleet = await service.add_fleet(made.id, "dev", "Build it")
-    await until(lambda: len([r for r in harness.results if r[1] == "delegate"]) == 4)
-    units = {unit.name: unit for unit in service.fleet(fleet).units.values()}
-    assert (units["Reader"].model, units["Plain"].model) == ("small-1", None)
-    assert ("Reader", "small-1") in harness.models and ("Plain", "mid-1") in harness.models
-    refusals = {r[0]: r[2] for r in harness.results if "Started" not in r[2]}
-    assert "huge-1" in refusals["K5 u1"] and "small-1, big-1" in refusals["K5 u1"]
-    assert "Dear" not in units and "Sub" not in units
-    assert "K3" in refusals["Reader"] and "big-1" in refusals["Reader"]  # the person's
+    await service.add_fleet(made.id, "dev", "Build it")
+    await until(lambda: len([r for r in harness.results if r[1] == "delegate"]) == 2)
+    assert "not yours to choose" in harness.results[0][2]
+    assert set(harness.models) == {("K5 u1", "big-1"), ("Plain", "mid-1")}
     await service.aclose()
 
 
@@ -422,10 +445,9 @@ async def test_the_hiring_tool_says_which_models_there_are_to_choose(tmp_path: P
 
     harness = FakeHarness({"K5 u1": [{"do": [("say", "On it.")]}]})
     (tmp_path / "work").mkdir()
-    service = LocalService(tmp_path / "home", harness=harness, config=FleetConfig(
-        models={"K4": "auto", "default": "mid-1"}, auto_models=("small-1", "big-1")))
+    service = LocalService(tmp_path / "home", harness=harness, config=FleetConfig(**AUTO))
     made = await service.create_project("Acme", str(tmp_path / "work"))
-    fleet = await service.add_fleet(made.id, "dev", "Build it")
+    fleet = await service.add_fleet(made.id, "dev", "Build it", model="big-1")
     await until(lambda: service.state(fleet).running)
     manager = service._managers[fleet]
     await until(lambda: manager.fleet.lead is not None)
@@ -434,7 +456,7 @@ async def test_the_hiring_tool_says_which_models_there_are_to_choose(tmp_path: P
         [delegate] = [tool for tool in (await client.list_tools()).tools
                       if tool.name == "delegate"]
     about = delegate.description
-    assert "K4" in about and "small-1" in about and "mid-1" in about
+    assert "Whoever starts an agent names its model" in about and "small-1" in about
     assert "big-1 (Big One, $5 in, $25 out per million tokens)" in about
     for instruction in ("you should", "you must", "prefer", "always", "cheapest"):
         assert instruction not in about.lower(), instruction

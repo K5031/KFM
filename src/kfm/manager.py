@@ -341,19 +341,14 @@ class Manager:
     async def delegate(self, supervisor: Unit, name: str, task: str, *,
                        team: str | None = None, ongoing: bool = False,
                        budget_usd: float | None = None, model: str | None = None) -> Unit:
-        """A supervisor starts an agent of its own on a task, on the `model` it names where
-        the agent's rank is its supervisor's to choose for. FleetError for a model that
-        is not among the person's, or a rank whose model the person set."""
-        rank = supervisor.rank - 1
-        if model is not None:
-            if not self.config.chosen_by_supervisor(rank):
-                fixed = self.config.model_for(rank, team or supervisor.team)
-                raise FleetError(
-                    f"The model of a K{rank} agent is not yours to choose: the person set "
-                    f"it" + (f", to {fixed}." if fixed else "."))
-            if model not in self.config.auto_models:
-                raise FleetError(f"{model!r} is not one of the models to choose from: "
-                                 f"{', '.join(self.config.auto_models)}.")
+        """A supervisor starts an agent of its own on a task. Where whoever starts an agent
+        names its model (FleetConfig.auto), on the `model` it names; FleetError when it
+        names none, or one that is not the person's to allow, or any where models go by
+        rank."""
+        try:
+            model = self.config.chosen(model) or None
+        except ValueError as e:
+            raise FleetError(str(e)) from None
         return await self._add(supervisor, name, task, by=supervisor, team=team,
                                ongoing=ongoing, budget_usd=budget_usd, model=model)
 

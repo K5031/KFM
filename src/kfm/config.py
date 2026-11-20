@@ -11,7 +11,7 @@ from typing import Any
 import tomli_w
 
 HOME = Path.home() / ".kfm"
-AUTO = "auto"  # a rank's model: whoever hires an agent of that rank chooses it
+AUTO, MANUAL = "auto", "manual"  # FleetConfig.model_mode
 CONFIG_FILE = "fleet.toml"
 
 
@@ -34,8 +34,10 @@ class FleetConfig:
     # A unit's duty intervals: it carries on soon after a turn, and checks in this often
     # when nothing wakes it.
     check_in_s: tuple[float, float] = (5.0, 300.0)
-    # The models a supervisor chooses from for an agent it hires at a rank whose model
-    # is AUTO: the person's list. Empty: no rank is its supervisor's to choose for.
+    # How an agent's model is chosen. MANUAL: by its rank, from `models`. AUTO: whoever
+    # starts it names one of `auto_models`, the person's list; a secretary, whom nobody
+    # starts, runs on `models["secretary"]`.
+    model_mode: str = MANUAL
     auto_models: tuple[str, ...] = ()
     # Not a fleet's: where a new project's folder is made, named after it, when the
     # person chooses none. "": a folder is chosen for each project.
@@ -44,13 +46,32 @@ class FleetConfig:
     def model_for(self, rank: int, team: str | None) -> str | None:
         """The model an agent of that rank and team runs on when none was chosen for it:
         its team's, else its rank's, else the default. None: the agent program's own."""
-        of_rank = self.models.get(f"K{rank}")
-        return (self.teams.get(team or "") or (of_rank if of_rank != AUTO else None)
+        if self.auto:
+            return None  # each agent was given its own
+        return (self.teams.get(team or "") or self.models.get(f"K{rank}")
                 or self.models.get("default"))
 
-    def chosen_by_supervisor(self, rank: int) -> bool:
-        """Whether whoever hires an agent of that rank names its model."""
-        return self.models.get(f"K{rank}") == AUTO and bool(self.auto_models)
+    @property
+    def auto(self) -> bool:
+        """Whether whoever starts an agent names its model."""
+        return self.model_mode == AUTO
+
+    def chosen(self, model: str | None) -> str:
+        """The model whoever starts an agent named, where that is theirs to do.
+        ValueError, in words for them, when it is not: none named, or one that is not on
+        the person's list; or any named where models go by rank."""
+        if not self.auto:
+            if model:
+                raise ValueError("An agent's model is not yours to choose: the person set "
+                                 "the model of each rank.")
+            return ""
+        if not model:
+            raise ValueError("Name the model it runs on, one of: "
+                             f"{', '.join(self.auto_models)}.")
+        if model not in self.auto_models:
+            raise ValueError(f"{model!r} is not one of the models to choose from: "
+                             f"{', '.join(self.auto_models)}.")
+        return model
 
 
 def load(path: Path, **overrides: Any) -> FleetConfig:
@@ -98,6 +119,11 @@ def _config(data: dict[str, Any], source: str, overrides: Mapping[str, Any]) -> 
         raise ValueError("top_rank is between 1 and 5")
     if config.max_units < 1 or config.budget_usd <= 0 or config.unit_budget_usd <= 0:
         raise ValueError("max_units, budget_usd and unit_budget_usd are above zero")
+    if config.model_mode not in (AUTO, MANUAL):
+        raise ValueError(f"model_mode is {AUTO} or {MANUAL}")
+    if config.auto and not config.auto_models:
+        raise ValueError("with models chosen automatically, at least one model has to be "
+                         "allowed")
     low, high = config.check_in_s
     if not 0 < low <= high:
         raise ValueError("check_in_s is [shortest, longest] in seconds")

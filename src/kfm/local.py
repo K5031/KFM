@@ -107,7 +107,8 @@ class LocalService(Service):
         return found
 
     async def add_fleet(self, project_id: str, name: str, task: str, *, ongoing: bool = True,
-                        work: str | None = None, budget_usd: float | None = None) -> str:
+                        work: str | None = None, budget_usd: float | None = None,
+                        model: str | None = None) -> str:
         if not name.strip():
             raise ValueError("A fleet needs a name.")
         if name.strip().lower() == SECRETARY.lower():
@@ -117,6 +118,7 @@ class LocalService(Service):
         config = await self.settings()
         if budget_usd is not None:
             config = replace(config, budget_usd=budget_usd)
+        lead_model = (config.chosen(model) or None) if task.strip() else None
         if work is not None:
             await asyncio.to_thread(_own_folder, Path(work), opened.work)
         await self._learn_models(config)
@@ -127,7 +129,7 @@ class LocalService(Service):
                                 name.strip(), **self._how(fleet_id, opened.name)))
         if task.strip():
             await manager.start()
-            self._run(manager.add(None, "", task, ongoing=ongoing))
+            self._run(manager.add(None, "", task, ongoing=ongoing, model=lead_model))
         self._tell(Listed())
         return fleet_id
 
@@ -196,6 +198,8 @@ class LocalService(Service):
                         ongoing: bool = False, model: str | None = None) -> str:
         manager = self._get(fleet_id)
         above = self._unit(manager, supervisor) if supervisor else None
+        if manager.config.auto:  # the person starts it: they name its model
+            model = manager.config.chosen(model)
         return (await manager.add(above, name, task, ongoing=ongoing, model=model)).id
 
     async def remove_agent(self, fleet_id: str, unit_id: str) -> None:

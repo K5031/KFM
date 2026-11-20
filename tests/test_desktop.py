@@ -391,6 +391,34 @@ async def test_waiting_for_a_proposal_shows_what_she_writes_and_can_be_cancelled
     assert not shown.drafts and shown.chart.isVisibleTo(shown)
 
 
+async def test_in_auto_a_proposal_names_each_leads_model_for_the_person_to_change(
+        window, tmp_path: Path):
+    shown, _ = window({
+        "Secretary": [{"do": [("tool", "propose", {"teams": [
+            {"name": "dev", "does": "Build it.", "model": "big-1"},
+            {"name": "art", "does": "Draw it.", "model": "small-1"}]}), ("say", "Two.")]}],
+        "K5 u1": [{"do": [("say", "On it.")]}] * 2})
+    shown.service._config = FleetConfig(model_mode="auto", auto_models=("small-1", "big-1"),
+                                        models={"secretary": "small-1"})
+    form = shown.project_form
+    form.name.setText("Studio")
+    form.does.setPlainText("Run my studio")
+    form.set_folder(tmp_path / "work")
+    form.create.click()
+    await until(lambda: shown.drafts and not next(iter(shown.drafts.values())).busy)
+    [page] = shown.drafts.values()
+    dev, art = page.rows
+    assert [row.lead_model.currentText() for row in page.rows] == ["big-1", "small-1"]
+    assert not dev.lead_model.isHidden() and dev.lead_model.count() == 2
+    art.lead_model.setCurrentText("big-1")  # the person's to change before it starts
+    page.start.click()
+    await until(lambda: len(teams(shown)) == 2 and all(
+        view.fleet is not None and view.fleet.lead is not None
+        for view in teams(shown).values()))
+    assert {view.name: view.fleet.lead.model for view in teams(shown).values()} == {
+        "dev": "big-1", "art": "big-1"}
+
+
 async def test_a_draft_that_fails_or_is_discarded_leaves_the_project(window, tmp_path: Path):
     shown, _ = window({"Secretary": [{"do": [("say", "A plan in words.")]}]})
     form = shown.project_form
@@ -724,21 +752,13 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         assert [field.itemText(i) for i in range(3)] == ["", "big-1", "small-1"]
         assert field.itemData(1, Qt.ItemDataRole.ToolTipRole) == (
             "Big One, $5 in, $25 out per million tokens")
-        # A rank below the top can be left to whoever hires the agent, to choose from
-        # the models ticked under "Auto from".
-        lower = dialog.models["K3"]
-        assert [lower.itemText(i) for i in range(lower.count())] == [
-            "", "auto", "big-1", "small-1"]
-        assert dialog.auto.text() == "None"
-        ticks = {a.text(): a for a in dialog.auto.menu().actions()}
-        assert list(ticks) == ["big-1", "small-1"]
-        ticks["small-1"].setChecked(True)
-        assert dialog.auto.text() == "small-1"
-        lower.setCurrentIndex(1)
+        # Manual, as it starts: a model for each rank, and no list of allowed ones.
+        assert dialog.mode.currentText() == "Manual"
+        assert dialog.models["K3"].isVisibleTo(dialog) and not dialog.auto.isVisibleTo(dialog)
         assert field.currentText() == "" and field.lineEdit().placeholderText() == "Default"
         # The model of every rank that has none of its own: each such rank says which.
         every = dialog.models["default"]
-        assert list(dialog.models) == ["default", "secretary", "K5", "K4", "K3", "K2", "K1"]
+        assert list(dialog.models) == ["secretary", "default", "K5", "K4", "K3", "K2", "K1"]
         assert dialog.models["secretary"].lineEdit().placeholderText() == "As K5"
         assert every.lineEdit().placeholderText() == "The agent program's own"
         every.setCurrentText("small-1")
@@ -758,8 +778,8 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         await until(lambda: not dialog.isVisible())
         saved = load(tmp_path / "home" / "fleet.toml")
         assert (saved.models, saved.budget_usd, saved.max_units) == (
-            {"default": "small-1", "K5": "big-1", "K4": "my-own-model", "K3": "auto"}, 25.0, 6)
-        assert saved.auto_models == ("small-1",)
+            {"default": "small-1", "K5": "big-1", "K4": "my-own-model"}, 25.0, 6)
+        assert (saved.model_mode, saved.auto_models) == ("manual", ())
         assert saved.permissions == "allow_workspace"  # as it was: left alone
         await until(lambda: shown.start_form.budget.value() == 25.0)  # what a new fleet gets
         shown.gear_button.click()
@@ -779,9 +799,33 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
             "Decide automatically, ask me only when unsure")
         levels.setCurrentIndex(0)
         again = shown.dialog
+        # Auto: only the models allowed and the secretary's are there to set, and the
+        # ranks are gone; whoever starts an agent names its model.
+        await until(lambda: again.models["K5"].count() == 3)
+        again.mode.setCurrentIndex(again.mode.findText("Auto"))
+        assert again.auto.isVisibleTo(again) and again.models["secretary"].isVisibleTo(again)
+        assert not any(again.models[key].isVisibleTo(again)
+                       for key in ("default", "K5", "K4", "K3", "K2", "K1"))
+        assert again.auto.text() == "None"
+        again.save.click()  # nothing is allowed yet
+        await until(lambda: "at least one model" in again.warning.text())
+        ticks = {a.text(): a for a in again.auto.menu().actions()}
+        assert list(ticks) == ["big-1", "small-1"]
+        ticks["small-1"].setChecked(True)
+        ticks["big-1"].setChecked(True)
+        assert again.auto.text() == "small-1, big-1"
+        again.models["secretary"].setCurrentText("big-1")
         again.save.click()
         await until(lambda: not again.isVisible())
-        assert load(tmp_path / "home" / "fleet.toml").permissions == "auto"
+        kept = load(tmp_path / "home" / "fleet.toml")
+        assert kept.permissions == "auto"
+        assert (kept.model_mode, kept.auto_models) == ("auto", ("small-1", "big-1"))
+        assert kept.models["secretary"] == "big-1" and kept.models["K5"] == "big-1"
+        # The form for a fleet added by hand has its lead's model to choose, the
+        # secretary's to begin with.
+        await until(lambda: shown.start_form.lead_model.count() == 2)
+        assert not shown.start_form.lead_model.isHidden()
+        assert shown.start_form.lead_model.currentText() == "big-1"
     finally:
         await shown.shut()
 

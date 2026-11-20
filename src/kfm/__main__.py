@@ -51,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--name", help="what the fleet is called")
     run.add_argument("--budget", type=float, dest="budget_usd",
                      help="the most the whole fleet may spend, in US dollars")
+    run.add_argument("--model", help="the model its lead runs on, where models are chosen "
+                                     "automatically")
     run.add_argument("--detach", action="store_true",
                      help="start it and return: it keeps running")
 
@@ -95,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
                      help="a task that finishes, instead of standing work")
     new.add_argument("--work", type=Path, help="default: the project's folder")
     new.add_argument("--budget", type=float, dest="budget_usd")
+    new.add_argument("--model", help="the model its lead runs on, where models are chosen "
+                                     "automatically")
     rename = what.add_parser("rename")
     rename.add_argument("fleet")
     rename.add_argument("name")
@@ -146,11 +150,13 @@ def main(argv: list[str] | None = None) -> int:
     settings.add_argument("--budget", type=float, dest="budget_usd")
     settings.add_argument("--unit-budget", type=float, dest="unit_budget_usd")
     settings.add_argument("--max-agents", type=int, dest="max_units")
+    settings.add_argument("--model-mode", dest="model_mode", choices=("auto", "manual"),
+                          help="auto: whoever starts an agent names its model, from "
+                               "--auto-models; manual: each rank's model is set with --model")
     settings.add_argument("--auto-models", dest="auto_models", metavar="ID,ID",
                           type=lambda text: [each.strip() for each in text.split(",")
                                              if each.strip()],
-                          help='the models whoever hires an agent chooses from, for a rank '
-                               'whose model is "auto" (--model K4=auto); "" for none')
+                          help="the models there are to choose from in auto")
     settings.add_argument("--permissions", choices=[level.value for level in PERMISSION_LABELS],
                           help="what agents of new fleets do without asking; auto: a "
                                "check decides, and asks you when unsure")
@@ -245,7 +251,8 @@ async def _run(service: Service, args: argparse.Namespace) -> int:
         owner = mine[0] if mine else await service.create_project(work.name, str(work))
     name = args.name or f"fleet {owner.fleets + 1}"
     fleet = await service.add_fleet(owner.id, name, args.task, ongoing=args.duty,
-                                    work=str(work), budget_usd=args.budget_usd)
+                                    work=str(work), budget_usd=args.budget_usd,
+                                    model=args.model)
     print(f"Fleet {fleet} ({name}, in {owner.name}).")
     if args.detach:
         print(f"It runs on its own: kfm watch {fleet} follows it, kfm stop {fleet} stops it.")
@@ -360,7 +367,8 @@ async def _fleet(service: Service, args: argparse.Namespace) -> int:
         owner = _one_project(await service.projects(), args.project)
         fleet = await service.add_fleet(
             owner.id, args.name, args.task, ongoing=not args.goal,
-            work=str(args.work.resolve()) if args.work else None, budget_usd=args.budget_usd)
+            work=str(args.work.resolve()) if args.work else None, budget_usd=args.budget_usd,
+            model=args.model)
         print(f"Fleet {fleet} ({args.name})." + ("" if args.task else
               f" It has no agents: kfm agent add {fleet} gives it its lead."))
         return 0
@@ -416,7 +424,7 @@ async def _approve(service: Service, args: argparse.Namespace) -> int:
 async def _settings(service: Service, args: argparse.Namespace) -> int:
     changes = {key: value
                for key in ("budget_usd", "unit_budget_usd", "max_units", "projects_folder",
-                           "permissions", "auto_models")
+                           "permissions", "auto_models", "model_mode")
                if (value := getattr(args, key)) is not None}
     if args.model:
         if not all("=" in each for each in args.model):
@@ -427,8 +435,8 @@ async def _settings(service: Service, args: argparse.Namespace) -> int:
           f"at most {now.max_units} agents in a fleet.")
     for rank, model in sorted(now.models.items(), reverse=True):
         print(f"{rank}: {model}")
-    if now.auto_models:
-        print(f"Auto from: {', '.join(now.auto_models)}")
+    print(f"Models: {now.model_mode}" + (f", from {', '.join(now.auto_models)}"
+                                         if now.auto else ""))
     words = next((words for level, words in PERMISSION_LABELS.items()
                   if level.value == now.permissions), now.permissions)
     print(f"Permission: {now.permissions} ({words[0].lower()}{words[1:]})")

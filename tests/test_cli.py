@@ -144,6 +144,23 @@ def test_a_project_from_the_terminal_gets_its_folder_in_the_projects_folder(tmp_
     kfm("service", "stop", home=tmp_path)
 
 
+def test_how_models_are_chosen_is_set_from_the_terminal(tmp_path: Path):
+    settings(tmp_path, {})
+    assert "Models: manual" in kfm("settings", home=tmp_path).stdout
+    refused = kfm("settings", "--model-mode", "auto", home=tmp_path)
+    assert refused.returncode != 0 and "at least one model" in refused.stderr
+    changed = kfm("settings", "--model-mode", "auto", "--auto-models", "small-1,big-1",
+                  home=tmp_path)
+    assert "Models: auto, from small-1, big-1" in changed.stdout, changed.stderr
+    kfm("project", "new", "Studio", "--work", str(tmp_path), home=tmp_path)
+    unnamed = kfm("fleet", "new", "Studio", "dev", "Build it.", home=tmp_path)
+    assert unnamed.returncode != 0 and "one of: small-1, big-1" in unnamed.stderr
+    named = kfm("fleet", "new", "Studio", "dev", "Build it.", "--model", "big-1",
+                home=tmp_path)
+    assert named.returncode == 0, named.stderr
+    kfm("service", "stop", home=tmp_path)
+
+
 def test_what_agents_may_do_is_set_from_the_terminal(tmp_path: Path):
     settings(tmp_path, {})
     assert "Permission: allow_workspace (work freely" in kfm("settings", home=tmp_path).stdout

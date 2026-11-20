@@ -141,10 +141,13 @@ class Service(abc.ABC):
 
     @abc.abstractmethod
     async def add_fleet(self, project: str, name: str, task: str, *, ongoing: bool = True,
-                        work: str | None = None, budget_usd: float | None = None) -> str:
+                        work: str | None = None, budget_usd: float | None = None,
+                        model: str | None = None) -> str:
         """A new fleet. With a task, a lead starts on it at once; with none the fleet has
         no agents and runs nothing until it is given some and started. `work`: the
-        project's, unless given. `budget_usd`: the settings', unless given."""
+        project's, unless given. `budget_usd`: the settings', unless given. `model`: the
+        lead's, which whoever starts it names where the settings say so (ValueError when
+        it is missing or not allowed there, or given where models go by rank)."""
 
     @abc.abstractmethod
     async def watch(self, fleet: str) -> None:

@@ -31,8 +31,8 @@ own. A KFM agent is such a headless Kadence.
 In this order:
 
 1. **Kadence: the conversation view becomes a part of its own.** What turns the model's
-   items into those pieces lives inside `MainWindow`. It moves into a widget both apps
-   use. Kadence looks and behaves as before; its window tests are the check. Done first,
+   items into those pieces moves out of `MainWindow` into a widget both apps use
+   (`desktop.window.ConversationView`, which is there). Kadence looks and behaves as before; its window tests are the check. Done first,
    and confirmed by the user before anything in KFM changes.
 2. **KFM's service passes through to an agent's own conversation**: a frontend can ask
    an agent's Kadence for its history and gets its events. Optional in the unit
@@ -57,7 +57,8 @@ like in Kadence and stays, with its live blocks.
 
 ## Acceptance criteria
 
-- After step 1, Kadence's window tests pass unchanged and the user sees no difference.
+- After step 1, Kadence's window tests pass, changed only where they reached into what
+  is now the view's own, and the user sees no difference.
 - An agent's page shows its thinking line, tool cards, folded steps and checklist as
   Kadence does, for what it does now and for what it did before the page was opened.
 - An agent whose process is closed shows its conversation all the same.

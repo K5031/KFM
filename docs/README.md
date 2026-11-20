@@ -1,7 +1,8 @@
 # KFM documentation
 
-KFM (Kadence Fleet Manager) runs a team of Kadence agents on one task. You talk to the lead
-agent; it hands work to agents below it and reports back.
+KFM (Kadence Fleet Manager) runs teams of Kadence agents. You talk to a team's lead agent;
+it hands work to agents below it and reports back. A project holds several teams and a
+secretary you ask about all of them.
 
 ## Install
 

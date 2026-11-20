@@ -230,22 +230,29 @@ class Manager:
         """The person's message, to the lead or to `unit`, with the files attached to it;
         `spoken` in a voice conversation. A fleet that is not running is started for it.
         A unit under a supervisor is told who speaks, and its supervisor, if it is at
-        work, what was said."""
+        work, what was said. The message is recorded before the unit's process is
+        started for it, which takes a moment, so the person sees it at once; one that
+        then cannot be delivered is followed by a notice that says so."""
         unit = unit or self.fleet.lead
         if unit is None:
             raise FleetError("The fleet has no lead.")
         await self.start()
         supervisor = self.fleet.supervisor_of(unit)
-        if unit.state == "planned":  # it has no task yet: this is it
-            await self._assign(unit, text)
-            if files:  # a task carries none
-                await self.tell(unit, "", files=files, spoken=spoken)
-        else:
-            await self.tell(unit, text if supervisor is None else units.from_person(text),
-                            files=files, spoken=spoken)
+        self._emit(Told(text, unit.id, tuple(files)))
+        try:
+            if unit.state == "planned":  # it has no task yet: this is it
+                await self._assign(unit, text)
+                if files:  # a task carries none
+                    await self.tell(unit, "", files=files, spoken=spoken)
+            else:
+                await self.tell(unit,
+                                text if supervisor is None else units.from_person(text),
+                                files=files, spoken=spoken)
+        except (FleetError, UnitError) as e:
+            self._emit(Notice(f"That message did not reach {unit.called}: {e}"))
+            raise
         if supervisor is not None and supervisor.active:  # one that has ended is not woken
             self._spawn(self._tell_quietly(supervisor, units.overheard(unit, text, files)))
-        self._emit(Told(text, unit.id, tuple(files)))
 
     async def set_model(self, unit: Unit, model: str | None) -> None:
         """The model the unit runs on from now; None or "": its rank's or team's. A unit

@@ -26,6 +26,7 @@ from kfm.api import (
     Said,
     Session,
     Spent,
+    UnitError,
     UnitEvent,
     UnitSpec,
     Vocabulary,
@@ -45,6 +46,8 @@ class FakeHarness(Harness):
         self.approved: list[tuple[str, bool]] = []  # (request id, allow)
         self.conversations: list[str] = []  # units begun on a conversation, not a goal
         self.permissions: list[tuple[str, str]] = []  # (unit name, permissions), as opened
+        self.open_s = 0.0  # how long a unit's process takes to come up
+        self.broken = False  # no process comes up
         self.results: list[tuple[str, str, str]] = []  # (unit name, tool, what it answered)
         self.always: list[str] = []  # request ids allowed for the rest of the unit's work
         self.files: list[tuple[str, list[str], bool]] = []  # (unit name, files, spoken)
@@ -56,6 +59,9 @@ class FakeHarness(Harness):
 
     async def open(self, spec: UnitSpec, on_event: Callable[[UnitEvent], None],
                    session: str | None = None) -> Session:
+        await asyncio.sleep(self.open_s)
+        if self.broken:
+            raise UnitError("It could not be started.")
         self.opened.append((spec.name, session))
         self.models.append((spec.name, spec.model))
         self.permissions.append((spec.name, spec.permissions))

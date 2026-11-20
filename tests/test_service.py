@@ -281,3 +281,35 @@ async def test_a_frontend_knows_a_service_started_before_the_code_it_runs(tmp_pa
         await remote.aclose()
         await asyncio.wait_for(serving, 10)
     assert LocalService(home).stale is False  # the one in this process is this code
+
+
+async def test_what_the_person_says_is_shown_before_the_agent_is_woken(tmp_path: Path):
+    """An agent that has finished has no process: starting one takes a moment, and the
+    person's message is in the feed at once, not after it."""
+    service, harness, seen = local(tmp_path, {"K5 u1": [
+        {"do": [("report", "Done.")]},
+        {"when": "One more thing", "do": [("report", "That too.")]}]})
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    fleet = await service.add_fleet(made.id, "dev", "Tidy up", ongoing=False)
+    await until(lambda: service.state(fleet).finished)
+
+    def told() -> list[str]:
+        return [u.event.text for u in seen
+                if isinstance(u, Happened) and isinstance(u.event, Told)]
+
+    harness.open_s = 0.5
+    saying = asyncio.ensure_future(service.say(fleet, "One more thing"))
+    await until(lambda: told() == ["One more thing"], timeout=0.3)  # while it comes up
+    assert not saying.done()
+    await saying
+    await until(lambda: any("One more thing" in heard for heard in harness.heard["K5 u1"]))
+
+    await until(lambda: service.fleet(fleet).lead.report == "That too.")
+    await until(lambda: service.fleet(fleet).lead.state == "done")
+    harness.open_s, harness.broken = 0.0, True  # one that cannot be delivered says so
+    with pytest.raises(Exception, match="could not be started"):
+        await service.say(fleet, "Hello?")
+    notices = [u.event.text for u in seen
+               if isinstance(u, Happened) and type(u.event).__name__ == "Notice"]
+    assert told()[-1] == "Hello?" and "did not reach K5 u1" in notices[-1]
+    await service.aclose()

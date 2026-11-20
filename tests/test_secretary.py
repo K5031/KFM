@@ -47,7 +47,7 @@ async def test_a_described_project_gets_its_teams_from_its_secretary(tmp_path: P
     for instruction in ("you must", "you should", "you do not", "as few", "make sure",
                         "your job", "always", "never"):
         assert instruction not in told.lower(), instruction
-    assert harness.permissions == [("Secretary", "allow_read_only")]
+    assert harness.permissions == [("Secretary", "allow_workspace")]  # as any agent's
     # She is a conversation: she answers and stops. Nothing is finished or reported, so
     # what she wrote is the one answer the person reads.
     await until(lambda: service.fleet(made.secretary).lead.state == "done")

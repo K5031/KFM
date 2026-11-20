@@ -49,8 +49,10 @@ Every project has a secretary beside its teams.
   (`api.Instruction.conversation`; for Kadence, no duty is set). So there is no report:
   what she writes is the one answer the person reads. With a goal she wrote her answer
   and then gave it again as her report, since the person reads her conversation itself.
-- **She reads and does nothing else:** her fleet's permissions are read-only
-  (`local.READ_ONLY`), whatever the settings give other agents.
+- **She has the permissions any agent has**, the settings' level (the user,
+  2026-11-20). Held to reading, every command she ran to look around asked the person,
+  a listing of a folder included. That she does none of the teams' work is hers to
+  judge, as it is that she manages nobody.
 
 Her brief (`units.secretary_brief`) says what is so and what her tools do, and nothing
 on when to use which. In place of a lead's tools she has three (`tools.secretary_tools`):
@@ -111,6 +113,9 @@ own, chosen by the person or proposed by the secretary.
   then cannot spend another's money. A lead that needs a finished team has to go
   through the secretary, which makes her the coordinator she is not meant to be, and
   one that does not think of it waits for a team that never comes back.
+- **Read-only permissions for her**, whatever the settings give other agents, so that
+  she could not do the teams' work. A shell command is not a read, so she asked the
+  person before each one, on a level meant to spare them that.
 - **A rule for escalation** (an unresolved conflict wakes the secretary or the person).
   Whether something is unresolved is a judgment; the leads are given whom they can
   reach, and reach them when they judge so.

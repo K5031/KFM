@@ -310,7 +310,7 @@ secretary = "claude-sonnet-5-5"
 ### What agents do without asking
 
 `permissions`, **Permission** in the window's Settings, is the level every agent has,
-in fleets that are there already too. A project's secretary only ever reads.
+in fleets that are there already too, a project's secretary included.
 
 | Level | Agents |
 |---|---|
@@ -325,7 +325,7 @@ and what it allows runs with your rights. Deleting or overwriting what the task 
 name, sending data anywhere, publishing or pushing, spending money, and changes to the
 system are what it is told to ask about, and anything that touches keys, passwords or
 Kadence's own data always asks you. In a fleet the task it judges by is the one the
-agent's supervisor gave. A project's secretary is read-only whatever the level.
+agent's supervisor gave.
 
 ## Another agent program
 

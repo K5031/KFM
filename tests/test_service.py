@@ -472,9 +472,9 @@ async def test_saved_settings_reach_the_fleets_there_are(tmp_path: Path):
     assert harness.permissions[-1] == ("K5000", "auto")
     assert harness.budgets[-1] == ("K5000", 9.0) and harness.models[-1] == ("K5000", "big-1")
 
-    await service.say(made.secretary, "Hello")  # she still only reads, on her own model
+    await service.say(made.secretary, "Hello")  # she follows them too, on her own model
     await until(lambda: "Secretary" in harness.heard)
-    assert harness.permissions[-1] == ("Secretary", "allow_read_only")
+    assert harness.permissions[-1] == ("Secretary", "auto")
     assert harness.models[-1] == ("Secretary", "small-1")
 
     await service.save_settings(unit_budget_usd=1.0)  # and down

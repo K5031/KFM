@@ -33,7 +33,6 @@ from kfm.units import SECRETARY
 
 _ID = re.compile(r"[\w.-]+")
 SECRETARY_MODEL = "secretary"  # in FleetConfig.models: a secretary's, else her rank's
-READ_ONLY = "allow_read_only"  # the secretary looks, writes and proposes; she does no work
 LATELY, MORE = 4, 30  # lines of a team's record the secretary is shown; of one she asks for
 CLIP = 300  # characters of one such line
 
@@ -61,7 +60,7 @@ class LocalService(Service):
     async def create_project(self, name: str, work: str,
                              description: str = "") -> ProjectInfo:
         made = await asyncio.to_thread(project.create, self.home, name, Path(work))
-        config = replace(await self.settings(), permissions=READ_ONLY)
+        config = await self.settings()
         secretary = f"{made.folder.name}/{project.SECRETARY}"
         manager = self._managers[secretary] = await asyncio.to_thread(
             lambda: Manager.new(config, made.secretary, made.work, SECRETARY,
@@ -252,12 +251,10 @@ class LocalService(Service):
         for each in await self.projects():  # every fleet there is follows them
             await self.fleets(each.id)
         for fleet_id, manager in list(self._managers.items()):
-            if not fleet_id.endswith(f"/{project.SECRETARY}"):
-                await manager.adopt(config)
-                continue
-            await manager.adopt(config, permissions=READ_ONLY)  # she only ever reads
+            await manager.adopt(config)
             lead, model = manager.fleet.lead, config.models.get("secretary")
-            if lead is not None and lead.model != model:
+            if (fleet_id.endswith(f"/{project.SECRETARY}") and lead is not None
+                    and lead.model != model):
                 await manager.set_model(lead, model)
         return config
 

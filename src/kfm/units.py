@@ -103,8 +103,7 @@ def secretary_brief(unit: Unit, project: str, work: Path, words: Vocabulary) -> 
         "may change it. A team exists once they start it; nothing you propose changes "
         "anything before.\n"
         f"- The teams work in the folder {work}, unless one is given its own, and nothing "
-        "keeps two from changing the same file. You can read it; you are not able to "
-        "change it or to run commands.")
+        "keeps two from changing the same file.")
 
 
 def _span(seconds: float) -> str:

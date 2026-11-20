@@ -282,13 +282,12 @@ class Manager:
         if supervisor is not None and supervisor.active:  # one that has ended is not woken
             self._spawn(self._tell_quietly(supervisor, units.overheard(unit, text, files)))
 
-    async def adopt(self, of: FleetConfig, **own: Any) -> None:
-        """Take the person's settings as they now are (`SHARED`), with `own` in place of
-        what this fleet has of its own. A unit's limit becomes the new one, but for a unit
+    async def adopt(self, of: FleetConfig) -> None:
+        """Take the person's settings as they now are (`SHARED`). A unit's limit becomes the new one, but for a unit
         its supervisor gave less. A unit whose process is up and whose model, permissions
         or limit changed by it is started again on them, in its own conversation."""
         old = self.config
-        config = replace(old, **{**{name: getattr(of, name) for name in SHARED}, **own})
+        config = replace(old, **{name: getattr(of, name) for name in SHARED})
         if config == old:
             return
         everyone = list(self.fleet.units.values())

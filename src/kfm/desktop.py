@@ -1058,7 +1058,7 @@ class SettingsDialog(QDialog):
             models.addRow({"default": "Default", "secretary": "Secretary"}.get(key, key), field)
         self.models["secretary"].setToolTip("The model a project's secretary runs on")
         every = self.models["default"]
-        every.lineEdit().setPlaceholderText("The agent program's own")
+        every.lineEdit().setPlaceholderText("Kadence's model")
         every.setToolTip("The model of every rank that has none of its own; empty: the one "
                          "the agent program is set to")
         every.currentTextChanged.connect(lambda _: self._show_default())
@@ -1162,7 +1162,7 @@ class SettingsDialog(QDialog):
             form.setRowVisible(field, key == "secretary" or not auto)
         top = next(key for key in self.models if key.startswith("K"))
         self.models["secretary"].lineEdit().setPlaceholderText(
-            "The agent program's own" if auto else f"As {top}")
+            "Kadence's model" if auto else f"As {top}")
         self.adjustSize()
 
     def offer(self, models: Sequence[tuple[str, str, str]]) -> None:

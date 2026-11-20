@@ -180,8 +180,8 @@ def secretary_tools(manager: Manager) -> MCPServer:
 
     @server.tool(description=(
         "Write to a team's lead, who reads it as coming from the project's secretary. Its "
-        "answer, if it writes one, arrives later as a message. A team that is not running "
-        "is not started by it."))
+        "answer, if it writes one, arrives later as a message. A team that is not running, "
+        "or whose lead failed, is started by it."))
     async def message(
         team: Annotated[str, Field(description="The team's name.")],
         text: Annotated[str, Field(min_length=1)],

@@ -58,7 +58,7 @@ on when to use which. In place of a lead's tools she has three (`tools.secretary
 | Tool | What it is |
 |---|---|
 | `teams` | how each team stands: its lead, what it is doing, what it spent, and from the team's record what was lately reported, asked and said to it, the person's own messages to a lead included. With a team's name, more of that record |
-| `message` | write to a team's lead, who reads it as from the project's secretary |
+| `message` | write to a team's lead, who reads it as from the project's secretary. It starts a team that is stopped, and a lead that failed, as the person's own message does |
 | `propose` | put teams to the person: each with a name, what it does, task or duty, and optionally a folder of its own inside the project's |
 
 **The project's state is the record, not a file someone keeps.** KFM already writes
@@ -82,9 +82,12 @@ when she ends without one.
   The other lead reads `[Message from the lead of the team dev] …`; both fleets' records
   get the message (`events.Across`), and both feeds show it. Agents below a lead have no
   such way.
-- A message to a team that is not running is refused with that fact: one team does not
-  start another, or spend its money. The secretary is started by one, as by the
-  person's.
+- A lead's message to a team that is not running is refused with that fact: one team
+  does not start another, or spend its money. The secretary is started by one, as by
+  the person's.
+- The secretary's own message does start a stopped team (the user, 2026-11-20): what
+  she writes is the person's word passed on, and "get dev going again" is what she is
+  asked. The team's limit bounds what that can spend.
 
 ### What teams share
 

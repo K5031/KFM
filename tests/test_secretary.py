@@ -102,6 +102,27 @@ async def test_a_secretary_sleeps_until_she_is_written_to(tmp_path: Path):
     await service.aclose()
 
 
+async def test_the_secretarys_message_starts_a_team_that_is_stopped(tmp_path: Path):
+    service, harness, _ = local(tmp_path, {
+        "Secretary": [{"do": [("tool", "message", {"team": "dev", "text": "Carry on."}),
+                              ("say", "It is back.")]}],
+        "K5 u1": [{"do": [("say", "Building.")]},
+                  {"when": "Carry on", "do": [("say", "On it.")]}]})
+    made = await service.create_project("Studio", str(tmp_path / "work"))
+    dev = await service.add_fleet(made.id, "dev", "Build it")
+    await until(lambda: "K5 u1" in harness.heard)
+    await service.stop(dev)
+    assert not service.state(dev).running
+
+    await service.say(made.secretary, "Get dev going again")
+    await until(lambda: [r for r in harness.results if r[1] == "message"])
+    assert harness.results[-1][2] == "Sent to dev."
+    assert service.state(dev).running
+    await until(lambda: "[Message from the project's secretary] Carry on."
+                in harness.heard["K5 u1"])
+    await service.aclose()
+
+
 async def test_leads_reach_each_other_and_the_secretary(tmp_path: Path):
     service, harness, seen = local(tmp_path, {
         "K5 u1": [{"when": "Build it", "do": [

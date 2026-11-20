@@ -22,6 +22,7 @@ from kfm.service import (
     FleetState,
     Happened,
     Listed,
+    Live,
     ProjectInfo,
     Proposed,
     Service,
@@ -294,6 +295,7 @@ class LocalService(Service):
 
         return {"harness": self._harness, "on_event": happened,
                 "on_change": lambda: self._tell(Updated(fleet_id)),
+                "on_live": lambda unit, *live: self._tell(Live(fleet_id, unit, *live)),
                 "project": _Side(self, fleet_id, project_name)}
 
     # ── What a team is given of its project (manager.Project) ────────────

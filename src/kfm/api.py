@@ -147,8 +147,32 @@ class Exited:
     why: str
 
 
+# What the agent is doing as it does it, for whoever watches. Optional: an agent program
+# that cannot say gives none, and nothing else depends on it. None of it is the record.
+
+
+@dataclass(frozen=True, slots=True)
+class Thought:
+    text: str  # more of its reasoning, in the request to its model it is on
+
+
+@dataclass(frozen=True, slots=True)
+class Wrote:
+    text: str  # more of the message it is writing; the finished one comes as `Said`
+
+
+@dataclass(frozen=True, slots=True)
+class Doing:
+    what: str | None  # the tool it is using, in words; None: none now
+
+
+@dataclass(frozen=True, slots=True)
+class Discarded:
+    """What it thought and wrote in this request is void: the request is made again."""
+
+
 type UnitEvent = (Working | Rested | Said | Reported | Asked | Spent | ApprovalNeeded
-                  | Failed | Exited)
+                  | Failed | Exited | Thought | Wrote | Doing | Discarded)
 
 
 # ── The harness ───────────────────────────────────────────────────────────

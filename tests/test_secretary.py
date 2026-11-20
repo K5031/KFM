@@ -161,6 +161,10 @@ async def test_a_real_kadence_unit_is_the_secretary_on_a_scripted_model(tmp_path
     made = await service.create_project("Studio", str(tmp_path / "work"), "Run my game studio")
     await until(lambda: Proposed(made.id) in seen, timeout=30)
     assert [team.name for team in (await service.proposal(made.id)).teams] == ["dev", "trailer"]
+    # What a Kadence agent does is seen as it does it: the tool it used, in words.
+    from kfm.service import Live
+    await until(lambda: any(isinstance(u, Live) and u.doing.startswith("propose ")
+                            for u in seen), timeout=30)
     # Her turn ends as a conversation's does: nothing to finish, and no report.
     await until(lambda: service.fleet(made.secretary).lead.state == "done", timeout=30)
     history, _ = await service.history(made.secretary)

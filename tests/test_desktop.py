@@ -383,7 +383,7 @@ async def test_waiting_for_a_proposal_shows_what_she_writes_and_can_be_cancelled
     await until(lambda: page.waiting.isVisibleTo(shown))
     assert page.busy
     assert not page.start.isVisibleTo(shown) and page.stop.text() == "Cancel"
-    await until(lambda: page.saying.text() == "Looking at the folder.")
+    await until(lambda: page.saying.toPlainText() == "Looking at the folder.")
     secretary = shown.project.secretary
     await until(lambda: shown.service.state(secretary).running)
     page.stop.click()  # she is stopped, and the project stays, with its chart
@@ -956,6 +956,53 @@ async def test_the_agents_list_follows_the_fleet_and_keeps_the_one_chosen(window
         assert [name for _, name, _ in agents(shown)] == ["K5"]
         shown.open_fleet(art)
         assert len(agents(shown)) == 4
+
+
+async def test_what_an_agent_does_shows_under_the_feed_as_it_does_it(window, tmp_path: Path):
+    shown, _ = window({
+        "K5 u1": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Look"}),
+                          ("think", "Who should look? "), ("think", "Scout."),
+                          ("doing", "Run the tests: shell uv run pytest"),
+                          ("write", "Tests "), ("write", "pass."), ("wait", 0.6),
+                          ("say", "Tests pass."), ("wait", 0.4)]}],
+        "Scout": [{"do": [("think", "Looking around."), ("wait", 1.2)]}]})
+    view = await start(shown, tmp_path, "Build it", name="dev", duty=True)
+    await until(lambda: "u1" in view.lives and view.lives["u1"].writing.text() == "Tests pass.")
+    lead = view.lives["u1"]
+    assert lead.isVisibleTo(shown) and lead.thinking.text() == "Who should look? Scout."
+    assert lead.doing.text() == "Run the tests: shell uv run pytest"
+    assert lead not in view.entries  # no part of the feed
+    await until(lambda: "u2" in view.lives and view.lives["u2"].thinking.text())
+    said = [e for e in view.entries if isinstance(e, SaidEntry)]
+    await until(lambda: [e for e in view.entries if isinstance(e, SaidEntry)] != said)
+    # The message is whole and in the feed: what was being written is gone from under it,
+    # and what is new in the feed stands above what agents are doing now.
+    await until(lambda: lead.writing.text() == "")
+    layout = lead.parentWidget().layout()
+    assert layout.indexOf(view.entries[-1]) < layout.indexOf(view.lives["u2"])
+    scout = next(u.id for u in view.fleet.units.values() if u.name == "Scout")
+    shown.agents.setCurrentItem(shown._agent_row(scout))  # an agent's page: its own only
+    assert view.lives[scout].isVisibleTo(shown) and not view.lives[scout].header.isVisibleTo(shown)
+    assert not lead.isVisibleTo(shown)
+    await until(lambda: lead.empty and view.lives[scout].empty, timeout=5)  # their turns end
+
+
+async def test_drafting_shows_what_the_secretary_does_and_thinks(window, tmp_path: Path):
+    shown, _ = window({"Secretary": [{"do": [
+        ("think", "A game needs code and art. "),
+        ("doing", "See what is there: list_files"), ("wait", 0.5), ("doing", None),
+        ("think", "The folder is empty."), ("wait", 0.5), ("approval", "r1", "shell", "ls")]}]})
+    form = shown.project_form
+    form.name.setText("Studio")
+    form.does.setPlainText("Make a game")
+    form.set_folder(tmp_path / "work")
+    form.create.click()
+    await until(lambda: shown.drafts)
+    [page] = shown.drafts.values()
+    await until(lambda: "See what is there: list_files" in page.saying.toPlainText())
+    await until(lambda: page.saying.toPlainText().endswith("The folder is empty."))
+    assert "A game needs code and art." in page.saying.toPlainText()
+    page.stop.click()
 
 
 async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QApplication):

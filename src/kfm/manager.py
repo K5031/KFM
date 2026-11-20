@@ -45,6 +45,8 @@ from kfm.tools import ToolServer, fleet_tools, secretary_tools
 logger = logging.getLogger(__name__)
 
 STOP_GRACE_S = 10.0  # for a unit to end by itself when it is closed
+LIVE_S = 0.2  # between two tellings of what units are doing
+LIVE_CHARS = 4000  # the end of what a unit thinks or writes that is kept to show
 _OVER = ("done", "idle", "failed", "stopped")
 
 
@@ -83,6 +85,7 @@ class Manager:
     def __init__(self, folder: Path, fleet: Fleet, *, harness: Harness | None = None,
                  on_event: Callable[[FleetEvent], None] = lambda event: None,
                  on_change: Callable[[], None] = lambda: None,
+                 on_live: Callable[[str, str, str, str], None] = lambda *live: None,
                  project: Project | None = None) -> None:
         """`harness`: the agent program the units run; None: the one the fleet's settings
         name, loaded when it starts. `on_change`: called when the record, or how the
@@ -90,6 +93,12 @@ class Manager:
         the fleet is a team of, if it is one."""
         self.folder, self.fleet, self.work = folder, fleet, Path(fleet.work)
         self.project = project
+        # What each unit is doing as it does it: [thinking, writing, the tool in use], for
+        # whoever watches (`on_live`: the unit's id, then these). It is not recorded.
+        self._on_live = on_live
+        self._live: dict[str, list[str]] = {}
+        self._live_due: set[str] = set()
+        self._used: set[str] = set()  # units whose tool is over, and still shown
         self.config = settings.from_record(fleet.settings)
         self.running = False  # its processes are up, or ending
         self.stopping = False  # they are ending: nothing more is started
@@ -532,10 +541,27 @@ class Manager:
                 else:
                     over = unit.report is not None or self._converses
                     self._set(unit, "done" if over else "idle")
+                self._watched(unit, thinking="", writing="", doing="")  # its turn is over
                 if unit.state != "working":
                     self._turn_ended(unit)
             case api.Said(text=text):
+                self._watched(unit, thinking="", writing="")  # the message is whole now
                 self._emit(Said(unit.id, text))
+            case api.Thought(text=text):
+                self._watched(unit, thinking=self._now(unit)[0] + text,
+                              doing=self._moved_on(unit))
+            case api.Wrote(text=text):
+                self._watched(unit, writing=self._now(unit)[1] + text,
+                              doing=self._moved_on(unit))
+            case api.Doing(what=what):
+                if what is None:  # it stays to be read until the unit thinks or writes on
+                    self._used.add(unit.id)
+                else:
+                    self._used.discard(unit.id)
+                    self._watched(unit, doing=what)
+                    self._show_live()  # at once: a tool may be over in no time
+            case api.Discarded():
+                self._watched(unit, thinking="", writing="")
             case api.Reported(text=text):
                 unit.report = text
             case api.Asked(question=question):
@@ -547,15 +573,52 @@ class Manager:
             case api.ApprovalNeeded(request_id=request_id, tool=tool, arguments=arguments):
                 self._emit(Approval(unit.id, request_id, tool, arguments))
             case api.Failed(message=message):
+                self._watched(unit, thinking="", writing="", doing="")
                 unit.failure = message
                 self._set(unit, "failed")
                 self._turn_ended(unit)
             case api.Exited(why=why):
+                self._watched(unit, thinking="", writing="", doing="")
                 del self._sessions[unit.id]
                 if unit.active:
                     unit.failure = why
                     self._set(unit, "failed")
                     self._turn_ended(unit)
+
+    def _now(self, unit: Unit) -> list[str]:
+        return self._live.setdefault(unit.id, ["", "", ""])
+
+    def _moved_on(self, unit: Unit) -> str | None:
+        """"" once, for a unit that thinks or writes after a tool it used: the tool is
+        shown no more. None: nothing to change."""
+        if unit.id in self._used:
+            self._used.discard(unit.id)
+            return ""
+        return None
+
+    def _watched(self, unit: Unit, *, thinking: str | None = None, writing: str | None = None,
+                 doing: str | None = None) -> None:
+        """What the unit is doing changed: whoever watches is told, a few times a second
+        at most, however fast it thinks and writes."""
+        live = self._now(unit)
+        changed = [live[i] if new is None else new[-LIVE_CHARS:]
+                   for i, new in enumerate((thinking, writing, doing))]
+        if changed == live:
+            return
+        self._live[unit.id] = changed
+        if not self._live_due:
+            asyncio.get_running_loop().call_later(LIVE_S, self._show_live)
+        self._live_due.add(unit.id)
+        if not any(changed):
+            self._used.discard(unit.id)
+
+    def _show_live(self) -> None:
+        due, self._live_due = self._live_due, set()
+        for unit_id in due:
+            try:
+                self._on_live(unit_id, *self._live.get(unit_id, ["", "", ""]))
+            except Exception:
+                logger.exception("showing what a unit is doing failed")
 
     def _turn_ended(self, unit: Unit) -> None:
         """The unit stopped working: tell its supervisor, or the person, why."""

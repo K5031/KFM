@@ -19,6 +19,7 @@ from mcp import Client
 from kfm.api import (
     ApprovalNeeded,
     Asked,
+    Doing,
     Harness,
     Instruction,
     Reported,
@@ -26,11 +27,13 @@ from kfm.api import (
     Said,
     Session,
     Spent,
+    Thought,
     UnitError,
     UnitEvent,
     UnitSpec,
     Vocabulary,
     Working,
+    Wrote,
 )
 
 WORDS = Vocabulary(finish="done", ask="ask_boss", tools="fleet.")
@@ -122,6 +125,14 @@ class FakeSession(Session):
             match action:
                 case ("say", said):
                     self.emit(Said(said))
+                case ("think", thought):
+                    self.emit(Thought(thought))
+                case ("write", written):
+                    self.emit(Wrote(written))
+                case ("doing", what):
+                    self.emit(Doing(what))
+                case ("wait", seconds):
+                    await asyncio.sleep(seconds)
                 case ("tool", name, arguments):
                     async with Client(self.spec.tools_url) as client:
                         result = await client.call_tool(name, arguments)

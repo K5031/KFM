@@ -194,6 +194,11 @@ opens a window on the same service the commands talk to, without a terminal. It 
 
   ![A fleet](images/fleet-light.png)
 
+- **What an agent is doing now** shows under its feed while it works: the tool it is
+  using, the end of what it is thinking, and the message it is writing, which moves into
+  the feed once it is whole. While a project's secretary drafts, the same shows under
+  "Drafting…". None of it is kept: the feed is the record. An agent's thinking is its
+  working out, not what it decided.
 - **Agents** of the open fleet are on the left, each under its supervisor, with its
   state and what it has spent. Click one to see only what concerns it; **Show all**
   brings everything back.

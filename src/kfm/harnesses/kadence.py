@@ -14,19 +14,25 @@ from typing import Any
 
 import tomli_w
 from kadence.api import (
+    DESCRIPTION_ARG,
     AgentState,
     ConversationUpdated,
     EventEnvelope,
     Failure,
     HelpNeeded,
     MessageCommitted,
+    ModelRetry,
     PermissionRequested,
+    ReasoningDelta,
     Role,
     RuntimeSnapshot,
     RuntimeStateError,
     StateChanged,
     Text,
+    TextDelta,
     ToolCall,
+    ToolFinished,
+    ToolStarted,
     UsageUpdated,
 )
 from kadence.frontends.remote import Channel
@@ -35,6 +41,8 @@ from kadence.frontends.wire import from_json
 from kfm.api import (
     ApprovalNeeded,
     Asked,
+    Discarded,
+    Doing,
     Exited,
     Failed,
     Harness,
@@ -44,17 +52,20 @@ from kfm.api import (
     Said,
     Session,
     Spent,
+    Thought,
     UnitError,
     UnitEvent,
     UnitSpec,
     Vocabulary,
     Working,
+    Wrote,
 )
 
 TOOLS = "fleet"  # the MCP server's name in a unit: its tools are mcp__fleet__<tool>
 WORDS = Vocabulary(finish="finish_goal", ask="ask_for_help", tools=f"mcp__{TOOLS}__")
 UNIT_RECORD = "unit.json"
 _LINE_LIMIT = 16 * 1024 * 1024
+DOING_CHARS = 160  # of a tool call, as it is shown while it runs
 _ACTIVE = (AgentState.THINKING, AgentState.RUNNING_TOOLS, AgentState.AWAITING_PERMISSION,
            AgentState.FINISHING)  # a turn is over when what follows the answer is too
 
@@ -128,6 +139,7 @@ class _Session(Session):
         self._has_duty = False
         self._failure: str | None = None  # what Kadence said before its state became failed
         self._closed = False
+        self._tools: dict[str, str] = {}  # the tool calls under way, in words, by call id
         self._answers: set[asyncio.Task[Any]] = set()
         channel.listeners.append(self._event)
 
@@ -191,6 +203,18 @@ class _Session(Session):
                             self._emit(Reported(block.arguments.get("report") or "Done."))
                     elif isinstance(block, Text) and block.text.strip():
                         self._emit(Said(block.text.strip()))
+            case ReasoningDelta(text=text):
+                self._emit(Thought(text))
+            case TextDelta(text=text):
+                self._emit(Wrote(text))
+            case ModelRetry():
+                self._emit(Discarded())
+            case ToolStarted(call=call):
+                self._tools[call.id] = _in_words(call)
+                self._emit(Doing(self._tools[call.id]))
+            case ToolFinished(result=result):
+                self._tools.pop(result.call_id, None)
+                self._emit(Doing(next(reversed(self._tools.values()), None)))
             case HelpNeeded(question=question):
                 self._emit(Asked(question))
             case ConversationUpdated(info=info) if self._conversation in (None, info.id):
@@ -218,3 +242,16 @@ class _Session(Session):
                 elif self._active and not active:
                     self._emit(Rested(self._has_duty))
                 self._active = active
+
+
+def _in_words(call: ToolCall) -> str:
+    """A tool call for a person to read: what the agent said it is for, then the call."""
+    name = call.name.removeprefix(WORDS.tools)
+    rest = {key: value for key, value in call.arguments.items() if key != DESCRIPTION_ARG}
+    only = next(iter(rest.values())) if len(rest) == 1 else None
+    detail = only if isinstance(only, str) else json.dumps(rest, ensure_ascii=False)
+    detail = " ".join(f"{name} {detail}".split())
+    if len(detail) > DOING_CHARS:
+        detail = detail[:DOING_CHARS] + "…"
+    said = call.arguments.get(DESCRIPTION_ARG)
+    return f"{said.strip()}: {detail}" if isinstance(said, str) and said.strip() else detail

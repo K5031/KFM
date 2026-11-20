@@ -30,6 +30,7 @@ from kfm.service import (
     FleetState,
     Happened,
     Listed,
+    Live,
     ProjectInfo,
     Proposed,
     Service,
@@ -277,6 +278,9 @@ class RemoteService(Service):
                 self._tell(Listed())
             case "proposed":
                 self._tell(Proposed(message["project"]))
+            case "live":  # of any fleet: it is asked for nowhere, and a page comes later
+                self._tell(Live(fleet_id, message["unit"], message["thinking"],
+                                message["writing"], message["doing"]))
             case "updated" if fleet_id in self._fleets:
                 if message["record"] is None:
                     self._drop(fleet_id)

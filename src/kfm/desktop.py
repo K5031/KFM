@@ -59,6 +59,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -92,7 +93,16 @@ from kfm.events import (
 from kfm.fleet import Fleet, FleetError, Unit
 from kfm.project import SECRETARY
 from kfm.remote import RemoteService, ServiceError
-from kfm.service import Happened, Listed, ProjectInfo, Proposed, Service, Update, Updated
+from kfm.service import (
+    Happened,
+    Listed,
+    Live,
+    ProjectInfo,
+    Proposed,
+    Service,
+    Update,
+    Updated,
+)
 
 SIDEBAR = 280  # px
 FORM = 760  # px, the start screen's width
@@ -103,7 +113,7 @@ PROJECT_ROLE = Qt.ItemDataRole.UserRole  # a project row's id
 FLEETS_ROLE = Qt.ItemDataRole.UserRole + 10  # how many fleets it has
 QUIET_STATES = ("starting", "working", "waiting", "done")  # shown by the agents list alone
 OVER = ("done", "idle", "failed", "stopped")  # an agent that is at nothing
-SAYING = 90  # characters of what the secretary last wrote, in a line under "Drafting…"
+THINKING = 600  # characters, the end, of what an agent is thinking, under its feed
 BAR = 48  # px, the bar on top
 COLUMN = 720  # px, the widest the timeline's entries get
 REFRESH_MS = 1000  # spending and states, while a fleet runs
@@ -180,6 +190,44 @@ class SaidEntry(QWidget):
         self.body.setMarkdown(text)
         layout.addWidget(self.header)
         layout.addWidget(self.body)
+
+
+class LiveEntry(QWidget):
+    """What an agent is doing as it does it: the tool it is using, the end of what it is
+    thinking, the message it is writing. It stands under the feed and is no part of it:
+    the message, once whole, takes its place there."""
+
+    def __init__(self, unit_id: str, unit: Unit | None) -> None:
+        super().__init__()
+        self.concerns = {unit_id}
+        self.unit, self.empty = unit_id, True
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(15, 4, 15, 4)
+        layout.setSpacing(3)
+        self.header = QWidget()
+        who = QHBoxLayout(self.header)
+        who.setContentsMargins(0, 0, 0, 0)
+        who.setSpacing(6)
+        name, rank = (unit.name, f"K{unit.rank}") if unit is not None else ("", unit_id)
+        who.addWidget(label(name or rank, role="strong", wrap=False))
+        who.addWidget(label(rank if name else unit_id, role="small", tone="muted", wrap=False))
+        who.addStretch(1)
+        self.doing = label("", role="small", tone="muted")
+        self.thinking = label("", role="small", tone="muted")
+        self.thinking.setStyleSheet("font-style: italic;")
+        self.writing = label("")
+        for part in (self.header, self.doing, self.thinking, self.writing):
+            layout.addWidget(part)
+
+    def show_live(self, thinking: str, writing: str, doing: str) -> None:
+        thinking = thinking.strip()
+        if len(thinking) > THINKING:
+            thinking = "…" + thinking[-THINKING:]
+        for part, text in ((self.doing, doing), (self.thinking, thinking),
+                           (self.writing, writing.strip())):
+            part.setText(text)
+            part.setVisible(bool(text))
+        self.empty = not (thinking or writing.strip() or doing)
 
 
 class DeliveryCard(QFrame):
@@ -698,8 +746,14 @@ class DraftPage(QWidget):
         waiting = label("Drafting…", wrap=False)
         waiting.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         waiting.setStyleSheet("font-size: 22px; font-weight: 600;")
-        self.saying = label("", role="small", tone="muted", wrap=False)
-        self.saying.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.saying = QPlainTextEdit(readOnly=True)  # what she does and thinks, its end
+        self.saying.setFrameShape(QFrame.Shape.NoFrame)
+        self.saying.setFixedSize(560, 104)
+        self.saying.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.saying.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.saying.setStyleSheet(
+            f"QPlainTextEdit {{ background: transparent; color: {theme.current().muted}; "
+            "font-size: 12px; }")
         self.stop = QPushButton("Cancel")
         self.stop.clicked.connect(self.cancel)
         centre.addWidget(waiting)
@@ -717,8 +771,16 @@ class DraftPage(QWidget):
 
     def said(self, text: str) -> None:
         """What the secretary wrote while she is waited for."""
-        text = " ".join(text.split())
-        self.saying.setText(text if len(text) <= SAYING else text[:SAYING] + "…")
+        self.saying.setPlainText(text.strip())
+        bar = self.saying.verticalScrollBar()
+        bar.setValue(bar.maximum())  # its end is what is read
+
+    def live(self, thinking: str, writing: str, doing: str) -> None:
+        """What she is doing as she does it: what she thinks or writes, then the tool in
+        use, which is the newest of it while it is shown."""
+        parts = [(writing or thinking).strip(), doing]
+        if any(parts):
+            self.said("\n".join(part for part in parts if part))
 
     def cancel(self) -> None:
         """Drop the proposal, or stop waiting for one."""
@@ -1003,6 +1065,7 @@ class FleetView(QWidget):
         self.service, self.id = service, fleet_id
         self.secretary = fleet_id.endswith(f"/{SECRETARY}")  # a project's, not a team
         self.entries: list[QWidget] = []
+        self.lives: dict[str, LiveEntry] = {}  # what each agent is doing now, by its id
         self.shown: str | None = None  # the agent whose entries are shown; None: all
         self._upto: int | None = None  # the number of the last event shown; None: none yet
         self._held: list[tuple[int, FleetEvent]] = []  # what happens until its history is shown
@@ -1189,7 +1252,7 @@ class FleetView(QWidget):
     def choose(self, unit_id: str | None) -> None:
         """Show only what concerns the agent; None: everything."""
         self.shown = unit_id
-        for entry in self.entries:
+        for entry in (*self.entries, *self.lives.values()):
             self._fit(entry)
         to = self.chosen
         self.input.setPlaceholderText(
@@ -1205,8 +1268,8 @@ class FleetView(QWidget):
     def _fit(self, entry: QWidget) -> None:
         """Show the entry if it concerns the agent chosen; in an agent's own conversation
         what it wrote needs no name over it."""
-        entry.setVisible(self._concerns(entry))
-        if isinstance(entry, SaidEntry):
+        entry.setVisible(self._concerns(entry) and not getattr(entry, "empty", False))
+        if isinstance(entry, SaidEntry | LiveEntry):
             entry.header.setVisible(entry.unit != self.shown)
 
     def say(self, text: str, tone: str) -> None:
@@ -1321,8 +1384,26 @@ class FleetView(QWidget):
     def _add(self, entry: QWidget) -> None:
         entry.setMaximumWidth(COLUMN)
         self.entries.append(entry)
-        self._timeline.insertWidget(self._timeline.count() - 1, entry)
+        # Above what agents are doing now, which stands last.
+        self._timeline.insertWidget(self._timeline.count() - 1 - len(self.lives), entry)
         self._fit(entry)
+
+    def live(self, unit_id: str, thinking: str, writing: str, doing: str) -> None:
+        """What the agent is doing as it does it, under the feed."""
+        entry = self.lives.get(unit_id)
+        if entry is None:
+            if not (thinking or writing or doing):
+                return
+            known = self.fleet.units.get(unit_id) if self.fleet is not None else None
+            entry = self.lives[unit_id] = LiveEntry(unit_id, known)
+            entry.setMaximumWidth(COLUMN)
+            self._timeline.insertWidget(self._timeline.count() - 1, entry)
+        bar = self.scroll.verticalScrollBar()
+        at_end = bar.value() >= bar.maximum() - 4
+        entry.show_live(thinking, writing, doing)
+        self._fit(entry)
+        if at_end:  # whoever reads the end keeps reading it
+            QTimer.singleShot(0, lambda: bar.setValue(bar.maximum()))
 
     def _concerns(self, entry: QWidget) -> bool:
         concerns: set[str] = entry.concerns  # type: ignore[attr-defined]
@@ -1351,6 +1432,8 @@ class FleetWindow(QMainWindow):
         self.adding = False  # the form for a new fleet is shown
         self.dialog: QDialog | None = None  # the one open about an agent
         self.drafts: dict[str, DraftPage] = {}  # by project id, until started
+        # What each agent is doing now, as the service last said it: (fleet, unit).
+        self._doing: dict[tuple[str, str], tuple[str, str, str]] = {}
         self.closed = asyncio.Event()
         # The fleet the agents list shows, and who is under whom in it.
         self._agents_shape: tuple[str, tuple[tuple[str, str | None], ...]] = ("", ())
@@ -1681,8 +1764,15 @@ class FleetWindow(QMainWindow):
                     and await self.service.proposal(opened.id)):
                 await self._proposed(opened.id)
         self._waited(opened.id)
+        for (fleet_id, unit), now in self._doing.items():  # what was said meanwhile
+            if fleet_id.startswith(mine) and (view := self.views.get(fleet_id)):
+                view.live(unit, *now)
         page = self.drafts.get(opened.id)
-        if page is not None and page.busy and not page.saying.text():
+        if page is not None and page.busy:
+            for (fleet_id, _), now in self._doing.items():
+                if fleet_id == opened.secretary:
+                    page.live(*now)
+        if page is not None and page.busy and not page.saying.toPlainText():
             with contextlib.suppress(*REFUSALS):  # what she wrote before this page was
                 history, _ = await self.service.history(opened.secretary)
                 if said := [event.text for event in history if isinstance(event, Said)]:
@@ -1834,6 +1924,16 @@ class FleetWindow(QMainWindow):
                     view.updated()
                     if view.secretary:
                         self._waited(fleet_id.partition("/")[0])
+            case Live(fleet=fleet_id, unit=unit, thinking=thinking, writing=writing,
+                      doing=doing):
+                # Kept, for a page that is made after it was said.
+                self._doing[fleet_id, unit] = (thinking, writing, doing)
+                if (view := self.views.get(fleet_id)) is not None:
+                    view.live(unit, thinking, writing, doing)
+                page = self.drafts.get(fleet_id.partition("/")[0])
+                if (page is not None and page.busy
+                        and fleet_id.endswith(f"/{SECRETARY}")):
+                    page.live(thinking, writing, doing)
             case Listed():
                 self._run(self._relist())
             case Proposed(project=project_id):

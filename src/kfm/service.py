@@ -81,7 +81,20 @@ class Proposed:
     project: str
 
 
-type Update = Happened | Updated | Listed | Proposed
+@dataclass(frozen=True, slots=True)
+class Live:
+    """What an agent is doing as it does it: what it has thought and written so far in
+    the request to its model it is on, and the tool it is using; each "" for nothing. A
+    few a second at most, and not in the fleet's history: for watching."""
+
+    fleet: str
+    unit: str
+    thinking: str
+    writing: str
+    doing: str
+
+
+type Update = Happened | Updated | Listed | Proposed | Live
 
 
 class Service(abc.ABC):

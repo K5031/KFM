@@ -13,7 +13,7 @@ from kfm.fleet import Fleet, FleetError
 from kfm.local import LocalService
 from kfm.remote import RemoteService, ServiceError
 from kfm.server import Server
-from kfm.service import Happened, Listed, Service, Update, Updated
+from kfm.service import Happened, Listed, Live, Service, Update, Updated
 from tests.fakeharness import FakeHarness
 
 TEAM = {
@@ -312,4 +312,32 @@ async def test_what_the_person_says_is_shown_before_the_agent_is_woken(tmp_path:
     notices = [u.event.text for u in seen
                if isinstance(u, Happened) and type(u.event).__name__ == "Notice"]
     assert told()[-1] == "Hello?" and "did not reach K5 u1" in notices[-1]
+    await service.aclose()
+
+
+async def test_what_an_agent_does_is_seen_as_it_does_it(tmp_path: Path):
+    """Its reasoning, the message it is writing and the tool it uses reach a frontend
+    while they happen, a few times a second at most, and are no part of the record."""
+    service, _, seen = local(tmp_path, {"K5 u1": [{"do": [
+        ("think", "Which file "), ("think", "first?"),
+        ("doing", "Read the notes: read_file notes.md"), ("wait", 0.3),
+        ("doing", None), *[("write", word) for word in ["It", "says", "to", "ship", "on", "Friday", "."]],
+        ("wait", 0.3), ("say", "It says to ship on Friday."), ("think", "Done."),
+        ("wait", 0.3)]}]})
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    fleet = await service.add_fleet(made.id, "dev", "Read the notes")
+
+    def live() -> list[tuple[str, str, str]]:
+        return [(u.thinking, u.writing, u.doing) for u in seen
+                if isinstance(u, Live) and u.fleet == fleet and u.unit == "u1"]
+
+    await until(lambda: ("Which file first?", "", "Read the notes: read_file notes.md")
+                in live())
+    await until(lambda: ("Which file first?", "ItsaystoshiponFriday.", "") in live())
+    await until(lambda: ("Done.", "", "") in live())  # the message is whole: a new thought
+    await until(lambda: live()[-1] == ("", "", ""))  # its turn is over
+    assert len(live()) <= 8  # not one for every word
+    history, _ = await service.history(fleet)
+    assert {type(event).__name__ for event in history} <= {
+        "Instructed", "Changed", "Said", "Delivered", "Told", "Notice"}
     await service.aclose()

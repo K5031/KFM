@@ -23,7 +23,7 @@ from kfm import log
 from kfm.api import UnitError
 from kfm.fleet import FleetError
 from kfm.local import LocalService
-from kfm.service import VERSION, Happened, Listed, Proposed, Update, Updated
+from kfm.service import VERSION, Happened, Listed, Live, Proposed, Update, Updated
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +96,8 @@ class Server:
                 self._send_all({"update": "listed"})
             case Proposed(project=project_id):
                 self._send_all({"update": "proposed", "project": project_id})
+            case Live():
+                self._send_all({"update": "live", **asdict(update)})
 
     def _record(self, fleet_id: str) -> dict[str, Any]:
         fleet = self.service.fleet(fleet_id)

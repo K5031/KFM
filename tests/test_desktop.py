@@ -9,16 +9,18 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import asyncio
 import getpass
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import kadence.frontends.desktop  # noqa: F401 - before any Qt import
 import pytest
+import tomli_w
 from kadence.frontends.desktop import theme
-from kadence.frontends.desktop.window import PREVIEW_ROLE
+from kadence.frontends.desktop.window import PREVIEW_ROLE, AssistantBubble, WrapUpCard
 from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
 from PySide6.QtGui import QDropEvent, QImage
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton
 
 from kfm import project
 from kfm.config import FleetConfig, load
@@ -31,7 +33,7 @@ from kfm.desktop import (
     SaidEntry,
     YouEntry,
 )
-from kfm.events import Said
+from kfm.events import Said, Told
 from kfm.fleet import Fleet
 from kfm.local import LocalService
 from kfm.remote import RemoteService
@@ -1169,3 +1171,65 @@ async def test_the_window_has_rounded_corners_and_a_shadow_unless_maximized(
     qapp.processEvents()
     assert shown.grab().toImage().pixelColor(0, 0).alpha() == 255
     assert shown.contentsRect() == shown.rect()
+
+
+@pytest.fixture
+async def kadence_window(tmp_path: Path, qapp: QApplication, monkeypatch: pytest.MonkeyPatch):
+    """make(scripts) -> a window on a service whose agents are real Kadence processes
+    with a scripted model (tests/fakecore.py)."""
+    monkeypatch.setenv("PYTHONPATH", str(Path(__file__).resolve().parents[1]))
+    made: list[FleetWindow] = []
+
+    def make(scripts: dict[str, list[dict[str, Any]]]) -> FleetWindow:
+        base = tmp_path / "kadence.toml"
+        base.write_text(tomli_w.dumps({
+            "core": {"factory": "tests.fakecore:factory", "options": {"scripts": scripts}},
+            "runtime": {"model": "fake-1"}}))
+        (tmp_path / "work").mkdir(exist_ok=True)
+        config = replace(FleetConfig(), harness_options={"config": str(base)},
+                         check_in_s=(0.05, 60.0))
+        shown = FleetWindow(LocalService(tmp_path / "home", config=config))
+        shown.resize(1100, 720)
+        shown.show()
+        made.append(shown)
+        return shown
+
+    yield make
+    for shown in made:
+        await shown.shut()
+
+
+async def test_an_agents_page_is_its_kadence_conversation(kadence_window, tmp_path: Path):
+    """Its turns as Kadence draws them, and a card it ends a turn with, whose buttons
+    answer it through KFM."""
+    shown = kadence_window({"K5001": [
+        {"calls": [{"name": "wrap_up", "arguments": {
+            "recap": "The art is listed.", "question": "Order more art?",
+            "options": [{"label": "Yes, order it"}, {"label": "Not now"}]}}]},
+        {"when": "Yes, order it", "text": "Ordered."}]})
+    view = await start(shown, tmp_path, "Look at the art", duty=True)
+    await until(lambda: view.fleet is not None and view.fleet.lead is not None
+                and view.fleet.lead.session, timeout=30)
+    assert view.conversation is None and view.pages.currentWidget() is view.scroll
+    shown.agents.setCurrentItem(shown._agent_row(view.fleet.lead.id))
+    await until(lambda: view.conversation is not None, timeout=30)
+    page = view.conversation
+    assert view.pages.currentWidget() is page.view
+    await until(lambda: page.model.card is not None, timeout=30)
+    def shown_card() -> WrapUpCard | None:
+        item = page.view.prompts.itemAt(0)
+        card = item.widget() if item is not None else None
+        return card if isinstance(card, WrapUpCard) and card.isVisibleTo(shown) else None
+
+    await until(shown_card)
+    card = shown_card()
+    yes = next(b for b in card.findChildren(QPushButton) if b.text() == "Yes, order it")
+    yes.click()
+    await until(lambda: any(isinstance(w, AssistantBubble) and "Ordered." in w.item.text
+                            for w in page.view._widgets.values()), timeout=30)
+    history, _ = await shown.service.history(view.id)
+    assert "Yes, order it" in [e.text for e in history if isinstance(e, Told)]  # through KFM
+
+    shown.show_all.click()  # back to the whole fleet: its timeline
+    await until(lambda: view.conversation is None)
+    assert view.pages.currentWidget() is view.scroll

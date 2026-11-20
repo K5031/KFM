@@ -3,7 +3,7 @@
 Status: implemented — every agent is a Kadence; the unit contract stays as a boundary inside KFM and is not offered to other agent programs
 
 Narrows [the unit contract](2026-11-12-unit-contract.md). Shapes
-[an agent's page is its conversation](../proposed/2026-11-20-an-agents-page-is-its-conversation.md).
+[an agent's page is its conversation](2026-11-20-an-agents-page-is-its-conversation.md).
 
 ## Problem
 

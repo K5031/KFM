@@ -220,6 +220,10 @@ opens a window on the same service the commands talk to, without a terminal. It 
   what its own agents sent it, in order. Unlike a chat, others speak in it too, it works
   whether you write or not, and its reports go to its supervisor. With no agent chosen
   the page is the whole fleet's feed.
+- **In a fleet that runs, an agent's page is its own Kadence conversation**, shown as
+  Kadence shows one: its thinking, a card for each tool it used, steps folded together,
+  its plan, and what it asks you, with buttons to answer. The secretary's page is hers.
+  What you write there still goes through KFM. In a stopped fleet the page is the feed.
 - **Attach files** to a message with the plus beside the box, by dropping them anywhere
   on the fleet's page, or by pasting them; a copied picture is pasted as a file. They go to the agent the message is for, which reads what it can (pictures, PDFs,
   text and office files); files alone are a message too, except as the first message to an agent

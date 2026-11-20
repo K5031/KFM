@@ -77,6 +77,7 @@ from kfm import app_menu, draft, project
 from kfm.api import UnitError
 from kfm.chart import Chart, ChartFleet, state_tone
 from kfm.config import AUTO, MANUAL, FleetConfig
+from kfm.conversation import AgentPage
 from kfm.events import (
     Across,
     Answered,
@@ -102,6 +103,7 @@ from kfm.service import (
     Service,
     Update,
     Updated,
+    Within,
 )
 
 SIDEBAR = 280  # px
@@ -1281,6 +1283,12 @@ class FleetView(QWidget):
         self._load: asyncio.Future[None] | None = None
         self._approvals: dict[str, ApprovalCard] = {}
         self._tasks: set[asyncio.Task[None]] = set()
+        # The agent on the page as its own Kadence conversation, where it has one to
+        # show; else the page is the timeline, of that agent or of all.
+        self.conversation: AgentPage | None = None
+        self._attaching: AgentPage | None = None  # being opened: it hears already
+        self._opening: asyncio.Task[None] | None = None
+        self._refused: tuple[Any, ...] | None = None  # how things stood when none opened
 
         # The timeline is one column in the middle, as wide as text reads well.
         page = QWidget(objectName="transcript")
@@ -1342,9 +1350,22 @@ class FleetView(QWidget):
         composer.addStretch(1)
         composer.addWidget(box, 100)
         composer.addStretch(1)
+        self.pages = QStackedWidget()  # the timeline, or an agent's conversation
+        self.pages.addWidget(self.scroll)
+        self._prompts = QVBoxLayout()  # what that agent waits for an answer to
+        self._prompts.setContentsMargins(0, 0, 0, 0)
+        asked = QHBoxLayout()
+        asked.setContentsMargins(0, 0, 0, 0)
+        asked.addStretch(1)
+        held = QWidget()
+        held.setMaximumWidth(COLUMN)
+        held.setLayout(self._prompts)
+        asked.addWidget(held, 100)
+        asked.addStretch(1)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 0, 20, 14)
-        layout.addWidget(self.scroll, 1)
+        layout.addWidget(self.pages, 1)
+        layout.addLayout(asked)
         layout.addLayout(composer)
         colors = theme.current()
         page.setStyleSheet(
@@ -1456,11 +1477,97 @@ class FleetView(QWidget):
             entry.setParent(None)
             entry.deleteLater()
         self._enable()
+        self._converse()
         self.changed.emit()
+
+    # ── An agent's own conversation ──────────────────────────────────────
+
+    @property
+    def _conversing(self) -> str | None:
+        """The agent whose conversation the page is to show: the one chosen, or a
+        secretary, who is the only agent of her fleet."""
+        if self.shown is not None or not self.secretary or self.fleet is None:
+            return self.shown
+        return self.fleet.lead.id if self.fleet.lead is not None else None
+
+    def _converse(self) -> None:
+        """Have the page show that agent's Kadence conversation, if it has one to show
+        now; it is looked at again whenever the fleet changes."""
+        wanted = self._conversing
+        if self._opening is not None or (
+                self.conversation is not None and self.conversation.unit == wanted):
+            return
+        unit = self.fleet.units.get(wanted or "") if self.fleet is not None else None
+        stands = (wanted, self.running, unit.session if unit else None)
+        if self.conversation is None and (wanted is None or stands == self._refused):
+            return
+        self._opening = asyncio.ensure_future(self._open(wanted, stands))
+        self._tasks.add(self._opening)
+        self._opening.add_done_callback(self._tasks.discard)
+
+    async def _open(self, wanted: str | None, stands: tuple[Any, ...]) -> None:
+        try:
+            await self._leave()
+            if wanted is not None:
+                page = self._attaching = AgentPage(
+                    self.service, self.id, wanted,
+                    tell=lambda text, files: self._run(self._tell(text, files)),
+                    approve=lambda request_id, allow, always: self._run(
+                        self._decide(wanted, request_id, allow, always)),
+                    chose=self.input.setFocus, ended=self._gone)
+                if await page.begin():
+                    self.conversation, self._refused = page, None
+                    self.pages.addWidget(page.view)
+                    self.pages.setCurrentWidget(page.view)
+                    self._prompts.addWidget(page.prompts)
+                    page.prompts.show()
+                else:
+                    self._refused = stands
+                    await page.close()
+        finally:
+            self._attaching = self._opening = None
+        self.changed.emit()
+        self._converse()  # what is wanted may have changed meanwhile
+
+    async def _leave(self) -> None:
+        """Back to the timeline."""
+        page, self.conversation = self.conversation, None
+        if page is not None:
+            self.pages.setCurrentWidget(self.scroll)
+            await page.close()
+
+    def _gone(self) -> None:
+        """The agent's process ended (it was stopped, or started again on other
+        settings): its conversation is opened anew."""
+        async def again() -> None:
+            await self._leave()
+            self._converse()
+
+        self._run(again())
+
+    def within(self, unit_id: str, event: dict[str, Any] | None) -> None:
+        """Something happened in an agent's own conversation (service.Within)."""
+        for page in (self.conversation, self._attaching):
+            if page is not None and page.unit == unit_id:
+                page.channel.within(event)
+
+    async def _decide(self, unit_id: str, request_id: str, allow: bool, always: bool) -> None:
+        try:
+            await self.service.approve(self.id, unit_id, request_id, allow, always=always)
+        except REFUSALS as e:
+            self.say(str(e), tone="error")
+
+    async def leave(self) -> None:
+        """The page is going: let go of the agent it follows."""
+        if self._opening is not None:
+            self._opening.cancel()
+            await asyncio.gather(self._opening, return_exceptions=True)
+        await self._leave()
 
     def choose(self, unit_id: str | None) -> None:
         """Show only what concerns the agent; None: everything."""
         self.shown = unit_id
+        self._converse()
         for entry in (*self.entries, *self.lives.values()):
             self._fit(entry)
         to = self.chosen
@@ -2103,6 +2210,8 @@ class FleetWindow(QMainWindow):
         its fleets; the one `kfm serve` runs keeps them running."""
         for page in list(self.drafts.values()):
             page.cancel()
+        for view in list(self.views.values()):
+            await view.leave()
         with contextlib.suppress(*REFUSALS):
             await self.service.aclose()
         for task in list(self._tasks):
@@ -2122,7 +2231,12 @@ class FleetWindow(QMainWindow):
             self.view = None
         del self.views[view.id]
         self.fleet_pages.removeWidget(view)
-        view.deleteLater()
+
+        async def gone() -> None:
+            await view.leave()
+            view.deleteLater()
+
+        self._run(gone())
 
     def _update(self, update: Update) -> None:
         """What the service says happened."""
@@ -2139,6 +2253,9 @@ class FleetWindow(QMainWindow):
                     view.updated()
                     if view.secretary:
                         self._waited(fleet_id.partition("/")[0])
+            case Within(fleet=fleet_id, unit=unit, event=event):
+                if (view := self.views.get(fleet_id)) is not None:
+                    view.within(unit, event)
             case Live(fleet=fleet_id, unit=unit, thinking=thinking, writing=writing,
                       doing=doing):
                 # Kept, for a page that is made after it was said.
@@ -2518,6 +2635,9 @@ class FleetWindow(QMainWindow):
             if fleet is None:
                 continue
             for asked in self.service.state(view.id).approvals:
+                if (view is self.view and view.conversation is not None
+                        and view.conversation.unit == asked.unit):
+                    continue  # asked on the page that is open, in the agent's own words
                 unit = fleet.units.get(asked.unit)
                 who = unit.called if unit is not None else asked.unit
                 rows.append((

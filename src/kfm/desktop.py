@@ -1307,6 +1307,12 @@ class FleetView(QWidget):
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll.setWidget(page)
+        # The timeline stays at its end as it grows, for whoever is reading the end; it
+        # is put there when its history is first shown and when what it shows changes.
+        self._at_end = True
+        bar = self.scroll.verticalScrollBar()
+        bar.valueChanged.connect(lambda v: setattr(self, "_at_end", v >= bar.maximum() - 4))
+        bar.rangeChanged.connect(lambda _lo, hi: self._at_end and bar.setValue(hi))
 
         self.input = MessageBox()
         self.input.setPlaceholderText(
@@ -1428,6 +1434,13 @@ class FleetView(QWidget):
         for number, event in held:  # what happened meanwhile, if the history lacks it
             self.happened(event, number)
         self._enable()
+        self.to_end()
+
+    def to_end(self) -> None:
+        """Show the latest of the timeline, and stay with it as it grows."""
+        self._at_end = True
+        bar = self.scroll.verticalScrollBar()
+        bar.setValue(bar.maximum())
 
     async def resume(self, budget_usd: float | None = None) -> None:
         """Start it again where it was; `budget_usd` is a new limit for it."""
@@ -1575,6 +1588,7 @@ class FleetView(QWidget):
         self._converse()
         for entry in (*self.entries, *self.lives.values()):
             self._fit(entry)
+        self.to_end()
         to = self.chosen
         self.input.setPlaceholderText(
             f"Message {to.called}" if to is not None and to.supervisor is not None
@@ -1660,8 +1674,6 @@ class FleetView(QWidget):
         elif number > self._upto:
             self._upto = number
             self._show(event)
-            QTimer.singleShot(0, lambda: self.scroll.verticalScrollBar().setValue(
-                self.scroll.verticalScrollBar().maximum()))
 
     def _called(self, unit_id: str) -> str:
         """What people read for the unit; its id for one the record does not have."""
@@ -1719,12 +1731,8 @@ class FleetView(QWidget):
             entry = self.lives[unit_id] = LiveEntry(unit_id, known)
             entry.setMaximumWidth(COLUMN)
             self._timeline.insertWidget(self._timeline.count() - 1, entry)
-        bar = self.scroll.verticalScrollBar()
-        at_end = bar.value() >= bar.maximum() - 4
         entry.show_live(thinking, writing, doing)
         self._fit(entry)
-        if at_end:  # whoever reads the end keeps reading it
-            QTimer.singleShot(0, lambda: bar.setValue(bar.maximum()))
 
     def _concerns(self, entry: QWidget) -> bool:
         concerns: set[str] = entry.concerns  # type: ignore[attr-defined]
@@ -2141,6 +2149,7 @@ class FleetWindow(QMainWindow):
         self.view, self.adding = view, False
         self.fleet_pages.setCurrentWidget(view)
         view.input.setFocus()
+        view.to_end()
         if view.conversation is not None:  # one that was open before: at its latest
             QTimer.singleShot(0, view.conversation.view.to_end)
         self._refresh()

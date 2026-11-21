@@ -1176,6 +1176,25 @@ async def test_the_window_has_rounded_corners_and_a_shadow_unless_maximized(
     assert shown.contentsRect() == shown.rect()
 
 
+async def test_a_fleets_timeline_is_at_its_end_when_opened_and_when_an_agent_is_chosen(
+        window, tmp_path: Path):
+    long = "\n\n".join(f"Line {n} of what was found." for n in range(12))
+    shown, _ = window({"K5001": [{"do": [("say", long)] * 8}]})
+    view = await start(shown, tmp_path, "Look at the art", duty=True)
+    await until(lambda: sum(isinstance(e, SaidEntry) for e in view.entries) == 8)
+    bar = view.scroll.verticalScrollBar()
+    await until(lambda: bar.maximum() > 0 and bar.value() >= bar.maximum() - 4)
+    bar.setValue(0)  # reading the beginning: it is left there as nothing new comes
+    await until(lambda: not view._at_end)
+    shown.agents.setCurrentItem(shown._agent_row(view.fleet.lead.id))
+    await until(lambda: bar.value() >= bar.maximum() - 4)  # one agent's: from its latest
+    bar.setValue(0)
+    shown.back_button.click()
+    await until(lambda: shown.chart.isVisibleTo(shown))
+    shown.open_fleet(view)
+    await until(lambda: bar.maximum() > 0 and bar.value() >= bar.maximum() - 4)
+
+
 async def test_fleets_an_update_stopped_are_resumed_from_the_strip(window, tmp_path: Path):
     shown, harness = window({"K5001": [{"do": [("say", "On watch.")]}] * 2})
     view = await start(shown, tmp_path, "Keep watch", duty=True)

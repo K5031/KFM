@@ -59,6 +59,12 @@ there in words (`harnesses.kadence._card`).
   improves, and what an agent thought is still not kept.
 - **Let the agent program provide its page**, with KFM's feed where it offers none. See
   [KFM runs Kadence only](2026-11-20-kfm-runs-kadence-only.md).
+- **Read a stopped fleet's agents too**, from a Kadence started on the conversation for
+  that alone, or from Kadence's store. Built the first way on 2026-11-21 and taken out
+  again (the user): the feed already says what a stopped agent did, "stopped" would no
+  longer mean that nothing of the fleet runs, and keeping such a process from acting
+  rests on knowing every way a Kadence wakes by itself. Reading the store would tie KFM
+  to Kadence's files.
 - **Leave it.** The feed says what happened; it does not look like the app the agents
   are, and loses what it does not know of.
 

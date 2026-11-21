@@ -3,10 +3,6 @@
 What is wanted and not started, for KFM. A line each; when one is taken up it gets an
 Agent Note (`notes/proposed/`, where some already are) and leaves this list.
 
-## Gaps
-
-- A stopped fleet's agents show the feed, not their Kadence conversations.
-
 ## Parked
 
 - A run of two hours to cite, with real models and a limit of $25.

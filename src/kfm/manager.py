@@ -280,19 +280,13 @@ class Manager:
         supervisor = self.fleet.supervisor_of(unit)
         self._emit(Told(text, unit.id, tuple(files)))
         try:
-            if unit.state == "planned":  # it has no task yet: this is it
-                await self._assign(unit, text)
-                if files:  # a task carries none
-                    await self.tell(unit, "", files=files, spoken=spoken)
-            else:
-                await self.tell(unit,
-                                text if supervisor is None else units.from_person(text),
-                                files=files, spoken=spoken)
+            await self._give(unit, text,
+                             text if supervisor is None else units.from_person(text),
+                             files=files, spoken=spoken)
         except (FleetError, UnitError) as e:
             self._emit(Notice(f"That message did not reach {unit.called}: {e}"))
             raise
-        if supervisor is not None and supervisor.active:  # one that has ended is not woken
-            self._spawn(self._tell_quietly(supervisor, units.overheard(unit, text, files)))
+        self._note(supervisor, units.overheard(unit, text, files))
 
     async def adopt(self, of: FleetConfig) -> None:
         """Take the person's settings as they now are (`SHARED`). A unit's limit becomes the new one, but for a unit
@@ -319,10 +313,7 @@ class Manager:
         for unit in again:
             await self._close(unit)
             if unit.active and self.up:
-                try:
-                    await (await self._session(unit)).send(units.SETTINGS_CHANGED)
-                except UnitError as e:
-                    await self._could_not_start(unit, e)
+                await self._carry_on(unit, units.SETTINGS_CHANGED)
 
     def _runs_on(self, unit: Unit) -> tuple[str | None, str, float]:
         """What the unit's process is started with of the settings."""
@@ -382,10 +373,7 @@ class Manager:
         if unit.active and self.up:
             self._emit(Notice(f"{unit.called} was started again on "
                               f"{self._runs_on(unit)[0] or "Kadence's model"}."))
-            try:
-                await (await self._session(unit)).send(units.MODEL_CHANGED)
-            except UnitError as e:
-                await self._could_not_start(unit, e)
+            await self._carry_on(unit, units.MODEL_CHANGED)
 
     async def retask(self, unit: Unit, task: str, *, ongoing: bool | None = None) -> None:
         """Another task for the unit, as a duty or not if `ongoing` says (None: as it
@@ -400,9 +388,7 @@ class Manager:
             unit.ongoing = ongoing
         self._emit(Instructed(unit.id, None, "task", task.strip()))
         await self._assign(unit, task)
-        supervisor = self.fleet.supervisor_of(unit)
-        if self.up and supervisor is not None and supervisor.active:
-            self._spawn(self._tell_quietly(supervisor, units.retasked_note(unit)))
+        self._note(self.fleet.supervisor_of(unit), units.retasked_note(unit))
 
     async def dismiss(self, supervisor: Unit, unit: Unit) -> int:
         """A supervisor lets go of an agent of its own that it will not use again: it and
@@ -432,9 +418,7 @@ class Manager:
         gone = await self._take_out(unit)
         self._emit(Notice(f"You removed {unit.called}"
                           + (f" and the {len(gone) - 1} under it." if len(gone) > 1 else ".")))
-        if self.up and supervisor is not None and supervisor.active:
-            self._spawn(self._tell_quietly(supervisor,
-                                           units.removed_note(unit, len(gone) - 1)))
+        self._note(supervisor, units.removed_note(unit, len(gone) - 1))
 
     async def rename(self, name: str, unit: Unit | None = None) -> None:
         """Another name for the unit, or for the fleet. Nobody is told: agents know each
@@ -501,10 +485,8 @@ class Manager:
 
     async def message(self, supervisor: Unit, unit: Unit, text: str) -> None:
         """A supervisor's message to one of its agents."""
-        if unit.state == "planned":  # it has no task yet: this is it
-            await self._assign(unit, text)
-        else:
-            await self.tell(unit, f"[Message from {supervisor.label}, your supervisor] {text}")
+        await self._give(unit, text,
+                         f"[Message from {supervisor.label}, your supervisor] {text}")
         self._emit(Instructed(unit.id, supervisor.id, "message", text))
 
     async def hear(self, team: str, text: str) -> None:
@@ -513,10 +495,8 @@ class Manager:
         lead = self.fleet.lead
         if lead is None:
             raise FleetError("That team has no lead.")
-        if lead.state == "planned":
-            await self._assign(lead, units.from_team(team, text))
-        else:
-            await self.tell(lead, units.from_team(team, text))
+        framed = units.from_team(team, text)
+        await self._give(lead, framed, framed)
         self._emit(Across(lead.id, team, text, False))
 
     def sent(self, unit: Unit, team: str, text: str) -> None:
@@ -632,10 +612,28 @@ class Manager:
         self._set(unit, "working")
         return True
 
-    async def _carry_on(self, unit: Unit) -> None:
-        """A unit opened on a session waits for a message: say what happened."""
+    async def _give(self, unit: Unit, task: str, framed: str, *, files: Sequence[str] = (),
+                    spoken: bool = False) -> None:
+        """A message for the unit: its task, when it has none yet, else `framed`, which
+        says who it is from."""
+        if unit.state == "planned":
+            await self._assign(unit, task)
+            if files:  # a task carries none
+                await self.tell(unit, "", files=files, spoken=spoken)
+        else:
+            await self.tell(unit, framed, files=files, spoken=spoken)
+
+    def _note(self, supervisor: Unit | None, text: str) -> None:
+        """Tell a supervisor that is at work what happened to one of its agents; one that
+        has ended is not woken for it."""
+        if self.up and supervisor is not None and supervisor.active:
+            self._spawn(self._tell_quietly(supervisor, text))
+
+    async def _carry_on(self, unit: Unit, why: str = units.RESUMED) -> None:
+        """A unit opened on its session again waits for a message: say what happened. One
+        whose process does not come up has failed."""
         try:
-            await (await self._session(unit)).send(units.RESUMED)
+            await (await self._session(unit)).send(why)
         except UnitError as e:
             await self._could_not_start(unit, e)
 

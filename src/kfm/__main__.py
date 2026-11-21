@@ -116,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument("--duty", action="store_true")
     add.add_argument("--model")
     for name, extra in (("remove", ()), ("rename", ("name",)), ("task", ("task",)),
-                        ("model", ("model",))):
+                        ("duty", ("task",)), ("model", ("model",))):
         change = what.add_parser(name)
         change.add_argument("fleet")
         change.add_argument("unit", help="the agent's id, such as K4001")
@@ -124,12 +124,11 @@ def main(argv: list[str] | None = None) -> int:
             if argument == "model":
                 change.add_argument(argument, nargs="?", default="",
                                     help="with none, its rank's")
+            elif argument == "task":
+                change.add_argument(argument, nargs="?", default="",
+                                    help="with none, the task it has")
             else:
                 change.add_argument(argument)
-        if name == "task":
-            change.add_argument("--duty", action=argparse.BooleanOptionalAction, default=None,
-                                help="make it a duty, or with --no-duty a task; "
-                                     "with neither, what it is")
 
     proposal = commands.add_parser(
         "proposal", help="the teams a project's secretary proposed")
@@ -403,8 +402,13 @@ async def _agent(service: Service, args: argparse.Namespace) -> int:
             await service.remove_agent(fleet, args.unit)
         case "rename":
             await service.rename_agent(fleet, args.unit, args.name)
-        case "task":
-            await service.set_task(fleet, args.unit, args.task, ongoing=args.duty)
+        case "task" | "duty":  # work that ends, or standing work
+            task = args.task
+            if not task:  # only its kind changes
+                await service.watch(fleet)
+                known = service.fleet(fleet).units.get(args.unit)
+                task = known.task if known is not None else ""
+            await service.set_task(fleet, args.unit, task, ongoing=args.action == "duty")
         case "model":
             await service.set_model(fleet, args.unit, args.model)
     return 0

@@ -85,7 +85,7 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm proposal PROJECT [--start\|--drop]` | The teams its secretary proposed; start them all, or drop the proposal |
 | `kfm fleet new PROJECT NAME ["task"] [--duty] [--model M]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
 | `kfm agent add FLEET [--under K5001] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
-| `kfm agent remove\|rename\|task\|model FLEET UNIT [...]` | Change an agent; `task` takes `--duty` or `--no-duty` to change its kind too |
+| `kfm agent remove\|rename\|task\|duty\|model FLEET UNIT [...]` | Change an agent; `task [TEXT]` makes its work a task (it ends), `duty [TEXT]` a duty (it stands); with no text it keeps the task it has |
 | `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID] [--model-mode auto\|manual] [--auto-models ID,ID] [--permissions LEVEL]` | Show or change the settings. A change reaches every fleet there is; `--budget` is what a new fleet may spend |
 | `kfm serve` | Run the service in this terminal instead of in the background |
 

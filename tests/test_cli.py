@@ -65,6 +65,11 @@ def test_run_follows_a_fleet_and_the_other_commands_reach_it(tmp_path: Path):
     assert kfm("agent", "rename", "hand", "K5002", "Boss", home=tmp_path).returncode == 0
     assert kfm("agent", "model", "hand", "K4002", "small-1", home=tmp_path).returncode == 0
     assert kfm("agent", "task", "hand", "K4002", "Count the files", home=tmp_path).returncode == 0
+    # A duty, and a task again: with no text, only its kind changes.
+    assert kfm("agent", "duty", "hand", "K4002", home=tmp_path).returncode == 0
+    assert "Count the files" in kfm("status", "hand", home=tmp_path).stdout
+    assert kfm("agent", "duty", "hand", "K4002", "Watch the files", home=tmp_path).returncode == 0
+    assert kfm("agent", "task", "hand", "K4002", "Count the files", home=tmp_path).returncode == 0
     built = kfm("status", "hand", home=tmp_path).stdout
     assert "hand (" in built and "Boss (K5002): planned" in built
     assert "agent K4002: planned" in built and "Count the files" in built

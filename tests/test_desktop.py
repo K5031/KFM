@@ -807,6 +807,9 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         await until(lambda: shown.dialog is not None and shown.dialog.isVisible())
         dialog = shown.dialog
         assert dialog.budget.value() == 10.0
+        # Its own header in place of the desktop's title bar, with a button that closes it.
+        assert dialog.windowFlags() & Qt.WindowType.FramelessWindowHint
+        assert dialog.close_button.isVisibleTo(dialog)
         # The models the agent program offers are there to pick; another can be typed.
         field = dialog.models["K5"]
         await until(lambda: field.count() == 3)

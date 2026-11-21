@@ -42,6 +42,7 @@ from PySide6.QtGui import (
     QDropEvent,
     QIcon,
     QImage,
+    QMouseEvent,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -1031,6 +1032,13 @@ class Amount(QLineEdit):
         return number if self._money else int(number)
 
 
+class DialogGrip(DragArea):
+    """Where a dialog without a frame is grabbed to move it; it has one size."""
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        event.ignore()
+
+
 class SettingsDialog(QDialog):
     """KFM's settings: the model of each rank and the limits. `save_asked` when the
     person wants them kept; `changes` is what they set."""
@@ -1040,11 +1048,31 @@ class SettingsDialog(QDialog):
     def __init__(self, parent: QWidget, config: FleetConfig) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
+        # No title bar of the desktop's, as Kadence's settings: its own header, which
+        # moves it, and a button that closes it.
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        self.setObjectName("settings")
         self.setMinimumWidth(460)
         colors = theme.current()
-        rows = QVBoxLayout(self)
+        header = DialogGrip(objectName="settingsHeader")
+        top = QHBoxLayout(header)
+        top.setContentsMargins(18, 10, 10, 10)
+        top.addWidget(label("Settings", role="title", wrap=False), 1)
+        self.close_button = QToolButton(objectName="windowControl")
+        self.close_button.setIcon(theme.icon("close", colors.muted))
+        self.close_button.setToolTip("Close")
+        self.close_button.setAccessibleName("Close")
+        self.close_button.clicked.connect(self.reject)
+        top.addWidget(self.close_button)
+        body = QWidget()
+        rows = QVBoxLayout(body)
         rows.setContentsMargins(22, 18, 22, 18)
         rows.setSpacing(6)
+        whole = QVBoxLayout(self)
+        whole.setContentsMargins(1, 1, 1, 1)  # inside the border
+        whole.setSpacing(0)
+        whole.addWidget(header)
+        whole.addWidget(body)
 
         def section(title: str) -> QFormLayout:
             """A part of the settings: its name, and its rows under it."""

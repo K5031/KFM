@@ -11,7 +11,6 @@ Agent Note (`notes/proposed/`, where some already are) and leaves this list.
 ## Parked
 
 - A run of two hours to cite, with real models and a limit of $25.
-- The Settings dialog without the desktop's title bar.
 - Proposed already: [Build](notes/proposed/2026-11-18-build.md),
   [shared team memory](notes/proposed/2026-11-12-shared-team-memory.md),
   [short-lived workers](notes/proposed/2026-11-14-short-lived-workers.md),

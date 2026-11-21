@@ -60,6 +60,9 @@ class LocalService(Service):
         counts = await asyncio.to_thread(lambda: [len(each.fleets()) for each in found])
         return [self._info(each, fleets) for each, fleets in zip(found, counts, strict=True)]
 
+    async def unreadable(self) -> list[tuple[str, str]]:
+        return await asyncio.to_thread(project.unreadable, self.home)
+
     async def create_project(self, name: str, work: str,
                              description: str = "") -> ProjectInfo:
         made = await asyncio.to_thread(project.create, self.home, name, Path(work))

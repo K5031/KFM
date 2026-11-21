@@ -35,6 +35,14 @@ def test_a_project_of_another_format_is_refused(tmp_path: Path):
     with pytest.raises(ValueError, match="format 99"):
         project.load(made.folder)
     assert project.every(tmp_path) == []
+    # It is still there, and can be named for whoever wants it gone.
+    assert project.unreadable(tmp_path) == [(made.folder.name, made.folder.name)]
+    (made.folder / project.PROJECT).write_text('{"format": 1, "name": "Old one"}')
+    assert project.unreadable(tmp_path) == [(made.folder.name, "Old one")]
+    (made.folder / project.PROJECT).write_text("not json")
+    assert project.unreadable(tmp_path) == [(made.folder.name, made.folder.name)]
+    project.delete(made.folder)
+    assert project.unreadable(tmp_path) == []
 
 
 def test_a_supervisor_stands_over_the_middle_of_its_agents():

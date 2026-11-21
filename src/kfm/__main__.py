@@ -315,6 +315,9 @@ async def _projects(service: Service, args: argparse.Namespace) -> int:
     for each in await service.projects():
         fleets = "1 fleet" if each.fleets == 1 else f"{each.fleets} fleets"
         print(f"{each.id}  {each.name}: {fleets}, {each.running} running, in {each.work}")
+    for project_id, name in await service.unreadable():
+        print(f"{project_id}  {name}: made by an older KFM, which this one cannot open. "
+              f"kfm project delete {project_id} removes it.")
     return 0
 
 
@@ -336,6 +339,10 @@ async def _project(service: Service, args: argparse.Namespace) -> int:
         print(f"Project {made.id} ({made.name})." + (
             f" Its secretary is at it: kfm watch {made.name}/Secretary, then "
             f"kfm proposal {made.name}." if args.does else ""))
+        return 0
+    if args.action == "delete" and args.project in dict(await service.unreadable()):
+        await service.delete_project(args.project)  # of another version: by its id
+        print(f"{args.project} is deleted.")
         return 0
     owner = _one_project(await service.projects(), args.project)
     if args.action == "rename":

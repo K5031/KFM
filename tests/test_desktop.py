@@ -26,6 +26,7 @@ from kfm import project
 from kfm.config import FleetConfig, load
 from kfm.desktop import (
     FLEETS_ROLE,
+    UNREADABLE_ROLE,
     ApprovalCard,
     DeliveryCard,
     FleetView,
@@ -606,6 +607,24 @@ async def test_a_project_is_deleted_with_its_fleets_and_not_its_work(window, tmp
     await until(lambda: shown.projects.count() == 0 and shown.project_form.isVisibleTo(shown))
     assert not teams(shown) and shown.project is None and not view.running
     assert (tmp_path / "work" / "kept.txt").exists()
+
+
+async def test_a_project_of_another_version_is_listed_to_be_deleted(window, tmp_path: Path):
+    """It cannot be opened, and would stay on the disk for good if it were not shown."""
+    old = tmp_path / "home" / "projects" / "20250101-000000"
+    (old / "fleets").mkdir(parents=True)
+    (old / "project.json").write_text('{"format": 1, "name": "Old one"}')
+    shown, _ = window({})
+    await until(lambda: shown.projects.count() == 1)
+    row = shown.projects.item(0)
+    assert row.text() == "Old one" and row.data(UNREADABLE_ROLE)
+    assert "older" in row.data(PREVIEW_ROLE)
+    assert not row.flags() & Qt.ItemFlag.ItemIsEnabled  # a click opens nothing
+    assert [a.text() for a in shown.project_actions(row).actions()] == ["Delete…"]
+    shown.ask_delete(row)
+    assert "Old one" in shown.dialog.question.text()
+    shown.dialog.delete.click()
+    await until(lambda: not old.exists() and shown.projects.count() == 0)
 
 
 async def test_a_fleet_is_deleted_from_the_chart(window, tmp_path: Path):

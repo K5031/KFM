@@ -23,7 +23,7 @@ from kfm.draft import Draft
 from kfm.events import Approval, FleetEvent
 from kfm.fleet import Fleet
 
-VERSION = 7  # of this contract; a service and a client of different versions do not talk
+VERSION = 8  # of this contract; a service and a client of different versions do not talk
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +126,11 @@ class Service(abc.ABC):
     @abc.abstractmethod
     async def projects(self) -> list[ProjectInfo]:
         """Every project, newest first."""
+
+    @abc.abstractmethod
+    async def unreadable(self) -> list[tuple[str, str]]:
+        """The projects another version of KFM made, which this one cannot read: each
+        its id and its name. `delete_project` is all that can be done with one."""
 
     @abc.abstractmethod
     async def create_project(self, name: str, work: str,

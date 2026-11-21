@@ -32,7 +32,7 @@ IDLE_S = 5.0  # with no fleet running and nobody attached, before it ends
 LOOK_S = 1.0  # how often it looks whether it is idle, at most
 LINE_LIMIT = 16 * 1024 * 1024  # bytes: a fleet's history is one line
 CALLS = frozenset({
-    "projects", "create_project", "rename_project", "delete_project", "proposal", "settle_proposal",
+    "projects", "unreadable", "create_project", "rename_project", "delete_project", "proposal", "settle_proposal",
     "fleets", "add_fleet", "watch", "history", "start", "stop", "rename_fleet", "delete_fleet",
     "add_agent", "remove_agent", "rename_agent", "set_task", "set_model", "say", "approve",
     "follow", "unfollow", "ask", "settings", "save_settings", "models"})

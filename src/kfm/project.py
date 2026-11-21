@@ -96,6 +96,24 @@ def every(home: Path) -> list[Project]:
     return found
 
 
+def unreadable(home: Path) -> list[tuple[str, str]]:
+    """The projects under `home` that cannot be read, made by another version of KFM:
+    each folder's name and what its record calls it, newest first. They can only be
+    deleted. Blocking."""
+    found = []
+    for record in sorted((home / "projects").glob(f"*/{PROJECT}"), reverse=True):
+        try:
+            load(record.parent)
+        except (ValueError, KeyError, TypeError, OSError):
+            try:
+                name = json.loads(record.read_text()).get("name")
+            except (ValueError, OSError, AttributeError):
+                name = None
+            found.append((record.parent.name,
+                          name if isinstance(name, str) and name else record.parent.name))
+    return found
+
+
 def _unused(parent: Path) -> Path:
     """A folder under `parent` named after now, with a number when that is taken."""
     stamp = time.strftime("%Y%m%d-%H%M%S")

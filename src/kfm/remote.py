@@ -121,6 +121,9 @@ class RemoteService(Service):
     async def projects(self) -> list[ProjectInfo]:
         return [ProjectInfo(**each) for each in await self._request("projects")]
 
+    async def unreadable(self) -> list[tuple[str, str]]:
+        return [(each[0], each[1]) for each in await self._request("unreadable")]
+
     async def create_project(self, name: str, work: str,
                              description: str = "") -> ProjectInfo:
         return ProjectInfo(**await self._request("create_project", name, work, description))

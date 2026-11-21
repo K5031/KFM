@@ -184,6 +184,9 @@ opens a window on the same service the commands talk to, without a terminal. It 
   on the new task when you start the fleet.
 - **Remove…** takes an agent out of the fleet, with every agent under it: they stop,
   and what they kept is deleted. Its supervisor is told, so the work can be picked up.
+- **A project made by an older KFM** is listed greyed, as "Made by an older KFM". This
+  version cannot open it; right-click it to delete it. `kfm projects` lists it too, and
+  `kfm project delete ID` removes it.
 - **Rename** an agent, a fleet or a project by right-clicking it and choosing
   **Rename…**. Agents are not told: they know each other by number, and a renamed
   agent's reports carry its new name from then on.

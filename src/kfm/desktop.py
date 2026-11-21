@@ -116,6 +116,7 @@ AGENT_ROWS = 10  # agents shown before their list scrolls
 AGENT_ROW_PX = 30
 PROJECT_ROLE = Qt.ItemDataRole.UserRole  # a project row's id
 FLEETS_ROLE = Qt.ItemDataRole.UserRole + 10  # how many fleets it has
+UNREADABLE_ROLE = Qt.ItemDataRole.UserRole + 11  # made by another version: only deleted
 QUIET_STATES = ("starting", "working", "waiting", "asking", "done")  # shown by the agents list alone
 OVER = ("done", "idle", "failed", "stopped")  # an agent that is at nothing
 THINKING = 600  # characters, the end, of what an agent is thinking, under its feed
@@ -2485,6 +2486,7 @@ class FleetWindow(QMainWindow):
         """Fill the sidebar's list of projects."""
         try:
             found = await self.service.projects()
+            old = await self.service.unreadable()
         except REFUSALS:
             return
         self._listed = {info.id: info for info in found}
@@ -2502,15 +2504,29 @@ class FleetWindow(QMainWindow):
             item.setData(FLEETS_ROLE, info.fleets)
             item.setToolTip(info.work)
             self.projects.addItem(item)
+        for project_id, name in old:  # there, and nothing but deleting can be done with it
+            item = QListWidgetItem(name)
+            item.setData(PREVIEW_ROLE, "Made by an older KFM")
+            item.setData(DATE_ROLE, _when(project_id))
+            item.setData(PROJECT_ROLE, project_id)
+            item.setData(UNREADABLE_ROLE, True)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+            item.setToolTip("This version of KFM cannot open it. Right-click to delete it.")
+            self.projects.addItem(item)
         self._refresh()
 
     def _project_menu(self, at: QPoint) -> None:
         if (item := self.projects.itemAt(at)) is None:
             return
+        self.project_actions(item).popup(self.projects.viewport().mapToGlobal(at))
+
+    def project_actions(self, item: QListWidgetItem) -> QMenu:
+        """What a right-click on a listed project offers."""
         menu = QMenu(self)
-        menu.addAction("Rename…").triggered.connect(lambda: self.ask_rename(item))
+        if not item.data(UNREADABLE_ROLE):
+            menu.addAction("Rename…").triggered.connect(lambda: self.ask_rename(item))
         menu.addAction("Delete…").triggered.connect(lambda: self.ask_delete(item))
-        menu.popup(self.projects.viewport().mapToGlobal(at))
+        return menu
 
     def ask_rename(self, item: QListWidgetItem) -> None:
         """Ask for the listed project's new name; an empty one changes nothing."""
@@ -2576,7 +2592,8 @@ class FleetWindow(QMainWindow):
         """Ask whether the listed project should go, and delete it on a yes."""
         project_id = item.data(PROJECT_ROLE)
         fleets = item.data(FLEETS_ROLE)
-        has = "its 1 fleet" if fleets == 1 else f"its {fleets} fleets"
+        has = ("what it kept" if item.data(UNREADABLE_ROLE)
+               else "its 1 fleet" if fleets == 1 else f"its {fleets} fleets")
         dialog = self.dialog = DeleteDialog(self, "Delete project", f"{item.text()} and {has}")
         dialog.accepted.connect(lambda: self._run(self.delete_project(project_id)))
         dialog.open()

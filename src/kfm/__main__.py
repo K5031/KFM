@@ -375,11 +375,11 @@ async def _proposal(service: Service, args: argparse.Namespace) -> int:
         print(f"{team.name} ({'duty' if team.ongoing else 'task'}"
               + (f", in {team.folder}" if team.folder else "") + f"): {team.does}")
     if args.start:
-        await service.settle_proposal(owner.id)
         for team in made.teams:
             work = str(Path(owner.work) / team.folder) if team.folder else None
             await service.add_fleet(owner.id, team.name, team.does, ongoing=team.ongoing,
-                                    work=work)
+                                    work=work, model=team.model)
+        await service.settle_proposal(owner.id)  # kept if a team could not be started
         print("Started.")
     return 0
 

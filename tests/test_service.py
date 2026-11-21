@@ -583,6 +583,37 @@ async def test_a_fleet_follows_the_settings_as_they_are_when_it_is_read(tmp_path
     await again.aclose()
 
 
+async def test_the_limit_of_agents_reaches_the_fleets_there_are(tmp_path: Path):
+    harness = FakeHarness({"K5001": [{"do": [("say", "On watch.")]}]})
+    (tmp_path / "work").mkdir()
+    service = LocalService(tmp_path / "home", harness=harness)
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    dev = await service.add_fleet(made.id, "dev", "Keep watch", ongoing=True)
+    await until(lambda: "K5001" in harness.heard)
+    await service.save_settings(max_units=1)
+    assert service.fleet(dev).max_units == 1
+    with pytest.raises(FleetError, match="limit of 1"):
+        await service.add_agent(dev, "K5001", "Scout", "Look")
+    await service.aclose()
+
+
+async def test_a_leads_question_is_in_the_projects_count_and_the_listing_is_told(
+        tmp_path: Path):
+    service, _harness, _seen = local(tmp_path, {"K5001": [{"do": [("ask", "Which colour?")]}]})
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    counts: list[int] = []  # what the project's count was each time the listing changed
+    service.subscribe(lambda u: isinstance(u, Listed) and counts.append(
+        service._waiting(made.id)))
+    dev = await service.add_fleet(made.id, "dev", "Paint it")
+    await until(lambda: (lead := service.fleet(dev).lead) is not None
+                and lead.state == "waiting")
+    await until(lambda: 1 in counts)
+    assert (await service.projects())[0].waiting == 1
+    await service.say(dev, "Blue")
+    await until(lambda: counts[-1] == 0)
+    await service.aclose()
+
+
 async def test_an_agent_at_work_is_started_again_on_changed_settings(tmp_path: Path):
     harness = FakeHarness({"K5001": [{"do": [("say", "On watch.")]}]})
     (tmp_path / "work").mkdir()

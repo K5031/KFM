@@ -645,6 +645,36 @@ async def test_an_agent_its_supervisor_dismissed_leaves_the_chart_and_not_the_fe
     await until(lambda: chart(shown) == {"dev": ["K5001"]})
 
 
+async def test_what_the_service_refuses_is_shown_and_not_dropped(window, tmp_path: Path):
+    """In the dialog that asked, where it has a line for it, else in the fleet's feed."""
+    shown, _ = window({"K5001": [{"do": [("say", "On watch.")]}]})
+    view = await start(shown, tmp_path, "Keep watch", duty=True)
+    await until(lambda: view.fleet is not None and view.fleet.lead is not None)
+    key = view.id
+
+    async def refuse(*args: Any, **kwargs: Any) -> None:
+        raise ValueError("Name the model it runs on.")
+
+    shown.service.add_agent = refuse  # as in auto, with no model named
+    shown.service.set_model = refuse
+    shown.back_button.click()
+    await until(lambda: (key, "K5001") in shown.chart.nodes)
+    lead = shown.chart.nodes[(key, "K5001")]
+    lead.add_action.trigger()
+    shown.dialog.task.setPlainText("Look around")
+    shown.dialog.add.click()
+    await until(lambda: shown.dialog.warning.isVisibleTo(shown.dialog))
+    assert shown.dialog.warning.text() == "Name the model it runs on."
+    shown.dialog.reject()
+
+    shown.open_fleet(view)
+    lead.model_action.trigger()
+    shown.dialog.model.setText("nope-1")
+    shown.dialog.accept()
+    await until(lambda: any(isinstance(e, Line) and e.text() == "Name the model it runs on."
+                            for e in view.entries))
+
+
 async def test_a_fleet_is_deleted_from_the_chart(window, tmp_path: Path):
     shown, _ = window({"K5001": [{"do": [("say", "On watch.")]}]})
     first = await start(shown, tmp_path, "Keep watch", name="dev", duty=True)

@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import getpass
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -126,6 +127,7 @@ COLUMN = 720  # px, the widest the feed's entries get
 REFRESH_MS = 1000  # spending and states, while a fleet runs
 # What the service refuses, with words for the person (kfm.service).
 REFUSALS = (FleetError, UnitError, ValueError, OSError, RuntimeError)
+logger = logging.getLogger(__name__)
 TITLE_CHARS = 90
 UNIT_ROLE = Qt.ItemDataRole.UserRole  # a tree row's unit id
 
@@ -1816,9 +1818,19 @@ class FleetView(QWidget):
         return self.shown is None or not concerns or self.shown in concerns
 
     def _run(self, work: Coroutine[Any, Any, None]) -> None:
+        """Do it in the background; what the service refuses is said in the feed."""
         task = asyncio.ensure_future(work)
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(self._ran)
+
+    def _ran(self, task: asyncio.Task[None]) -> None:
+        self._tasks.discard(task)
+        if task.cancelled() or (error := task.exception()) is None:
+            return
+        if isinstance(error, REFUSALS):
+            self.say(str(error), tone="error")
+        else:
+            logger.error("work in the background failed", exc_info=error)
 
 
 # ── The window ────────────────────────────────────────────────────────────
@@ -2581,7 +2593,7 @@ class FleetWindow(QMainWindow):
             try:
                 await view.retask(unit, dialog.task.toPlainText(),
                                   ongoing=dialog.kind.duty.isChecked())
-            except (FleetError, UnitError, OSError) as e:
+            except REFUSALS as e:
                 view.say(str(e), tone="error")
 
         dialog.accepted.connect(lambda: self._run(change()))
@@ -2771,7 +2783,7 @@ class FleetWindow(QMainWindow):
                 await view.add_agent(supervisor, name, task,
                                      ongoing=dialog.kind.duty.isChecked(),
                                      model=dialog.model.text().strip() or None)
-            except (FleetError, UnitError, OSError) as e:
+            except REFUSALS as e:
                 return dialog.warn(str(e))
             dialog.accept()
             self._refresh()
@@ -2994,9 +3006,28 @@ class FleetWindow(QMainWindow):
         self.agents.setFixedHeight(max(1, rows) * AGENT_ROW_PX + 6)
 
     def _run(self, work: Coroutine[Any, Any, None]) -> None:
+        """Do it in the background; what the service refuses is shown: in the dialog
+        that is open, if it has a place for it, else in the open fleet's feed, else in a
+        box of its own."""
         task = asyncio.ensure_future(work)
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(self._ran)
+
+    def _ran(self, task: asyncio.Task[None]) -> None:
+        self._tasks.discard(task)
+        if task.cancelled() or (error := task.exception()) is None:
+            return
+        if not isinstance(error, REFUSALS):
+            logger.error("work in the background failed", exc_info=error)
+            return
+        dialog = self.dialog
+        if dialog is not None and dialog.isVisible() and hasattr(dialog, "warn"):
+            dialog.warn(str(error))
+        elif self.view is not None:
+            self.view.say(str(error), tone="error")
+        else:
+            self.dialog = QMessageBox(QMessageBox.Icon.Warning, "KFM", str(error), parent=self)
+            self.dialog.open()
 
 
 def saved_theme(path: Path) -> str:

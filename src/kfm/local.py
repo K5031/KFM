@@ -47,6 +47,7 @@ class LocalService(Service):
     def __init__(self, home: Path = HOME, *, harness: Harness | None = None,
                  config: FleetConfig | None = None) -> None:
         self.home, self._harness, self._config = home, harness, config
+        self._waited: dict[str, int] = {}  # what waits in each project, as last told
         self._managers: dict[str, Manager] = {}  # of every fleet read, running or not
         self._listeners: list[Callable[[Update], None]] = []
         self._proposals: dict[str, draft.Draft] = {}  # by project, until settled
@@ -323,14 +324,17 @@ class LocalService(Service):
         mine, secretary = f"{opened.folder.name}/", f"{opened.folder.name}/{project.SECRETARY}"
         running = sum(1 for fleet_id, manager in self._managers.items()
                       if manager.up and fleet_id.startswith(mine) and fleet_id != secretary)
-        waiting = sum(len(manager.asking) + sum(
-                          1 for unit in manager.fleet.units.values()
-                          if unit.supervisor is None and unit.state == "waiting"
-                          and manager.up)
-                      for fleet_id, manager in self._managers.items()
-                      if fleet_id.startswith(mine))
         return ProjectInfo(opened.folder.name, opened.name, str(opened.work), fleets, running,
-                           secretary, waiting)
+                           secretary, self._waiting(opened.folder.name))
+
+    def _waiting(self, project_id: str) -> int:
+        """The approvals and leads' questions that wait for the person in the project's
+        fleets that were read."""
+        return sum(len(manager.asking) + sum(
+                       1 for unit in manager.fleet.units.values()
+                       if unit.supervisor is None and unit.state == "waiting" and manager.up)
+                   for fleet_id, manager in self._managers.items()
+                   if fleet_id.startswith(f"{project_id}/"))
 
     def _project(self, project_id: str) -> Path:
         if not _ID.fullmatch(project_id) or project_id in (".", ".."):
@@ -360,10 +364,15 @@ class LocalService(Service):
         def happened(event: FleetEvent) -> None:
             self._tell(Happened(fleet_id, event, self._managers[fleet_id].count))
 
-        return {"harness": self._harness, "on_event": happened,
-                "on_change": lambda: self._tell(Updated(fleet_id)),
+        def changed() -> None:
+            self._tell(Updated(fleet_id))
+            owner = fleet_id.partition("/")[0]
+            if (waiting := self._waiting(owner)) != self._waited.get(owner, 0):
+                self._waited[owner] = waiting  # the project's count is in its listing
+                self._tell(Listed())
+
+        return {"harness": self._harness, "on_event": happened, "on_change": changed,
                 "on_live": lambda unit, *live: self._tell(Live(fleet_id, unit, *live)),
-                "on_asking": lambda: self._tell(Listed()),  # a project's count changed
                 "models": self._known,
                 "project": _Side(self, fleet_id, project_name)}
 

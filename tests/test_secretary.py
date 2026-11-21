@@ -288,4 +288,12 @@ async def test_in_auto_the_secretary_names_the_model_of_each_teams_lead(tmp_path
     proposed = await service.proposal(made.id)
     assert [(team.name, team.model) for team in proposed.teams] == [
         ("dev", "big-1"), ("art", "small-1")]
+    # The command line starts them on those models, as the window does.
+    from argparse import Namespace
+
+    from kfm.__main__ import _proposal
+    assert await _proposal(service, Namespace(project="Studio", drop=False, start=True)) == 0
+    await until(lambda: ("K5001", "big-1") in harness.models
+                and ("K5002", "small-1") in harness.models)
+    assert await service.proposal(made.id) is None
     await service.aclose()

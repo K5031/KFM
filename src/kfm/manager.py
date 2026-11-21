@@ -95,7 +95,6 @@ class Manager:
                  on_event: Callable[[FleetEvent], None] = lambda event: None,
                  on_change: Callable[[], None] = lambda: None,
                  on_live: Callable[[str, str, str, str], None] = lambda *live: None,
-                 on_asking: Callable[[], None] = lambda: None,
                  models: Callable[[], Mapping[str, str]] = dict,
                  project: Project | None = None) -> None:
         """`harness`: the agent program the units run; None: the one the fleet's settings
@@ -110,12 +109,11 @@ class Manager:
         # whoever watches (`on_live`: the unit's id, then these). It is not recorded.
         self._on_live = on_live
         # What units ask the person's approval for, by request, until it is answered or
-        # the unit's turn is over. `on_asking`: called when there is one more, or one less.
+        # the unit's turn is over.
         # What is known of each model there is (its name, its price), by id, for the
         # supervisors that choose one.
         self.models = models
         self.asking: dict[str, Approval] = {}
-        self._on_asking = on_asking
         self._live: dict[str, list[str]] = {}
         self._live_due: set[str] = set()
         self._used: set[str] = set()  # units whose tool is over, and still shown
@@ -303,6 +301,7 @@ class Manager:
                                if unit.budget_usd >= old.unit_budget_usd
                                else min(unit.budget_usd, config.unit_budget_usd))
         self.config, self.fleet.settings = config, settings.record(config)
+        self.fleet.max_units = config.max_units  # what `Fleet.add` holds a fleet to
         self._changed()
         await self._save()
         again = [unit for unit in everyone
@@ -711,7 +710,7 @@ class Manager:
                                                            arguments)
                 self._set(unit, "asking")
                 self._emit(asked)
-                self._on_asking()
+                self._changed()  # also a second request of a unit that is asking already
             case api.Failed(message=message):
                 self._watched(unit, thinking="", writing="", doing="")
                 self._asked(unit)
@@ -737,7 +736,6 @@ class Manager:
             self._set(unit, "working")
         if mine:
             self._changed()
-            self._on_asking()
 
     def _now(self, unit: Unit) -> list[str]:
         return self._live.setdefault(unit.id, ["", "", ""])

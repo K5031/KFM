@@ -10,7 +10,7 @@ import pytest
 
 from kfm import remote
 from kfm.api import UnitError
-from kfm.config import FleetConfig
+from kfm.config import FleetConfig, save
 from kfm.events import Delivered, Said, Told, units
 from kfm.fleet import Fleet, FleetError
 from kfm.local import LocalService
@@ -525,6 +525,29 @@ async def test_saved_settings_reach_the_fleets_there_are(tmp_path: Path):
     await service.save_settings(unit_budget_usd=1.0)  # and down
     assert (lead.budget_usd, reader.budget_usd) == (1.0, 0.5)
     await service.aclose()
+
+
+async def test_a_fleet_follows_the_settings_as_they_are_when_it_is_read(tmp_path: Path):
+    """Not only when they are saved: what changed while no service ran, or in what KFM
+    itself gives a fleet, reaches the fleets there are."""
+    harness = FakeHarness({"K5001": [{"do": [("report", "Built.")]}]})
+    (tmp_path / "work").mkdir()
+    home = tmp_path / "home"
+    service = LocalService(home, harness=harness)
+    made = await service.create_project("Acme", str(tmp_path / "work"))
+    dev = await service.add_fleet(made.id, "dev", "Build it")
+    await until(lambda: service.state(dev).finished)
+    await service.aclose()
+    save(home / "fleet.toml", permissions="auto", unit_budget_usd=7.0,
+         models={"secretary": "small-1"})
+
+    again = LocalService(home, harness=harness)
+    await again.fleets(made.id)
+    assert again.fleet(dev).settings["permissions"] == "auto"
+    assert again.fleet(dev).lead.budget_usd == 7.0
+    assert again.fleet(made.secretary).settings["permissions"] == "auto"
+    assert again.fleet(made.secretary).lead.model == "small-1"
+    await again.aclose()
 
 
 async def test_an_agent_at_work_is_started_again_on_changed_settings(tmp_path: Path):

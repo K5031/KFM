@@ -141,7 +141,8 @@ class LocalService(Service):
             owner = await asyncio.to_thread(project.load, folder.parent.parent)
             read = await asyncio.to_thread(
                 lambda: Manager.load(folder, **self._how(fleet_id, owner.name)))
-            self._managers.setdefault(fleet_id, read)  # it may have been read meanwhile
+            if self._managers.setdefault(fleet_id, read) is read:  # not read meanwhile
+                await self._settle(fleet_id, read, await self.settings())
 
     def fleet(self, fleet_id: str) -> Fleet | None:
         manager = self._managers.get(fleet_id)
@@ -275,12 +276,16 @@ class LocalService(Service):
         for each in await self.projects():  # every fleet there is follows them
             await self.fleets(each.id)
         for fleet_id, manager in list(self._managers.items()):
-            await manager.adopt(config)
-            lead, model = manager.fleet.lead, config.models.get("secretary")
-            if (fleet_id.endswith(f"/{project.SECRETARY}") and lead is not None
-                    and lead.model != model):
-                await manager.set_model(lead, model)
+            await self._settle(fleet_id, manager, config)
         return config
+
+    async def _settle(self, fleet_id: str, manager: Manager, config: FleetConfig) -> None:
+        """Have the fleet follow the settings as they are; a secretary runs on hers."""
+        await manager.adopt(config)
+        lead, model = manager.fleet.lead, config.models.get("secretary")
+        if (fleet_id.endswith(f"/{project.SECRETARY}") and lead is not None
+                and lead.model != model):
+            await manager.set_model(lead, model)
 
     def subscribe(self, listener: Callable[[Update], None]) -> Callable[[], None]:
         self._listeners.append(listener)

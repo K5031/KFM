@@ -241,8 +241,8 @@ opens a window on the same service the commands talk to, without a terminal. It 
   until it is done, **Add to App Menu**, which puts KFM in your app menu with its own
   icon so it starts without a terminal.
 - **The gear** beside it opens **Settings**: the model of each rank, what a fleet and an
-  agent may spend, and how many agents a fleet may have. Saving them changes every
-  fleet there is, not only new ones: an agent at work starts again on what changed, in
+  agent may spend, and how many agents a fleet may have. They hold for every fleet
+  there is, not only new ones, from the moment they are saved: an agent at work starts again on what changed, in
   its own conversation. The one exception is **Per fleet**, which is what a new fleet
   starts with; a fleet's own limit is changed beside its Resume button.
 

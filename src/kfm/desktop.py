@@ -124,7 +124,6 @@ OVER = ("done", "idle", "failed", "stopped")  # an agent that is at nothing
 THINKING = 600  # characters, the end, of what an agent is thinking, under its feed
 BAR = 48  # px, the bar on top
 COLUMN = 720  # px, the widest the feed's entries get
-REFRESH_MS = 1000  # spending and states, while a fleet runs
 # What the service refuses, with words for the person (kfm.service).
 REFUSALS = (FleetError, UnitError, ValueError, OSError, RuntimeError)
 logger = logging.getLogger(__name__)
@@ -1804,9 +1803,6 @@ class FleetWindow(QMainWindow):
         self._edges = WindowEdges(self)
         self._build()
         self._corners = RoundedCorners(self)
-        self._timer = QTimer(self, interval=REFRESH_MS)
-        self._timer.timeout.connect(self._refresh)
-        self._timer.start()
         self._refresh()
         self._run(self._offer_app_menu())
         self._run(self._open_newest())

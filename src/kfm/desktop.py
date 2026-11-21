@@ -143,6 +143,36 @@ def label(text: str = "", *, role: str | None = None, tone: str | None = None,
     return made
 
 
+class Warns:
+    """For a form or a dialog with a line (`warning`) that says what is wrong."""
+
+    warning: QLabel
+
+    def warn(self, text: str) -> None:
+        self.warning.setText(text)
+        self.warning.setVisible(bool(text))
+
+
+def foot(dialog: QDialog, verb: str, then: Callable[[], object], *,
+         before: QWidget | None = None, safe: bool = False) -> tuple[QHBoxLayout, QPushButton]:
+    """The bottom of a dialog: Cancel, and the button that does it (`verb`, pressed:
+    `then`), with `before` at the left. `safe`: Enter cancels. Returns the row and the
+    button."""
+    do = QPushButton(verb)
+    do.setProperty("primary", True)
+    do.clicked.connect(then)
+    cancel = QPushButton("Cancel")
+    cancel.clicked.connect(dialog.reject)
+    cancel.setDefault(safe)
+    row = QHBoxLayout()
+    if before is not None:
+        row.addWidget(before)
+    row.addStretch(1)
+    row.addWidget(cancel)
+    row.addWidget(do)
+    return row, do
+
+
 def _when(started: str) -> str:
     """A project folder's name (20261112-210500) as its row's date: the time today, else
     the day."""
@@ -287,61 +317,50 @@ class LiveEntry(QWidget):
         self.empty = not (thinking or writing.strip() or doing)
 
 
-class DeliveryCard(QFrame):
-    """A report, question, update or failure on its way up, with its whole text."""
+class Card(QFrame):
+    """Something that went from one to another in the fleet, with its whole text: who
+    and what in a line, the text under it."""
 
-    def __init__(self, event: Delivered, called: Callable[[str], str]) -> None:
+    def __init__(self, header: str, text: str, concerns: set[str]) -> None:
         super().__init__()
         self.setObjectName("delivery")
-        self.setProperty("you", event.to is None)  # it is the person's to read or answer
-        self.concerns = units(event)
+        self.concerns = concerns
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(6)
-        target = called(event.to) if event.to is not None else "you"
-        self.header = label(f"{called(event.unit)} → {target} · {event.kind}", role="strong")
+        self.header = label(header, role="strong")
         self.body = MarkdownView()
-        self.body.setMarkdown(event.text)
+        self.body.setMarkdown(text)
         layout.addWidget(self.header)
         layout.addWidget(self.body)
 
 
-class AcrossCard(QFrame):
+class DeliveryCard(Card):
+    """A report, question, update or failure on its way up."""
+
+    def __init__(self, event: Delivered, called: Callable[[str], str]) -> None:
+        target = called(event.to) if event.to is not None else "you"
+        super().__init__(f"{called(event.unit)} → {target} · {event.kind}", event.text,
+                         units(event))
+        self.setProperty("you", event.to is None)  # it is the person's to read or answer
+
+
+class AcrossCard(Card):
     """A message between an agent and another team of the project, or its secretary."""
 
     def __init__(self, event: Across, called: Callable[[str], str]) -> None:
-        super().__init__()
-        self.setObjectName("delivery")
-        self.concerns = {event.unit}
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(6)
         ends = (called(event.unit), event.team) if event.sent else (event.team,
                                                                    called(event.unit))
-        self.header = label(f"{ends[0]} → {ends[1]} · message", role="strong")
-        self.body = MarkdownView()
-        self.body.setMarkdown(event.text)
-        layout.addWidget(self.header)
-        layout.addWidget(self.body)
+        super().__init__(f"{ends[0]} → {ends[1]} · message", event.text, {event.unit})
 
 
-class InstructionCard(QFrame):
+class InstructionCard(Card):
     """What an agent was given by its supervisor: its task, or a message."""
 
     def __init__(self, event: Instructed, called: Callable[[str], str]) -> None:
-        super().__init__()
         assert event.by is not None
-        self.setObjectName("delivery")
-        self.concerns = units(event)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(6)
-        self.header = label(f"{called(event.by)} → {called(event.unit)} · {event.kind}",
-                            role="strong")
-        self.body = MarkdownView()
-        self.body.setMarkdown(event.text)
-        layout.addWidget(self.header)
-        layout.addWidget(self.body)
+        super().__init__(f"{called(event.by)} → {called(event.unit)} · {event.kind}",
+                         event.text, units(event))
 
 
 class ApprovalCard(QFrame):
@@ -527,7 +546,7 @@ BOX_STYLE = ("QFrame#budget {{ border: 1px solid {line}; border-radius: 10px; }}
              "QFrame#budget QLineEdit {{ background: transparent; border: none; padding: 0; }}")
 
 
-class StartForm(QWidget):
+class StartForm(Warns, QWidget):
     """A new fleet: its name, one box for what it should do, and what else a fleet needs
     along the box's lower edge."""
 
@@ -617,10 +636,6 @@ class StartForm(QWidget):
                                       else "The folder the agents work in")
         self.warn("")
 
-    def warn(self, text: str) -> None:
-        self.warning.setText(text)
-        self.warning.setVisible(bool(text))
-
     def _describe(self) -> None:
         self.hint.setText(
             "Runs until you stop it." if self.duty.isChecked() else
@@ -634,7 +649,7 @@ class StartForm(QWidget):
         dialog.open()
 
 
-class ProjectForm(QWidget):
+class ProjectForm(Warns, QWidget):
     """The window with no project: a name, the folder the project's fleets work in, and
     what it should do when its fleets are to be drafted."""
 
@@ -720,10 +735,6 @@ class ProjectForm(QWidget):
         projects folder. None without a projects folder, or a name that makes one."""
         name = project.folder_name(self.name.text())
         return self.base / name if self.base is not None and name else None
-
-    def warn(self, text: str) -> None:
-        self.warning.setText(text)
-        self.warning.setVisible(bool(text))
 
     def _choose(self) -> None:
         start = self.folder.parent if self.folder is not None else Path.home()
@@ -946,7 +957,7 @@ class DraftPage(QWidget):
         self._proposal.setVisible(not self.busy)
 
 
-class AgentDialog(QDialog):
+class AgentDialog(Warns, QDialog):
     """An agent the person puts under another, or at the top of a fleet that has none: its
     name, its task, and a model of its own if it should not run on its rank's. `add_asked`
     when the person wants it made."""
@@ -972,23 +983,10 @@ class AgentDialog(QDialog):
         self.model = ModelBox(placeholder=f"Model (K{rank}'s, if empty)")
         self.warning = label("", role="small", tone="error")
         self.warning.hide()
-        self.add = QPushButton("Add")
-        self.add.setProperty("primary", True)
-        self.add.clicked.connect(self.add_asked)
-        cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.reject)
-        foot = QHBoxLayout()
-        foot.addWidget(self.kind)
-        foot.addStretch(1)
-        foot.addWidget(cancel)
-        foot.addWidget(self.add)
-        for row in (self.name, self.task, self.model, self.warning):
-            rows.addWidget(row)
-        rows.addLayout(foot)
-
-    def warn(self, text: str) -> None:
-        self.warning.setText(text)
-        self.warning.setVisible(bool(text))
+        row, self.add = foot(self, "Add", self.add_asked, before=self.kind)
+        for part in (self.name, self.task, self.model, self.warning):
+            rows.addWidget(part)
+        rows.addLayout(row)
 
 
 class DeleteDialog(QDialog):
@@ -1003,18 +1001,9 @@ class DeleteDialog(QDialog):
         rows.setSpacing(14)
         self.question = label(f"{verb} {what}? This cannot be undone. The folder the agents "
                               "worked in is kept.")
-        self.delete = QPushButton(verb)
-        self.delete.setProperty("primary", True)
-        self.delete.clicked.connect(self.accept)
-        cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.reject)
-        cancel.setDefault(True)
-        foot = QHBoxLayout()
-        foot.addStretch(1)
-        foot.addWidget(cancel)
-        foot.addWidget(self.delete)
+        row, self.delete = foot(self, verb, self.accept, safe=True)
         rows.addWidget(self.question)
-        rows.addLayout(foot)
+        rows.addLayout(row)
 
 
 class Amount(QLineEdit):
@@ -1044,7 +1033,7 @@ class DialogGrip(DragArea):
         event.ignore()
 
 
-class SettingsDialog(QDialog):
+class SettingsDialog(Warns, QDialog):
     """KFM's settings: the model of each rank and the limits. `save_asked` when the
     person wants them kept; `changes` is what they set."""
 
@@ -1162,18 +1151,10 @@ class SettingsDialog(QDialog):
                 form.itemAt(row, QFormLayout.ItemRole.LabelRole).widget().setFixedWidth(76)
         self.warning = label("", role="small", tone="error")
         self.warning.hide()
-        self.save = QPushButton("Save")
-        self.save.setProperty("primary", True)
-        self.save.clicked.connect(self.save_asked)
-        cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.reject)
-        foot = QHBoxLayout()
-        foot.addStretch(1)
-        foot.addWidget(cancel)
-        foot.addWidget(self.save)
+        row, self.save = foot(self, "Save", self.save_asked)
         rows.addSpacing(8)
         rows.addWidget(self.warning)
-        rows.addLayout(foot)
+        rows.addLayout(row)
 
     def _choose_projects(self) -> None:
         start = Path(self.projects.text().strip() or Path.home()).expanduser()
@@ -1242,10 +1223,6 @@ class SettingsDialog(QDialog):
                 lambda on, model_id=model_id: self._toggle_auto(model_id, on))
         menu.setToolTipsVisible(True)
 
-    def warn(self, text: str) -> None:
-        self.warning.setText(text)
-        self.warning.setVisible(bool(text))
-
 
 class TaskDialog(QDialog):
     """An agent's task, and whether it is a task or a duty, to change."""
@@ -1263,19 +1240,10 @@ class TaskDialog(QDialog):
         (self.kind.duty if unit.ongoing else self.kind.task_kind).setChecked(True)
         self.warning = label("", role="small", tone="error")
         self.warning.hide()
-        self.save = QPushButton("Save")
-        self.save.setProperty("primary", True)
-        self.save.clicked.connect(self.accept)
-        cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.reject)
-        foot = QHBoxLayout()
-        foot.addWidget(self.kind)
-        foot.addStretch(1)
-        foot.addWidget(cancel)
-        foot.addWidget(self.save)
+        row, self.save = foot(self, "Save", self.accept, before=self.kind)
         rows.addWidget(self.task)
         rows.addWidget(self.warning)
-        rows.addLayout(foot)
+        rows.addLayout(row)
 
 
 class LineDialog(QDialog):
@@ -1289,17 +1257,9 @@ class LineDialog(QDialog):
         self.line = QLineEdit(text)
         self.line.setPlaceholderText(placeholder)
         self.line.returnPressed.connect(self.accept)
-        save = QPushButton("Save")
-        save.setProperty("primary", True)
-        save.clicked.connect(self.accept)
-        cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.reject)
-        foot = QHBoxLayout()
-        foot.addStretch(1)
-        foot.addWidget(cancel)
-        foot.addWidget(save)
+        row, _ = foot(self, "Save", self.accept)
         rows.addWidget(self.line)
-        rows.addLayout(foot)
+        rows.addLayout(row)
 
 
 class ModelDialog(QDialog):
@@ -1312,17 +1272,9 @@ class ModelDialog(QDialog):
         rows = QVBoxLayout(self)
         self.model = ModelBox(unit.model or "", f"K{unit.rank}'s, if empty")
         self.model.lineEdit().returnPressed.connect(self.accept)
-        save = QPushButton("Save")
-        save.setProperty("primary", True)
-        save.clicked.connect(self.accept)
-        cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.reject)
-        foot = QHBoxLayout()
-        foot.addStretch(1)
-        foot.addWidget(cancel)
-        foot.addWidget(save)
+        row, _ = foot(self, "Save", self.accept)
         rows.addWidget(self.model)
-        rows.addLayout(foot)
+        rows.addLayout(row)
 
 
 def _dropped_files(source: QMimeData) -> list[str]:
@@ -2329,13 +2281,21 @@ class FleetWindow(QMainWindow):
         """End the service that holds the fleets and start the window again, on what is
         installed now: the service outlives the window, and so runs the code it was
         started on."""
+        self._confirm("Restart KFM", question, "Restart", lambda: self._run(self.restart()))
+
+    def _confirm(self, title: str, question: str, verb: str, then: Callable[[], object], *,
+                 safe: bool = False) -> None:
+        """Ask before doing it: a box with the question, `verb` and Cancel. `safe`: Enter
+        cancels."""
         dialog = self.dialog = QMessageBox(self)
-        dialog.setWindowTitle("Restart KFM")
+        dialog.setWindowTitle(title)
         dialog.setText(question)
         dialog.setStandardButtons(QMessageBox.StandardButton.Yes
                                   | QMessageBox.StandardButton.Cancel)
-        dialog.button(QMessageBox.StandardButton.Yes).setText("Restart")
-        dialog.accepted.connect(lambda: self._run(self.restart()))
+        dialog.button(QMessageBox.StandardButton.Yes).setText(verb)
+        if safe:
+            dialog.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        dialog.accepted.connect(then)
         dialog.open()
 
     async def restart(self) -> None:
@@ -2353,14 +2313,8 @@ class FleetWindow(QMainWindow):
     def ask_stop(self) -> None:
         """End the service that holds the fleets and close the window: closing the window
         alone leaves them running."""
-        dialog = self.dialog = QMessageBox(self)
-        dialog.setWindowTitle("Stop KFM")
-        dialog.setText("Stop KFM? Fleets that run stop and can be resumed.")
-        dialog.setStandardButtons(QMessageBox.StandardButton.Yes
-                                  | QMessageBox.StandardButton.Cancel)
-        dialog.button(QMessageBox.StandardButton.Yes).setText("Stop")
-        dialog.accepted.connect(lambda: self._run(self.stop_kfm()))
-        dialog.open()
+        self._confirm("Stop KFM", "Stop KFM? Fleets that run stop and can be resumed.",
+                      "Stop", lambda: self._run(self.stop_kfm()))
 
     async def stop_kfm(self) -> None:
         if await self._end():
@@ -2713,16 +2667,10 @@ class FleetWindow(QMainWindow):
         folder = form.folder
         if folder is None and (folder := form.own_folder()) is not None:
             if project.in_use(folder):  # not one made for this project: ask first
-                dialog = self.dialog = QMessageBox(self)
-                dialog.setWindowTitle("New project")
-                dialog.setText(f"{folder} already exists and has files in it. Agents can "
-                               "change anything in it. Use it for this project?")
-                dialog.setStandardButtons(QMessageBox.StandardButton.Yes
-                                          | QMessageBox.StandardButton.Cancel)
-                dialog.button(QMessageBox.StandardButton.Yes).setText("Use it")
-                dialog.setDefaultButton(QMessageBox.StandardButton.Cancel)
-                dialog.accepted.connect(lambda: self._create(name, folder))
-                dialog.open()
+                self._confirm("New project",
+                              f"{folder} already exists and has files in it. Agents can "
+                              "change anything in it. Use it for this project?",
+                              "Use it", lambda: self._create(name, folder), safe=True)
                 return
             try:  # one of its own, in the projects folder
                 folder.mkdir(parents=True, exist_ok=True)

@@ -758,7 +758,10 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
     try:
         assert shown.profile_button.text().strip() == getpass.getuser()
         assert [a.text() for a in shown.profile_button.menu().actions() if a.text()][1:] == [
-            "Settings", "Add to App Menu", "Restart KFM", "Quit"]
+            "Settings", "Add to App Menu", "Quit"]
+        # The menu at the top is about KFM as it runs.
+        assert [a.text() for a in shown.menu_button.menu().actions()] == [
+            "Restart KFM", "Stop KFM"]
         shown.gear_button.click()
         await until(lambda: shown.dialog is not None and shown.dialog.isVisible())
         dialog = shown.dialog
@@ -1002,7 +1005,7 @@ async def test_the_window_adds_itself_to_the_app_menu(window, tmp_path: Path, mo
     assert not again.app_menu_action.isVisible()  # it is there already
 
 
-async def test_kfm_is_restarted_from_the_profile_corner(window, tmp_path: Path):
+async def test_kfm_is_restarted_from_the_menu(window, tmp_path: Path):
     """The service that holds the fleets is ended, and the window started again on a new
     one: what an update needs, since the service outlives the window."""
     shown, _ = window({"K5001": [{"do": [("say", "On watch.")]}]})
@@ -1010,12 +1013,27 @@ async def test_kfm_is_restarted_from_the_profile_corner(window, tmp_path: Path):
     await until(lambda: view.running)
     again: list[bool] = []
     shown.relaunch = lambda: again.append(True)
-    [restart] = [a for a in shown.profile_button.menu().actions() if a.text() == "Restart KFM"]
+    [restart] = [a for a in shown.menu_button.menu().actions() if a.text() == "Restart KFM"]
     restart.trigger()
     assert "stop" in shown.dialog.text() and "resumed" in shown.dialog.text()
     shown.dialog.button(shown.dialog.StandardButton.Yes).click()
     await until(lambda: again == [True])
     assert not shown.service.state(view.id).running
+
+
+async def test_kfm_is_stopped_from_the_menu(window, tmp_path: Path):
+    """The service is ended and the window closed: closing the window alone leaves the
+    fleets running."""
+    shown, _ = window({"K5001": [{"do": [("say", "On watch.")]}]})
+    view = await start(shown, tmp_path, "Keep watch", duty=True)
+    await until(lambda: view.running)
+    service = shown.service
+    [stop] = [a for a in shown.menu_button.menu().actions() if a.text() == "Stop KFM"]
+    stop.trigger()
+    assert "stop" in shown.dialog.text() and "resumed" in shown.dialog.text()
+    shown.dialog.button(shown.dialog.StandardButton.Yes).click()
+    await until(shown.closed.is_set)
+    assert not service.state(view.id).running
 
 
 async def test_a_window_on_an_older_service_offers_to_restart(window, tmp_path: Path):

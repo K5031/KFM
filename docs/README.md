@@ -63,7 +63,7 @@ in the other, and both can follow it at once.
 - **After an update** the service still running is the old one, on the code it was
   started with, for as long as a fleet runs or a window is open. The window says so when
   it opens and offers to restart, and each `kfm` command says so in a line. Restart it:
-  **Restart KFM** in the menu at the bottom left of the window, or `kfm service restart`.
+  **Restart KFM** in the ☰ menu at the top left of the window, or `kfm service restart`.
   Its fleets stop and can be resumed. `kfm service` says since when it runs.
 
 ## The command line
@@ -238,6 +238,10 @@ opens a window on the same service the commands talk to, without a terminal. It 
   right.
 - **Stop** ends the open fleet's processes; **Resume** carries it on. Closing the window
   leaves fleets running: stop the ones you do not want to keep paying for.
+- **The ☰ menu, at the top left**, is about KFM as it runs. **Stop KFM** ends its
+  background service and closes the window: every running fleet stops and can be
+  resumed. It starts again the next time you open KFM. **Restart KFM** does the same
+  and opens the window again.
 - **Your name, at the bottom left**, opens the app's menu: Settings, Quit and, on Linux
   until it is done, **Add to App Menu**, which puts KFM in your app menu with its own
   icon so it starts without a terminal.

@@ -1851,6 +1851,19 @@ class FleetWindow(QMainWindow):
             f"QListWidget {{ background: transparent; border: none; }}")
         side_layout = QVBoxLayout(side)
         side_layout.setContentsMargins(10, 12, 10, 12)
+        # The menu at the top, as in Kadence: what is about KFM as it runs.
+        self.menu_button = QToolButton(objectName="menu")
+        self.menu_button.setIcon(theme.icon("menu", theme.current().muted, 18))
+        self.menu_button.setIconSize(QSize(18, 18))
+        self.menu_button.setToolTip("Menu")
+        self.menu_button.setAccessibleName("Menu")
+        self.menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        main_menu = QMenu(self)
+        main_menu.addAction("Restart KFM").triggered.connect(lambda: self.ask_restart())
+        main_menu.addAction("Stop KFM").triggered.connect(lambda: self.ask_stop())
+        self.menu_button.setMenu(main_menu)
+        side_layout.addWidget(self.menu_button, 0, Qt.AlignmentFlag.AlignLeft)
+        side_layout.addSpacing(6)
         side_layout.addWidget(self.new_button)
         side_layout.addSpacing(6)
 
@@ -1903,7 +1916,6 @@ class FleetWindow(QMainWindow):
         self.app_menu_action = menu.addAction("Add to App Menu")
         self.app_menu_action.triggered.connect(lambda: self._run(self._add_to_app_menu()))
         self.app_menu_action.setVisible(False)
-        menu.addAction("Restart KFM").triggered.connect(lambda: self.ask_restart())
         menu.addSeparator()
         menu.addAction("Quit").triggered.connect(self.close)
         self.profile_button.setMenu(menu)
@@ -2259,13 +2271,34 @@ class FleetWindow(QMainWindow):
         dialog.open()
 
     async def restart(self) -> None:
+        if await self._end():
+            self.relaunch()
+
+    def ask_stop(self) -> None:
+        """End the service that holds the fleets and close the window: closing the window
+        alone leaves them running."""
+        dialog = self.dialog = QMessageBox(self)
+        dialog.setWindowTitle("Stop KFM")
+        dialog.setText("Stop KFM? Fleets that run stop and can be resumed.")
+        dialog.setStandardButtons(QMessageBox.StandardButton.Yes
+                                  | QMessageBox.StandardButton.Cancel)
+        dialog.button(QMessageBox.StandardButton.Yes).setText("Stop")
+        dialog.accepted.connect(lambda: self._run(self.stop_kfm()))
+        dialog.open()
+
+    async def stop_kfm(self) -> None:
+        if await self._end():
+            await self.shut()
+
+    async def _end(self) -> bool:
+        """End the service. False, with the reason shown, when it could not be."""
         try:
             await self.service.end()
         except REFUSALS as e:
             self.dialog = QMessageBox(QMessageBox.Icon.Warning, "KFM", str(e), parent=self)
             self.dialog.open()
-            return
-        self.relaunch()
+            return False
+        return True
 
     @staticmethod
     def relaunch() -> None:

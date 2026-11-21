@@ -2,6 +2,7 @@ import tomllib
 from pathlib import Path
 
 from kfm.api import UnitSpec, Vocabulary
+from kfm.config import FleetConfig
 from kfm.fleet import Fleet
 from kfm.harnesses import kadence
 from kfm.units import brief
@@ -37,7 +38,7 @@ def test_a_kadence_units_folder_holds_the_base_configuration_with_its_own_limits
 
 
 def test_the_brief_says_where_the_unit_stands_in_its_harnesss_words():
-    fleet = Fleet(top_rank=2)
+    fleet = Fleet(FleetConfig(top_rank=2))
     lead = fleet.add("Lead", "Ship the site", None)
     worker = fleet.add("Builder", "Build the page", lead, team="web")
     watcher = fleet.add("Watcher", "Watch the logs", lead, ongoing=True)

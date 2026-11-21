@@ -12,7 +12,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-FORMAT = 10  # of fleet.json; a file of another format is refused
+from kfm import config as settings
+from kfm.config import FleetConfig
+
+FORMAT = 11  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
 # planned: in the fleet and not begun; it begins when the fleet runs and it has a task.
@@ -79,10 +82,12 @@ class Unit:
 class Fleet:
     """Units by id, in the order they were added."""
 
-    def __init__(self, top_rank: int = 5, max_units: int = 12, name: str = "") -> None:
-        if not 1 <= top_rank <= 5:
+    def __init__(self, config: FleetConfig | None = None, name: str = "") -> None:
+        # What it runs with: its top rank and its limits are read from here, and here
+        # alone.
+        self.config = config if config is not None else FleetConfig()
+        if not 1 <= self.config.top_rank <= 5:
             raise ValueError("the top rank is between 1 and 5")
-        self.top_rank, self.max_units = top_rank, max_units
         self.name = name  # what a person calls it: "marketing"
         self.units: dict[str, Unit] = {}
         self._issued: dict[int, int] = {}  # by rank: the highest number given here
@@ -92,7 +97,6 @@ class Fleet:
         self.removed_usd = 0.0  # what units taken out of the fleet had spent
         # What starting the fleet again needs (the manager fills these in).
         self.work = ""  # the folder the fleet works in
-        self.settings: dict[str, Any] = {}  # config.record of what it runs with
         self.manager_pid: int | None = None  # the process that runs it now
 
     @property
@@ -182,15 +186,22 @@ class Fleet:
     def supervisor_of(self, unit: Unit) -> Unit | None:
         return self.units.get(unit.supervisor) if unit.supervisor is not None else None
 
+    @property
+    def top_rank(self) -> int:
+        return self.config.top_rank
+
+    @property
+    def max_units(self) -> int:
+        return self.config.max_units
+
     # ── fleet.json: for people, `kfm status` and `kfm resume` ────────────
 
     def record(self) -> dict[str, Any]:
         """The fleet as fleet.json holds it."""
-        return {"format": FORMAT, "name": self.name, "top_rank": self.top_rank,
-                "max_units": self.max_units,
+        return {"format": FORMAT, "name": self.name,
                 "issued": {str(rank): count for rank, count in self._issued.items()},
                 "removed_usd": self.removed_usd,
-                "work": self.work, "settings": self.settings,
+                "work": self.work, "settings": settings.record(self.config),
                 "manager_pid": self.manager_pid,
                 "units": [asdict(u) for u in self.units.values()]}
 
@@ -199,8 +210,8 @@ class Fleet:
         """The fleet a record describes. ValueError for a record of another format."""
         if data.get("format") != FORMAT:
             raise ValueError(f"the record is of format {data.get('format')}, not {FORMAT}")
-        fleet = cls(data["top_rank"], data["max_units"], data["name"])
-        fleet.work, fleet.settings = data["work"], data["settings"]
+        fleet = cls(settings.from_record(data["settings"]), data["name"])
+        fleet.work = data["work"]
         fleet.manager_pid = data["manager_pid"]
         fleet._issued = {int(rank): count for rank, count in data["issued"].items()}
         fleet.removed_usd = data["removed_usd"]

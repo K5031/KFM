@@ -120,7 +120,6 @@ class Manager:
         # Units whose own conversation someone follows: the list each one's listener is
         # in, and the listener (`follow`).
         self._followed: dict[str, tuple[list[Any], Callable[[Any], None]]] = {}
-        self.config = settings.from_record(fleet.settings)
         self.running = False  # its processes are up, or ending
         self.stopping = False  # they are ending: nothing more is started
         self.finished = asyncio.Event()  # the lead reported, or the budget ran out
@@ -137,12 +136,21 @@ class Manager:
         self._unsaved = False
         self._saving = asyncio.Lock()
 
+    @property
+    def config(self) -> FleetConfig:
+        """What the fleet runs with: the fleet's own, kept in its record."""
+        return self.fleet.config
+
+    @config.setter
+    def config(self, config: FleetConfig) -> None:
+        self.fleet.config = config
+
     @classmethod
     def new(cls, config: FleetConfig, folder: Path, work: Path, name: str = "",
             **how: Any) -> Manager:
         """A new fleet in `folder`, with no agents and nothing running. Blocking."""
-        fleet = Fleet(config.top_rank, config.max_units, name)
-        fleet.work, fleet.settings = str(work), settings.record(config)
+        fleet = Fleet(config, name)
+        fleet.work = str(work)
         folder.mkdir(parents=True, exist_ok=True)
         fleet.save(folder)
         return cls(folder, fleet, **how)
@@ -181,13 +189,13 @@ class Manager:
             if self.fleet.running:
                 raise FleetError(f"The fleet in {self.folder} is running (process "
                                  f"{self.fleet.manager_pid}).")
-            config = settings.from_record(self.fleet.settings, **overrides)
+            config = settings.from_record(settings.record(self.config), **overrides)
             if self.fleet.spent_usd >= config.budget_usd:
                 raise FleetError(f"The fleet has spent ${self.fleet.spent_usd:.2f} of its "
                                  f"${config.budget_usd:.2f}: give it more with --budget.")
             self._harness = self._own_harness or await asyncio.to_thread(
                 harnesses.load, config.harness_options)
-            self.config, self.fleet.settings = config, settings.record(config)
+            self.config = config
             self._tools = ToolServer(
                 (secretary_tools if self._converses else fleet_tools)(self))
             await self._tools.start()
@@ -300,8 +308,7 @@ class Manager:
             unit.budget_usd = (config.unit_budget_usd
                                if unit.budget_usd >= old.unit_budget_usd
                                else min(unit.budget_usd, config.unit_budget_usd))
-        self.config, self.fleet.settings = config, settings.record(config)
-        self.fleet.max_units = config.max_units  # what `Fleet.add` holds a fleet to
+        self.config = config
         self._changed()
         await self._save()
         again = [unit for unit in everyone

@@ -2,11 +2,12 @@ from pathlib import Path
 
 import pytest
 
+from kfm.config import FleetConfig
 from kfm.fleet import Fleet, FleetError
 
 
 def test_the_lead_has_the_top_rank_and_each_agent_one_below_its_supervisor():
-    fleet = Fleet(top_rank=3)
+    fleet = Fleet(FleetConfig(top_rank=3))
     lead = fleet.add("Lead", "Ship it", None)
     scout = fleet.add("Scout", "Look around", lead)
     helper = fleet.add("Helper", "Carry things", scout)
@@ -31,14 +32,14 @@ def test_an_id_is_the_rank_and_a_count_that_is_not_given_twice():
 
 
 def test_the_lowest_rank_cannot_delegate():
-    fleet = Fleet(top_rank=1)
+    fleet = Fleet(FleetConfig(top_rank=1))
     lead = fleet.add("Lead", "Do it", None)
     with pytest.raises(FleetError, match="lowest rank"):
         fleet.add("Helper", "Help", lead)
 
 
 def test_a_fleet_has_one_lead_and_a_limit():
-    fleet = Fleet(max_units=2)
+    fleet = Fleet(FleetConfig(max_units=2))
     lead = fleet.add("Lead", "Do it", None)
     with pytest.raises(FleetError, match="already has a lead"):
         fleet.add("Other", "Also", None)
@@ -71,7 +72,7 @@ def test_a_team_is_inherited_and_spending_adds_up():
 
 
 def test_the_record_round_trips_and_another_format_is_refused(tmp_path: Path):
-    fleet = Fleet(top_rank=4, max_units=7)
+    fleet = Fleet(FleetConfig(top_rank=4, max_units=7))
     lead = fleet.add("Lead", "Do it", None)
     fleet.add("A", "a", lead).state = "done"
     fleet.save(tmp_path)

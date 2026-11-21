@@ -576,9 +576,9 @@ async def test_a_fleet_follows_the_settings_as_they_are_when_it_is_read(tmp_path
 
     again = LocalService(home, harness=harness)
     await again.fleets(made.id)
-    assert again.fleet(dev).settings["permissions"] == "auto"
+    assert again.fleet(dev).config.permissions == "auto"
     assert again.fleet(dev).lead.budget_usd == 7.0
-    assert again.fleet(made.secretary).settings["permissions"] == "auto"
+    assert again.fleet(made.secretary).config.permissions == "auto"
     assert again.fleet(made.secretary).lead.model == "small-1"
     await again.aclose()
 

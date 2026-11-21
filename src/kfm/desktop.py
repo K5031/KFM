@@ -546,26 +546,27 @@ BOX_STYLE = ("QFrame#budget {{ border: 1px solid {line}; border-radius: 10px; }}
              "QFrame#budget QLineEdit {{ background: transparent; border: none; padding: 0; }}")
 
 
-class StartForm(Warns, QWidget):
-    """A new fleet: its name, one box for what it should do, and what else a fleet needs
-    along the box's lower edge."""
+class ComposerForm(Warns, QWidget):
+    """A form in the middle of the page: the logo, a heading, and one box that holds a
+    name, what it is to do, and along its lower edge whatever else it needs (`_lower`).
+    `submitted` when the person wants it made."""
 
     submitted = Signal()
+    PICKER = ""  # the title of the dialog that chooses its folder
 
-    def __init__(self) -> None:
+    def __init__(self, heading: str, name: str, does: str) -> None:
         super().__init__()
         self.setMaximumWidth(FORM)
         self.setMinimumWidth(480)
         colors = theme.current()
-        self.setStyleSheet(BOX_STYLE.format(line=colors.line))
-        self.folder: Path | None = None  # the project's, unless another is chosen
+        self.folder: Path | None = None
         outer = QVBoxLayout(self)
         outer.setSpacing(0)
         outer.addStretch(3)
         logo = QLabel()
         logo.setPixmap(QIcon(str(app_menu.ICON)).pixmap(LOGO, LOGO))
         logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        self.heading = label("New fleet", wrap=False)
+        self.heading = label(heading, wrap=False)
         self.heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.heading.setStyleSheet("font-size: 22px; font-weight: 600;")
         outer.addWidget(logo)
@@ -577,28 +578,76 @@ class StartForm(Warns, QWidget):
         inside = QVBoxLayout(box)
         inside.setContentsMargins(16, 14, 12, 12)
         inside.setSpacing(12)
-        self.name = _name_field("Fleet name")
+        self.name = _name_field(name)
         self.name.returnPressed.connect(lambda: self.task.setFocus())
         inside.addWidget(self.name)
         self.task = TaskBox()
-        self.task.setPlaceholderText("What it does, to have a lead build it (optional)")
+        self.task.setPlaceholderText(does)
         self.task.submitted.connect(self.submitted)
         inside.addWidget(self.task)
+        self.folder_button = QToolButton(objectName="folderPicker")
+        self.folder_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.folder_button.setIcon(theme.icon("folder", colors.muted, 16))
+        self.folder_button.clicked.connect(self._choose)
         row = QHBoxLayout()
+        self._lower(row)
+        inside.addLayout(row)
+        outer.addWidget(box)
+        outer.addSpacing(10)
+        self.warning = label("", role="small", tone="error")
+        self.warning.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        for line in (*self._under(), self.warning):
+            outer.addWidget(line)
+        outer.addStretch(5)
+
+    def _lower(self, row: QHBoxLayout) -> None:
+        """Fill the box's lower edge."""
+        raise NotImplementedError
+
+    def _under(self) -> Sequence[QWidget]:
+        """What stands under the box, above the warning."""
+        return ()
+
+    def sizeHint(self) -> QSize:
+        return QSize(FORM, super().sizeHint().height())
+
+    def set_folder(self, folder: Path | None) -> None:
+        raise NotImplementedError
+
+    def _choose(self) -> None:
+        start = self.folder.parent if self.folder is not None else Path.home()
+        dialog = QFileDialog(self, self.PICKER, str(start))
+        dialog.setFileMode(QFileDialog.FileMode.Directory)
+        dialog.fileSelected.connect(lambda chosen: self.set_folder(Path(chosen)))
+        dialog.open()
+
+
+class StartForm(ComposerForm):
+    """A new fleet: its name, one box for what it should do, and what else a fleet needs
+    along the box's lower edge."""
+
+    PICKER = "The folder the fleet works in"
+
+    def __init__(self) -> None:
+        super().__init__("New fleet", "Fleet name",
+                         "What it does, to have a lead build it (optional)")
+        self.setStyleSheet(BOX_STYLE.format(line=theme.current().line))
+        self.warning.hide()
+        self._kinds.buttonToggled.connect(lambda *_: self._describe())
+        self._describe()
+        self.set_folder(None)  # the project's, unless another is chosen
+
+    def _lower(self, row: QHBoxLayout) -> None:
         row.setSpacing(8)
         segments = KindSwitch()
         self.task_kind, self.duty, self._kinds = (segments.task_kind, segments.duty,
                                                   segments.group)
-        self.folder_button = QToolButton(objectName="folderPicker")
-        self.folder_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.folder_button.setIcon(theme.icon("folder", colors.muted, 16))
         self.folder_button.setToolTip("The folder the agents work in")
-        self.folder_button.clicked.connect(self._choose)
         self.budget = Budget()
         self.lead_model = LeadModel()
         self.start = QToolButton(objectName="send")
         self.start.setProperty("active", True)
-        self.start.setIcon(theme.icon("send", colors.on_accent, 18))
+        self.start.setIcon(theme.icon("send", theme.current().on_accent, 18))
         self.start.setFixedSize(36, 36)
         self.start.setToolTip("Start the fleet")
         self.start.setAccessibleName("Start the fleet")
@@ -609,23 +658,11 @@ class StartForm(Warns, QWidget):
         row.addWidget(self.lead_model)
         row.addStretch(1)
         row.addWidget(self.start)
-        inside.addLayout(row)
-        outer.addWidget(box)
-        outer.addSpacing(10)
+
+    def _under(self) -> Sequence[QWidget]:
         self.hint = label("", role="small", tone="muted")
         self.hint.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        self.warning = label("", role="small", tone="error")
-        self.warning.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        self.warning.hide()
-        outer.addWidget(self.hint)
-        outer.addWidget(self.warning)
-        outer.addStretch(5)
-        self._kinds.buttonToggled.connect(lambda *_: self._describe())
-        self._describe()
-        self.set_folder(None)
-
-    def sizeHint(self) -> QSize:
-        return QSize(FORM, super().sizeHint().height())
+        return (self.hint,)
 
     def set_folder(self, folder: Path | None) -> None:
         """The folder the fleet will work in; None: not chosen yet."""
@@ -641,74 +678,28 @@ class StartForm(Warns, QWidget):
             "Runs until you stop it." if self.duty.isChecked() else
             "Ends when the lead reports.")
 
-    def _choose(self) -> None:
-        start = self.folder.parent if self.folder is not None else Path.home()
-        dialog = QFileDialog(self, "The folder the fleet works in", str(start))
-        dialog.setFileMode(QFileDialog.FileMode.Directory)
-        dialog.fileSelected.connect(lambda chosen: self.set_folder(Path(chosen)))
-        dialog.open()
 
-
-class ProjectForm(Warns, QWidget):
+class ProjectForm(ComposerForm):
     """The window with no project: a name, the folder the project's fleets work in, and
     what it should do when its fleets are to be drafted."""
 
-    submitted = Signal()
+    PICKER = "The folder the project's fleets work in"
 
     def __init__(self) -> None:
-        super().__init__()
-        self.setMaximumWidth(FORM)
-        self.setMinimumWidth(480)
-        colors = theme.current()
-        self.folder: Path | None = None
+        super().__init__("New project", "Project name",
+                         "What it should do, for its secretary (optional)")
         self.base: Path | None = None  # the projects folder: a project's own is made in it
-        outer = QVBoxLayout(self)
-        outer.setSpacing(0)
-        outer.addStretch(3)
-        logo = QLabel()
-        logo.setPixmap(QIcon(str(app_menu.ICON)).pixmap(LOGO, LOGO))
-        logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        heading = label("New project", wrap=False)
-        heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        heading.setStyleSheet("font-size: 22px; font-weight: 600;")
-        outer.addWidget(logo)
-        outer.addSpacing(14)
-        outer.addWidget(heading)
-        outer.addSpacing(22)
-        box = QFrame(objectName="composer")
-        inside = QVBoxLayout(box)
-        inside.setContentsMargins(16, 14, 12, 12)
-        inside.setSpacing(12)
-        self.name = _name_field("Project name")
-        self.name.returnPressed.connect(lambda: self.does.setFocus())
+        self.does = self.task
         self.name.textChanged.connect(lambda: self._show_folder())
-        inside.addWidget(self.name)
-        self.does = TaskBox()
-        self.does.setPlaceholderText("What it should do, for its secretary (optional)")
-        self.does.submitted.connect(self.submitted)
-        inside.addWidget(self.does)
-        row = QHBoxLayout()
-        self.folder_button = QToolButton(objectName="folderPicker")
-        self.folder_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.folder_button.setIcon(theme.icon("folder", colors.muted, 16))
-        self.folder_button.clicked.connect(self._choose)
+        self.set_folder(None)
+
+    def _lower(self, row: QHBoxLayout) -> None:
         self.create = QPushButton("Create")
         self.create.setProperty("primary", True)
         self.create.clicked.connect(self.submitted)
         row.addWidget(self.folder_button)
         row.addStretch(1)
         row.addWidget(self.create)
-        inside.addLayout(row)
-        outer.addWidget(box)
-        outer.addSpacing(10)
-        self.warning = label("", role="small", tone="error")
-        self.warning.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        outer.addWidget(self.warning)
-        outer.addStretch(5)
-        self.set_folder(None)
-
-    def sizeHint(self) -> QSize:
-        return QSize(FORM, super().sizeHint().height())
 
     def set_folder(self, folder: Path | None) -> None:
         self.folder = Path(folder).expanduser() if folder is not None else None
@@ -735,13 +726,6 @@ class ProjectForm(Warns, QWidget):
         projects folder. None without a projects folder, or a name that makes one."""
         name = project.folder_name(self.name.text())
         return self.base / name if self.base is not None and name else None
-
-    def _choose(self) -> None:
-        start = self.folder.parent if self.folder is not None else Path.home()
-        dialog = QFileDialog(self, "The folder the project's fleets work in", str(start))
-        dialog.setFileMode(QFileDialog.FileMode.Directory)
-        dialog.fileSelected.connect(lambda chosen: self.set_folder(Path(chosen)))
-        dialog.open()
 
 
 def _name_field(placeholder: str) -> QLineEdit:

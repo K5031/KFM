@@ -43,6 +43,8 @@ class Server:
     def __init__(self, service: LocalService, path: Path, *, idle_s: float = IDLE_S) -> None:
         self.service, self.path, self._idle_s = service, path, idle_s
         self._writers: set[asyncio.StreamWriter] = set()
+        # Who follows each agent's own conversation: (fleet, unit) to its frontends.
+        self._followers: dict[tuple[str, str], set[int]] = {}
         self._calls: set[asyncio.Task[None]] = set()
         self._since = time.time()
         self._ending = asyncio.Event()  # a frontend asked for the service to end
@@ -135,8 +137,8 @@ class Server:
             self._writers.discard(writer)
             for call in list(mine):  # what it was waiting for is nobody's now
                 call.cancel()
-            for fleet_id, unit in followed:
-                await self.service.unfollow(fleet_id, unit)
+            for fleet_id, unit in list(followed):
+                await self._let_go(followed, fleet_id, unit)
             writer.close()
 
     async def _answer(self, writer: asyncio.StreamWriter, line: bytes,
@@ -153,12 +155,16 @@ class Server:
                 raise ValueError(f"There is no {method!r} in KFM's service.")
             else:
                 args = request.get("args", [])
-                answer = {"id": request_id, "result": await self._call(
-                    method, args, request.get("kwargs", {}))}
-                if method == "follow" and answer["result"]:
-                    followed.add((args[0], args[1]))
-                elif method == "unfollow":
-                    followed.discard((args[0], args[1]))
+                if method == "unfollow":  # the service's, once nobody follows it
+                    await self._let_go(followed, args[0], args[1])
+                    answer = {"id": request_id, "result": None}
+                else:
+                    answer = {"id": request_id, "result": await self._call(
+                        method, args, request.get("kwargs", {}))}
+                    if method == "follow" and answer["result"]:
+                        followed.add((args[0], args[1]))
+                        self._followers.setdefault((args[0], args[1]), set()).add(
+                            id(followed))
         except _REFUSALS + (KeyError,) as e:
             answer = {"id": request_id,
                       "error": {"type": type(e).__name__, "message": str(e)}}
@@ -172,6 +178,17 @@ class Server:
             writer.write(json.dumps(answer, ensure_ascii=False).encode() + b"\n")
             with contextlib.suppress(ConnectionError):
                 await writer.drain()
+
+    async def _let_go(self, followed: set[tuple[str, str]], fleet_id: str,
+                      unit: str) -> None:
+        """A frontend follows the agent no more; the service is told when it was the
+        last one that did."""
+        followed.discard((fleet_id, unit))
+        others = self._followers.get((fleet_id, unit), set())
+        others.discard(id(followed))
+        if not others:
+            self._followers.pop((fleet_id, unit), None)
+            await self.service.unfollow(fleet_id, unit)
 
     async def _call(self, method: str, args: list[Any], kwargs: dict[str, Any]) -> Any:
         result = await getattr(self.service, method)(*args, **kwargs)

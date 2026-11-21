@@ -69,8 +69,9 @@ there in words (`harnesses.kadence._card`).
   started to read from while the fleet does not run.
 - **A followed agent's process stays up** for as long as its page is open, where it
   would have been closed when its turn ended.
-- **One follower at a time.** Two windows on the same agent's page take it from each
-  other.
+- **Several windows may show the same agent.** What happens in its conversation goes
+  to every frontend, and the server lets go of it when the last one that follows it
+  leaves or closes (`Server._followers`).
 - **KFM leans harder on Kadence's insides**: its window code, its remote runtime and
   the wire format of its channel.
 - **Tried with a scripted model only** (a real Kadence process, `tests/fakecore.py`).

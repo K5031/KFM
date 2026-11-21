@@ -405,6 +405,39 @@ async def test_what_waits_for_the_person_is_known_without_opening_a_fleet(tmp_pa
     await asyncio.wait_for(serving, 10)
 
 
+async def test_an_agent_followed_from_two_windows_is_let_go_of_by_the_last(tmp_path: Path):
+    """One window that leaves an agent's page, or closes, does not take the page from
+    another that still shows it."""
+    calls: list[tuple[str, str, str]] = []
+
+    class Followed(LocalService):
+        async def follow(self, fleet_id: str, unit_id: str) -> bool:
+            calls.append(("follow", fleet_id, unit_id))
+            return True
+
+        async def unfollow(self, fleet_id: str, unit_id: str) -> None:
+            calls.append(("unfollow", fleet_id, unit_id))
+
+    home, socket = tmp_path / "home", tmp_path / "s"
+    server = Server(Followed(home, harness=FakeHarness({}), config=FleetConfig()), socket,
+                    idle_s=0.3)
+    serving = asyncio.ensure_future(server.run())
+    await until(socket.exists)
+    one = await RemoteService.connect(home, socket=socket, start=False)
+    two = await RemoteService.connect(home, socket=socket, start=False)
+    assert await one.follow("f", "K5001") and await two.follow("f", "K5001")
+    await one.unfollow("f", "K5001")  # the other still shows it
+    assert [c[0] for c in calls] == ["follow", "follow"]
+    await one.follow("f", "K5001")
+    await one.aclose()  # a window that closes lets go of what it followed
+    await asyncio.sleep(0.1)
+    assert "unfollow" not in [c[0] for c in calls]
+    await two.unfollow("f", "K5001")  # the last one
+    assert calls[-1] == ("unfollow", "f", "K5001") and [c[0] for c in calls].count("unfollow") == 1
+    await two.aclose()
+    await asyncio.wait_for(serving, 10)
+
+
 async def test_the_models_an_agent_program_offers_are_listed(tmp_path: Path):
     """For a frontend to choose from; here and over the socket, and asked for once."""
     harness = FakeHarness({})

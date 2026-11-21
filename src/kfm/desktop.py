@@ -117,7 +117,7 @@ QUIET_STATES = ("starting", "working", "waiting", "asking", "done")  # shown by 
 OVER = ("done", "idle", "failed", "stopped")  # an agent that is at nothing
 THINKING = 600  # characters, the end, of what an agent is thinking, under its feed
 BAR = 48  # px, the bar on top
-COLUMN = 720  # px, the widest the timeline's entries get
+COLUMN = 720  # px, the widest the feed's entries get
 REFRESH_MS = 1000  # spending and states, while a fleet runs
 # What the service refuses, with words for the person (kfm.service).
 REFUSALS = (FleetError, UnitError, ValueError, OSError, RuntimeError)
@@ -154,7 +154,7 @@ def _clip(text: str, chars: int = TITLE_CHARS) -> str:
     return text if len(text) <= chars else text[:chars] + "…"
 
 
-# ── The timeline's entries. `concerns`: the units an entry is about; none: everyone. ──
+# ── The feed's entries. `concerns`: the units an entry is about; none: everyone. ──
 
 
 class Line(QLabel):
@@ -1266,7 +1266,7 @@ def _dropped_files(source: QMimeData) -> list[str]:
 
 
 class FleetView(QWidget):
-    """One fleet of the service, known by its id there: its timeline and the box for
+    """One fleet of the service, known by its id there: its feed and the box for
     messages to its lead. `changed` after anything that alters how it stands."""
 
     changed = Signal()
@@ -1284,22 +1284,22 @@ class FleetView(QWidget):
         self._approvals: dict[str, ApprovalCard] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         # The agent on the page as its own Kadence conversation, where it has one to
-        # show; else the page is the timeline, of that agent or of all.
+        # show; else the page is the feed, of that agent or of all.
         self.conversation: AgentPage | None = None
         self._attaching: AgentPage | None = None  # being opened: it hears already
         self._opening: asyncio.Task[None] | None = None
         self._refused: tuple[Any, ...] | None = None  # how things stood when none opened
 
-        # The timeline is one column in the middle, as wide as text reads well.
+        # The feed is one column in the middle, as wide as text reads well.
         page = QWidget(objectName="transcript")
         across = QHBoxLayout(page)
         across.setContentsMargins(0, 0, 0, 0)
         self._column = QWidget()
         self._column.setMaximumWidth(COLUMN)
-        self._timeline = QVBoxLayout(self._column)
-        self._timeline.setContentsMargins(4, 16, 4, 12)
-        self._timeline.setSpacing(10)
-        self._timeline.addStretch(1)
+        self._feed = QVBoxLayout(self._column)
+        self._feed.setContentsMargins(4, 16, 4, 12)
+        self._feed.setSpacing(10)
+        self._feed.addStretch(1)
         across.addStretch(1)
         across.addWidget(self._column, 100)
         across.addStretch(1)
@@ -1307,7 +1307,7 @@ class FleetView(QWidget):
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll.setWidget(page)
-        # The timeline stays at its end as it grows, for whoever is reading the end; it
+        # The feed stays at its end as it grows, for whoever is reading the end; it
         # is put there when its history is first shown and when what it shows changes.
         self._at_end = True
         bar = self.scroll.verticalScrollBar()
@@ -1356,7 +1356,7 @@ class FleetView(QWidget):
         composer.addStretch(1)
         composer.addWidget(box, 100)
         composer.addStretch(1)
-        self.pages = QStackedWidget()  # the timeline, or an agent's conversation
+        self.pages = QStackedWidget()  # the feed, or an agent's conversation
         self.pages.addWidget(self.scroll)
         self._prompts = QVBoxLayout()  # what that agent waits for an answer to
         self._prompts.setContentsMargins(0, 0, 0, 0)
@@ -1437,7 +1437,7 @@ class FleetView(QWidget):
         self.to_end()
 
     def to_end(self) -> None:
-        """Show the latest of the timeline, and stay with it as it grows."""
+        """Show the latest of the feed, and stay with it as it grows."""
         self._at_end = True
         bar = self.scroll.verticalScrollBar()
         bar.setValue(bar.maximum())
@@ -1548,7 +1548,7 @@ class FleetView(QWidget):
         self._converse()  # what is wanted may have changed meanwhile
 
     async def _leave(self) -> None:
-        """Back to the timeline."""
+        """Back to the feed."""
         page, self.conversation = self.conversation, None
         if page is not None:
             self.pages.setCurrentWidget(self.scroll)
@@ -1718,7 +1718,7 @@ class FleetView(QWidget):
         entry.setMaximumWidth(COLUMN)
         self.entries.append(entry)
         # Above what agents are doing now, which stands last.
-        self._timeline.insertWidget(self._timeline.count() - 1 - len(self.lives), entry)
+        self._feed.insertWidget(self._feed.count() - 1 - len(self.lives), entry)
         self._fit(entry)
 
     def live(self, unit_id: str, thinking: str, writing: str, doing: str) -> None:
@@ -1730,7 +1730,7 @@ class FleetView(QWidget):
             known = self.fleet.units.get(unit_id) if self.fleet is not None else None
             entry = self.lives[unit_id] = LiveEntry(unit_id, known)
             entry.setMaximumWidth(COLUMN)
-            self._timeline.insertWidget(self._timeline.count() - 1, entry)
+            self._feed.insertWidget(self._feed.count() - 1, entry)
         entry.show_live(thinking, writing, doing)
         self._fit(entry)
 
@@ -2145,7 +2145,7 @@ class FleetWindow(QMainWindow):
             self.open_fleet(view)
 
     def open_fleet(self, view: FleetView, unit_id: str | None = None) -> None:
-        """The fleet's timeline, for one agent or for all."""
+        """The fleet's feed, for one agent or for all."""
         self.view, self.adding = view, False
         self.fleet_pages.setCurrentWidget(view)
         view.input.setFocus()

@@ -31,7 +31,7 @@ event loop, its theme, its Markdown view.
 
 - **Agents** on the left, as the tree of who supervises whom: name, rank, state and
   spending. Choosing one shows only what concerns it.
-- **The timeline** in the middle: what an agent said, and each delivery as a card with its
+- **The feed** in the middle: what an agent said, and each delivery as a card with its
   whole text; an approval as a card with Allow and Deny; a line for an agent that failed
   or was stopped.
 - **The message box** at the bottom goes to the lead.
@@ -52,7 +52,7 @@ event loop, its theme, its Markdown view.
 ## Alternatives considered
 
 - **A terminal interface** (Textual, as Kadence's). No new dependency for people on a
-  server, but a tree of agents beside a timeline of long reports is what a terminal shows
+  server, but a tree of agents beside a feed of long reports is what a terminal shows
   worst, and the user uses Kadence's window.
 - **A web page served by the manager.** Reachable from anywhere, and a fleet could run
   without a window. A second stack (HTTP, a page, its own look) where Kadence's desktop

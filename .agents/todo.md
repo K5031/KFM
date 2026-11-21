@@ -3,12 +3,6 @@
 What is wanted and not started, for KFM. A line each; when one is taken up it gets an
 Agent Note (`notes/proposed/`, where some already are) and leaves this list.
 
-## Offered, not decided
-
-- **Restarts in the feed.** An agent is told that its fleet was resumed, its model
-  changed or its settings changed, and the feed shows nothing of it.
-- **One word for the feed**: the documentation says "feed" and "timeline" both.
-
 ## Gaps
 
 - A stopped fleet's agents show the feed, not their Kadence conversations.

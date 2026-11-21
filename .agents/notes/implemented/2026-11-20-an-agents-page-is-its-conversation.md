@@ -37,14 +37,14 @@ An agent's page is that agent's conversation as Kadence shows it.
   that goes away lets go of what it followed.
 - **The window** (`kfm.conversation`) gives Kadence's `RemoteRuntime` a channel that is
   the service (`UnitChannel`), and Kadence's model, controller and view do the rest
-  (`AgentPage`). `FleetView` shows it in place of its timeline when an agent is chosen,
+  (`AgentPage`). `FleetView` shows it in place of its feed when an agent is chosen,
   and for a secretary always.
 - **KFM's own ways stay where they matter** (`AgentController`): what the person writes
   on the page, and a click on a card's answer, go through `Service.say`, so a supervisor
   is told and the fleet's record has it; an answer to a permission request goes through
   `Service.approve`. The strip of what waits for the person leaves out what the open
   page asks in the agent's own words.
-- **Where there is nothing to follow, the page is the timeline as before**: a fleet that
+- **Where there is nothing to follow, the page is the feed as before**: a fleet that
   does not run, an agent that has not begun, a scripted unit of the tests. It is looked
   at again whenever the fleet changes, and after the agent's process ended.
 
@@ -65,7 +65,7 @@ there in words (`harnesses.kadence._card`).
 ## Consequences
 
 - **What Kadence shows, KFM shows**, and what Kadence learns to show comes with it.
-- **A stopped fleet's agents show the timeline**, not their conversations: nothing is
+- **A stopped fleet's agents show the feed**, not their conversations: nothing is
   started to read from while the fleet does not run.
 - **A followed agent's process stays up** for as long as its page is open, where it
   would have been closed when its turn ended.

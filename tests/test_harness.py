@@ -72,11 +72,12 @@ async def test_a_fleet_on_another_harness_is_resumed_on_its_sessions(tmp_path: P
     assert Fleet.load(tmp_path / "fleet").units["K5001"].session == "session-K5001"
 
     harness.scripts["Lead"] = [{"when": "started again", "do": [("say", "Back on watch.")]}]
-    manager, _ = await run(tmp_path, harness, resume=True)
+    manager, events = await run(tmp_path, harness, resume=True)
     while len(harness.heard["Lead"]) < 2:
         await asyncio.sleep(0.01)
     assert harness.opened == [("Lead", None), ("Lead", "session-K5001")]
     assert "started again" in harness.heard["Lead"][1]
+    assert Notice("The fleet was started again.") in events  # and the feed says so
     await manager.aclose()
 
 
@@ -141,7 +142,7 @@ async def test_the_person_adds_an_agent_and_sets_models(tmp_path: Path):
         "Lead": [{"do": [("say", "On watch.")]}],
         "Tester": [{"do": [("say", "Testing.")]},
                    {"when": "model was changed", "do": [("say", "Carrying on.")]}]})
-    manager, _ = await run(tmp_path, harness)
+    manager, events = await run(tmp_path, harness)
     lead = await manager.add(None, "Lead", "Keep the project healthy", ongoing=True)
     tester = await manager.add(lead, "Tester", "Run the tests", ongoing=True, model="small-1")
     assert (tester.supervisor, tester.rank, tester.model) == (lead.id, 4, "small-1")
@@ -156,6 +157,7 @@ async def test_the_person_adds_an_agent_and_sets_models(tmp_path: Path):
     await until(lambda: ("Tester", "big-1") in harness.models)
     assert harness.opened[-1] == ("Tester", "session-K4001")  # on its own conversation
     await until(lambda: any("model was changed" in heard for heard in harness.heard["Tester"]))
+    assert Notice("Tester was started again on big-1.") in events
     await manager.set_model(lead, "")  # none of its own: its rank's again
     await until(lambda: harness.models[-1] == ("Lead", None))
     await manager.aclose()

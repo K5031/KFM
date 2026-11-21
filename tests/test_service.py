@@ -11,7 +11,7 @@ import pytest
 from kfm import remote
 from kfm.api import UnitError
 from kfm.config import FleetConfig, save
-from kfm.events import Delivered, Said, Told, units
+from kfm.events import Delivered, Notice, Said, Told, units
 from kfm.fleet import Fleet, FleetError
 from kfm.local import LocalService
 from kfm.remote import RemoteService, ServiceError
@@ -565,6 +565,8 @@ async def test_an_agent_at_work_is_started_again_on_changed_settings(tmp_path: P
     assert harness.opened[-1] == ("K5001", "session-K5001")  # in its own conversation
     await until(lambda: "settings" in harness.heard["K5001"][-1])
     assert service.fleet(dev).lead.state == "working"
+    history, _ = await service.history(dev)
+    assert Notice("The settings changed: K5001 was started again.") in history
     await service.aclose()
 
 

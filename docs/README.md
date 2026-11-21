@@ -210,8 +210,9 @@ opens a window on the same service the commands talk to, without a terminal. It 
 - **Agents** of the open fleet are on the left, each under its supervisor, with its
   state and what it has spent. Click one to see only what concerns it; **Show all**
   brings everything back. The secretary's page has no such list: she is one agent.
-- **The timeline** shows what the lead says and every report, question and update in
-  full, with who sent it to whom. An approval is a card with **Allow**, **Always allow** (that agent no longer asks
+- **The feed** shows what the lead says and every report, question and update in
+  full, with who sent it to whom. A line says when the fleet was started again, and
+  when an agent was started again for a change of its model or of the settings. An approval is a card with **Allow**, **Always allow** (that agent no longer asks
   for that kind of action) and **Deny**.
 - **Message the lead** in the box at the bottom; Enter sends, Shift+Enter starts a new
   line. A message to a stopped fleet starts it again.

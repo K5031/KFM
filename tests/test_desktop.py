@@ -1176,7 +1176,7 @@ async def test_the_window_has_rounded_corners_and_a_shadow_unless_maximized(
     assert shown.contentsRect() == shown.rect()
 
 
-async def test_a_fleets_timeline_is_at_its_end_when_opened_and_when_an_agent_is_chosen(
+async def test_a_fleets_feed_is_at_its_end_when_opened_and_when_an_agent_is_chosen(
         window, tmp_path: Path):
     long = "\n\n".join(f"Line {n} of what was found." for n in range(12))
     shown, _ = window({"K5001": [{"do": [("say", long)] * 8}]})
@@ -1268,7 +1268,7 @@ async def test_an_agents_page_is_its_kadence_conversation(kadence_window, tmp_pa
     history, _ = await shown.service.history(view.id)
     assert "Yes, order it" in [e.text for e in history if isinstance(e, Told)]  # through KFM
 
-    shown.show_all.click()  # back to the whole fleet: its timeline
+    shown.show_all.click()  # back to the whole fleet: its feed
     await until(lambda: view.conversation is None)
     assert view.pages.currentWidget() is view.scroll
 

@@ -61,7 +61,7 @@ fleet by the id the service gives it, never by where its record is kept.
   data) as the service last sent it. The manager says when the record or the fleet's
   state changed, and the service sends the record then, ahead of any event that tells
   of the change. Events are plain data too: they name units by id, and a frontend reads
-  who that is in the record. The window's chart, agents list and timeline read a
+  who that is in the record. The window's chart, agents list and feed read a
   `Fleet`.
 - Each event has a number, its place in the fleet's log. `history` says which number it
   reaches, so a frontend that opens a fleet shows the history and then what has a

@@ -203,6 +203,8 @@ class Manager:
             # Every unit is open before any is told: a supervisor that acts at once finds
             # its agents there.
             back = [unit for unit in everyone if unit.active and await self._reopen(unit)]
+            if back:
+                self._emit(Notice("The fleet was started again."))
             for unit in back:
                 await self._carry_on(unit)
             await self._launch(everyone)
@@ -302,14 +304,18 @@ class Manager:
         self.config, self.fleet.settings = config, settings.record(config)
         self._changed()
         await self._save()
-        for unit in everyone:
-            if unit.id in self._sessions and self._runs_on(unit) != before[unit.id]:
-                await self._close(unit)
-                if unit.active and self.up:
-                    try:
-                        await (await self._session(unit)).send(units.SETTINGS_CHANGED)
-                    except UnitError as e:
-                        await self._could_not_start(unit, e)
+        again = [unit for unit in everyone
+                 if unit.id in self._sessions and self._runs_on(unit) != before[unit.id]]
+        if told := [unit.called for unit in again if unit.active and self.up]:
+            self._emit(Notice(f"The settings changed: {', '.join(told)} "
+                              f"{'was' if len(told) == 1 else 'were'} started again."))
+        for unit in again:
+            await self._close(unit)
+            if unit.active and self.up:
+                try:
+                    await (await self._session(unit)).send(units.SETTINGS_CHANGED)
+                except UnitError as e:
+                    await self._could_not_start(unit, e)
 
     def _runs_on(self, unit: Unit) -> tuple[str | None, str, float]:
         """What the unit's process is started with of the settings."""
@@ -367,6 +373,8 @@ class Manager:
             return  # its process starts on it the next time
         await self._close(unit)
         if unit.active and self.up:
+            self._emit(Notice(f"{unit.called} was started again on "
+                              f"{self._runs_on(unit)[0] or "Kadence's model"}."))
             try:
                 await (await self._session(unit)).send(units.MODEL_CHANGED)
             except UnitError as e:

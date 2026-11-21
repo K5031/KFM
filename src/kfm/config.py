@@ -29,7 +29,6 @@ class FleetConfig:
     permissions: str = "allow_workspace"  # Kadence's level for every unit
     models: Mapping[str, str] = field(default_factory=dict)
     teams: Mapping[str, str] = field(default_factory=dict)
-    harness: str = "kadence"  # says nothing: units run Kadence. In records of format 9
     harness_options: Mapping[str, Any] = field(default_factory=dict)
     # A unit's duty intervals: it carries on soon after a turn, and checks in this often
     # when nothing wakes it.

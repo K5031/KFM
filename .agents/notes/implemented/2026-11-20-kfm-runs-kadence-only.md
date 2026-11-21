@@ -29,8 +29,8 @@ which is where that choice already is.
   knows nothing of processes, and the tests put a scripted unit in Kadence's place.
 - A feature is designed for Kadence, and reaches past that line where that is the
   simplest way, as the window does when it shows Kadence's own conversation view.
-- The settings' `harness` says nothing. It is in fleets' records of format 9 and leaves
-  with that format.
+- The settings name no harness: there is one, and `harness_options` is what it is made
+  with.
 
 ## Alternatives considered
 

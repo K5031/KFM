@@ -68,7 +68,7 @@ may not start anything: the limit is tested where a fleet starts.
 - A taskless agent shows as `planned`, in a running fleet too.
 - A manager is held for every fleet the service has read, also those that never run.
   It costs a record in memory: the agent program and the tool server are made on start.
-- `fleet.json` is format 9: `planned` is every new agent's state, and `idle` no longer
+- `fleet.json` is format 10: `planned` is every new agent's state, and `idle` no longer
   means "waits for a task".
 - Checked on the second harness. With real Kadence units only the paths the earlier
   tests cover (start, resume, another task while running) were run.

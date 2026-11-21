@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-FORMAT = 9  # of fleet.json; a file of another format is refused
+FORMAT = 10  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
 # planned: in the fleet and not begun; it begins when the fleet runs and it has a task.

@@ -903,9 +903,12 @@ async def test_an_agents_task_is_changed_and_an_agent_is_removed_on_the_chart(
     scout = shown.chart.nodes[(key, "K4001")]
     scout.task_action.trigger()
     assert shown.dialog.task.toPlainText() == "Map the docs"
+    assert shown.dialog.kind.task_kind.isChecked()  # what it is now
     shown.dialog.task.setPlainText("Map the code")
+    shown.dialog.kind.duty.setChecked(True)
     shown.dialog.save.click()
     await until(lambda: harness.instructed and "Map the code" in harness.instructed[0][1])
+    assert harness.kinds == [("Scout", True)] and view.fleet.units["K4001"].ongoing
     assert "Map the code" in scout.toolTip()
 
     assert any("K4001" in entry.concerns for entry in view.entries)

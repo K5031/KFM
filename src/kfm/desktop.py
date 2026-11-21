@@ -1215,7 +1215,7 @@ class SettingsDialog(QDialog):
 
 
 class TaskDialog(QDialog):
-    """An agent's task, to change."""
+    """An agent's task, and whether it is a task or a duty, to change."""
 
     def __init__(self, parent: QWidget, unit: Unit) -> None:
         super().__init__(parent)
@@ -1226,6 +1226,8 @@ class TaskDialog(QDialog):
         self.task = TaskBox()
         self.task.setPlainText(unit.task)
         self.task.submitted.connect(self.accept)
+        self.kind = KindSwitch()
+        (self.kind.duty if unit.ongoing else self.kind.task_kind).setChecked(True)
         self.warning = label("", role="small", tone="error")
         self.warning.hide()
         self.save = QPushButton("Save")
@@ -1234,6 +1236,7 @@ class TaskDialog(QDialog):
         cancel = QPushButton("Cancel")
         cancel.clicked.connect(self.reject)
         foot = QHBoxLayout()
+        foot.addWidget(self.kind)
         foot.addStretch(1)
         foot.addWidget(cancel)
         foot.addWidget(self.save)
@@ -1491,9 +1494,10 @@ class FleetView(QWidget):
         await self.service.add_agent(self.id, supervisor.id if supervisor else None, name,
                                      task, ongoing=ongoing, model=model)
 
-    async def retask(self, unit: Unit, task: str) -> None:
-        """Another task for the agent. FleetError or UnitError when it cannot be."""
-        await self.service.set_task(self.id, unit.id, task)
+    async def retask(self, unit: Unit, task: str, *, ongoing: bool | None = None) -> None:
+        """Another task for the agent, as a duty or not. FleetError or UnitError when it
+        cannot be."""
+        await self.service.set_task(self.id, unit.id, task, ongoing=ongoing)
 
     async def remove(self, unit: Unit) -> None:
         """Take the agent and everything under it out of the fleet."""
@@ -2503,7 +2507,8 @@ class FleetWindow(QMainWindow):
 
         async def change() -> None:
             try:
-                await view.retask(unit, dialog.task.toPlainText())
+                await view.retask(unit, dialog.task.toPlainText(),
+                                  ongoing=dialog.kind.duty.isChecked())
             except (FleetError, UnitError, OSError) as e:
                 view.say(str(e), tone="error")
 

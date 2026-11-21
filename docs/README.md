@@ -85,7 +85,7 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm proposal PROJECT [--start\|--drop]` | The teams its secretary proposed; start them all, or drop the proposal |
 | `kfm fleet new PROJECT NAME ["task"] [--duty] [--model M]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
 | `kfm agent add FLEET [--under K5001] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
-| `kfm agent remove\|rename\|task\|model FLEET UNIT [...]` | Change an agent |
+| `kfm agent remove\|rename\|task\|model FLEET UNIT [...]` | Change an agent; `task` takes `--duty` or `--no-duty` to change its kind too |
 | `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID] [--model-mode auto\|manual] [--auto-models ID,ID] [--permissions LEVEL]` | Show or change the settings. A change reaches every fleet there is; `--budget` is what a new fleet may spend |
 | `kfm serve` | Run the service in this terminal instead of in the background |
 
@@ -178,8 +178,9 @@ opens a window on the same service the commands talk to, without a terminal. It 
   agent runs on: pick one from the list or type its id; leave it empty for the one its
   rank has in the settings. In a running fleet both happen at once (an agent starts again on its new
   model); in a stopped one they take effect when you start it.
-- **Task…** in an agent's right-click menu gives it another task. It keeps its
-  conversation, is told, and its supervisor is told. In a stopped fleet the agent works
+- **Task…** in an agent's right-click menu gives it another task, and switches it
+  between **Task** and **Duty**. It keeps its conversation, is told, and its supervisor
+  is told. In a stopped fleet the agent works
   on the new task when you start the fleet.
 - **Remove…** takes an agent out of the fleet, with every agent under it: they stop,
   and what they kept is deleted. Its supervisor is told, so the work can be picked up.

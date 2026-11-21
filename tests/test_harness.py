@@ -422,6 +422,12 @@ async def test_an_agent_is_given_another_task_and_an_agent_is_removed(tmp_path: 
                             for heard in harness.heard["Lead"]))
     with pytest.raises(FleetError, match="empty"):
         await manager.retask(scout, "  ")
+    # A task becomes a duty, or a duty a task, with the task: its instruction says which.
+    assert not scout.ongoing and harness.kinds == [("Scout", False)]
+    await manager.retask(scout, "Keep the map current", ongoing=True)
+    assert scout.ongoing and harness.kinds[-1] == ("Scout", True)
+    await manager.retask(scout, "Keep the map current")  # unsaid: as it is
+    assert scout.ongoing and harness.kinds[-1] == ("Scout", True)
     waiting = await manager.add(lead, "", "")  # with no task: it begins on the one given
     await manager.retask(waiting, "Check the links")
     await until(lambda: any("Your task: Check the links" in heard

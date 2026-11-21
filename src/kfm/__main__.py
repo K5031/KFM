@@ -126,6 +126,10 @@ def main(argv: list[str] | None = None) -> int:
                                     help="with none, its rank's")
             else:
                 change.add_argument(argument)
+        if name == "task":
+            change.add_argument("--duty", action=argparse.BooleanOptionalAction, default=None,
+                                help="make it a duty, or with --no-duty a task; "
+                                     "with neither, what it is")
 
     proposal = commands.add_parser(
         "proposal", help="the teams a project's secretary proposed")
@@ -400,7 +404,7 @@ async def _agent(service: Service, args: argparse.Namespace) -> int:
         case "rename":
             await service.rename_agent(fleet, args.unit, args.name)
         case "task":
-            await service.set_task(fleet, args.unit, args.task)
+            await service.set_task(fleet, args.unit, args.task, ongoing=args.duty)
         case "model":
             await service.set_model(fleet, args.unit, args.model)
     return 0

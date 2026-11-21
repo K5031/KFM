@@ -200,8 +200,9 @@ class RemoteService(Service):
     async def rename_agent(self, fleet: str, unit: str, name: str) -> None:
         await self._request("rename_agent", fleet, unit, name)
 
-    async def set_task(self, fleet: str, unit: str, task: str) -> None:
-        await self._request("set_task", fleet, unit, task)
+    async def set_task(self, fleet: str, unit: str, task: str, *,
+                       ongoing: bool | None = None) -> None:
+        await self._request("set_task", fleet, unit, task, ongoing=ongoing)
 
     async def set_model(self, fleet: str, unit: str, model: str) -> None:
         await self._request("set_model", fleet, unit, model)

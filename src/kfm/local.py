@@ -213,9 +213,10 @@ class LocalService(Service):
         manager = self._get(fleet_id)
         await manager.rename(name.strip(), self._unit(manager, unit_id))
 
-    async def set_task(self, fleet_id: str, unit_id: str, task: str) -> None:
+    async def set_task(self, fleet_id: str, unit_id: str, task: str, *,
+                       ongoing: bool | None = None) -> None:
         manager = self._get(fleet_id)
-        await manager.retask(self._unit(manager, unit_id), task)
+        await manager.retask(self._unit(manager, unit_id), task, ongoing=ongoing)
 
     async def set_model(self, fleet_id: str, unit_id: str, model: str) -> None:
         manager = self._get(fleet_id)

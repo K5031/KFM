@@ -23,7 +23,7 @@ from kfm.draft import Draft
 from kfm.events import Approval, FleetEvent
 from kfm.fleet import Fleet
 
-VERSION = 6  # of this contract; a service and a client of different versions do not talk
+VERSION = 7  # of this contract; a service and a client of different versions do not talk
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,9 +218,11 @@ class Service(abc.ABC):
     async def rename_agent(self, fleet: str, unit: str, name: str) -> None: ...
 
     @abc.abstractmethod
-    async def set_task(self, fleet: str, unit: str, task: str) -> None:
-        """Another task for the agent, in the conversation it has. In a fleet that is
-        not running it works on it when the fleet starts."""
+    async def set_task(self, fleet: str, unit: str, task: str, *,
+                       ongoing: bool | None = None) -> None:
+        """Another task for the agent, in the conversation it has; `ongoing` makes it a
+        duty or a task, None leaves it what it is. In a fleet that is not running it
+        works on it when the fleet starts."""
 
     @abc.abstractmethod
     async def set_model(self, fleet: str, unit: str, model: str) -> None:

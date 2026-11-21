@@ -8,7 +8,6 @@ Agent Note (`notes/proposed/`, where some already are) and leaves this list.
 - A stopped fleet's agents show the feed, not their Kadence conversations.
 - Two windows on the same agent's page take it from each other.
 - The settings' `harness` says nothing and leaves with fleets' format 9.
-- A team's kind, task or duty, cannot be changed once it has begun.
 - One agent cannot be interrupted in the middle of a step; only its fleet can be stopped.
 
 ## Parked

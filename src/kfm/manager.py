@@ -380,14 +380,17 @@ class Manager:
             except UnitError as e:
                 await self._could_not_start(unit, e)
 
-    async def retask(self, unit: Unit, task: str) -> None:
-        """Another task for the unit. One that has not begun begins on it when the fleet
+    async def retask(self, unit: Unit, task: str, *, ongoing: bool | None = None) -> None:
+        """Another task for the unit, as a duty or not if `ongoing` says (None: as it
+        is). One that has not begun begins on it when the fleet
         runs. One that has keeps its conversation: its standing instruction is replaced
         and it is told, at once in a fleet that runs, else when the fleet starts. Its
         supervisor, if it is at work, is told. FleetError or UnitError when it cannot
         be."""
         if not task.strip():
             raise FleetError("A task cannot be empty.")
+        if ongoing is not None:
+            unit.ongoing = ongoing
         self._emit(Instructed(unit.id, None, "task", task.strip()))
         await self._assign(unit, task)
         supervisor = self.fleet.supervisor_of(unit)

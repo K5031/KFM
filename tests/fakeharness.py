@@ -60,6 +60,7 @@ class FakeHarness(Harness):
         self.always: list[str] = []  # request ids allowed for the rest of the unit's work
         self.files: list[tuple[str, list[str], bool]] = []  # (unit name, files, spoken)
         self.instructed: list[tuple[str, str]] = []  # (unit name, its new instruction)
+        self.kinds: list[tuple[str, bool]] = []  # (unit name, whether that one is a duty)
 
     @property
     def vocabulary(self) -> Vocabulary:
@@ -98,6 +99,7 @@ class FakeSession(Session):
     async def instruct(self, instruction: Instruction) -> None:
         assert self.session is not None
         self.harness.instructed.append((self.spec.name, instruction.text))
+        self.harness.kinds.append((self.spec.name, instruction.ongoing))
         self.harness.standing[self.session] = not instruction.conversation
 
     async def send(self, text: str, files: Sequence[str] = (), *,

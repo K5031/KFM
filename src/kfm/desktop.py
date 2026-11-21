@@ -92,6 +92,7 @@ from kfm.events import (
     units,
 )
 from kfm.fleet import Fleet, FleetError, Unit
+from kfm.notify import Notifier
 from kfm.project import SECRETARY
 from kfm.remote import RemoteService, ServiceError
 from kfm.service import (
@@ -1782,10 +1783,12 @@ class FleetView(QWidget):
 class FleetWindow(QMainWindow):
     """A frontend of `service`: everything it shows and does goes through it."""
 
-    def __init__(self, service: Service) -> None:
+    def __init__(self, service: Service, notifier: Notifier | None = None) -> None:
         super().__init__()
         self.service = service
         self.service.subscribe(self._update)
+        self.notifier = notifier  # None: nothing is said outside the window
+        self._noticed: set[str] = set()  # what waits and was seen or notified
         self._listed: dict[str, ProjectInfo] = {}  # by project id, as last listed
         self.project: ProjectInfo | None = None  # the one shown
         self.views: dict[str, FleetView] = {}  # every fleet read so far, by its id
@@ -2312,6 +2315,8 @@ class FleetWindow(QMainWindow):
             page.cancel()
         for view in list(self.views.values()):
             await view.leave()
+        if self.notifier is not None:
+            await self.notifier.aclose()
         with contextlib.suppress(*REFUSALS):
             await self.service.aclose()
         for task in list(self._tasks):
@@ -2738,6 +2743,7 @@ class FleetWindow(QMainWindow):
     def _show_attention(self) -> None:
         """Every approval and every lead's question that waits for the person, in the
         fleets read so far, of whatever project."""
+        self._notify_waiting()
         rows: list[tuple[str, str, list[tuple[str, Callable[[], None]]]]] = []
         if self._interrupted:
             many = len(self._interrupted)
@@ -2770,6 +2776,44 @@ class FleetWindow(QMainWindow):
                              f"{view.name} › {lead.called} asks: {lead.question}",
                              [("Answer", lambda view=view: self.open_fleet(view))]))
         self.attention.show_rows(rows)
+
+    def away(self) -> bool:
+        """The person is not looking at this window."""
+        return not self.isActiveWindow()
+
+    def _notify_waiting(self) -> None:
+        """A desktop notification for each approval and each lead's question that is new
+        while the person is elsewhere; a click on it opens its fleet. What they saw
+        waiting in the window is not news later."""
+        waiting: dict[str, tuple[FleetView, str, str]] = {}
+        for view in self.views.values():
+            fleet = view.fleet
+            if fleet is None:
+                continue
+            for asked in self.service.state(view.id).approvals:
+                unit = fleet.units.get(asked.unit)
+                who = unit.called if unit is not None else asked.unit
+                waiting[f"{view.id}/{asked.request_id}"] = (
+                    view, f"{view.name} › {who}",
+                    f"wants to run {asked.tool} {asked.arguments}")
+            lead = fleet.lead
+            if lead is not None and lead.state == "waiting" and lead.question and view.running:
+                waiting[f"{view.id}?{lead.question}"] = (
+                    view, f"{view.name} › {lead.called}", f"asks: {lead.question}")
+        if self.notifier is not None and self.away():
+            for key in waiting.keys() - self._noticed:
+                view, title, body = waiting[key]
+                self.notifier.send(title, body, lambda view=view: self._come_to(view))
+        self._noticed = set(waiting)
+
+    def _come_to(self, view: FleetView) -> None:
+        """Bring the window forward on the fleet, if it is still there."""
+        if self.views.get(view.id) is not view:
+            return
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+        self.open_fleet(view)
 
     def _refresh(self) -> None:
         """The bar, the page and the sidebar, from things as they are now."""
@@ -2893,7 +2937,7 @@ def main() -> None:
         except ServiceError as e:
             QMessageBox.critical(None, "KFM", str(e))
             return
-        window = FleetWindow(service)
+        window = FleetWindow(service, Notifier())
         window.resize(1180, 760)
         window.show()
         window.offer_restart()

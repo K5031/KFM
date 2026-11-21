@@ -237,6 +237,47 @@ async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: P
     assert view.running and "running" in shown.status.text()
 
 
+class Notified:
+    """A notifier that keeps what it was given."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, str, Any]] = []
+
+    def send(self, title: str, body: str, clicked: Any) -> None:
+        self.sent.append((title, body, clicked))
+
+    async def aclose(self) -> None:
+        pass
+
+
+async def test_what_waits_for_the_person_is_notified_while_they_are_elsewhere(
+        window, tmp_path: Path):
+    shown, harness = window({"K5001": [
+        {"do": [("approval", "r1", "write_file", "{'path': '/etc/motd'}"), ("say", "Wrote.")]},
+        {"when": "again", "do": [("approval", "r2", "shell", "{'command': 'ls'}")]}]})
+    notified = shown.notifier = Notified()
+    shown.away = lambda: False  # looking at the window: it shows what waits
+    view = await start(shown, tmp_path, "Keep watch", duty=True)
+    await until(lambda: any(isinstance(e, ApprovalCard) for e in view.entries))
+    [card] = [e for e in view.entries if isinstance(e, ApprovalCard)]
+    shown.away = lambda: True
+    shown._refresh()
+    assert not notified.sent  # it was seen, and is not news later
+    card.allow.click()
+    await until(lambda: harness.approved == [("r1", True)])
+
+    shown.show_chart()
+    view.input.setPlainText("again")
+    view.send_button.click()
+    await until(lambda: len(notified.sent) == 1)
+    title, body, clicked = notified.sent[0]
+    assert title == "dev › K5001" and "shell" in body and "ls" in body
+    shown._refresh()
+    assert len(notified.sent) == 1  # once
+    clicked()  # a click on it opens the fleet it is about
+    assert shown.view is view
+
+
 async def test_an_approval_can_be_given_for_the_rest_of_an_agents_work(window, tmp_path: Path):
     shown, harness = window({"K5001": [
         {"do": [("approval", "r1", "shell", "{'command': 'uv run pytest'}")]}]})

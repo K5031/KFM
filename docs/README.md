@@ -238,6 +238,11 @@ opens a window on the same service the commands talk to, without a terminal. It 
   right.
 - **Stop** ends the open fleet's processes; **Resume** carries it on. Closing the window
   leaves fleets running: stop the ones you do not want to keep paying for.
+- **A desktop notification** tells you when an agent asks for approval or a lead asks
+  you a question while you are in another window. Click it to open that fleet. It needs
+  the KFM window to be open (it may be minimized) and `notify-send` (libnotify), which
+  most Linux desktops have. To silence it, mute KFM in your desktop's notification
+  settings.
 - **The ☰ menu, at the top left**, is about KFM as it runs. **Stop KFM** ends its
   background service and closes the window: every running fleet stops and can be
   resumed. It starts again the next time you open KFM. **Restart KFM** does the same

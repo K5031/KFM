@@ -87,8 +87,17 @@ class Notice:
     text: str
 
 
+@dataclass(frozen=True, slots=True)
+class Dismissed:
+    """A supervisor took an agent of its own, and those under it, out of the fleet."""
+
+    unit: str
+    by: str
+    gone: dict[str, str]  # everyone who left with it: id to what it was called
+
+
 type FleetEvent = (Changed | Said | Delivered | Instructed | Approval | Answered | Told
-                   | Across | Notice)
+                   | Across | Notice | Dismissed)
 
 
 def units(event: FleetEvent) -> set[str]:

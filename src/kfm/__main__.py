@@ -20,7 +20,16 @@ from kadence.frontends.common import PERMISSION_LABELS
 
 from kfm.api import UnitError
 from kfm.config import HOME
-from kfm.events import Across, Approval, Changed, Delivered, Instructed, Notice, Said
+from kfm.events import (
+    Across,
+    Approval,
+    Changed,
+    Delivered,
+    Dismissed,
+    Instructed,
+    Notice,
+    Said,
+)
 from kfm.fleet import Unit
 from kfm.project import folder_name, in_use
 from kfm.remote import RemoteService, ServiceError
@@ -603,6 +612,10 @@ class Console:
                 print(f"[{ends}] message: {_clip(text)}")
             case Notice(text=text):
                 print(f"! {text}")
+            case Dismissed(unit=unit, by=by, gone=gone):
+                under = len(gone) - 1
+                print(f"[{tag(by)}] dismissed {gone.get(unit, unit)}"
+                      + (f" and the {under} under it" if under else ""))
         sys.stdout.flush()
 
     async def read(self) -> None:

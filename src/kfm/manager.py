@@ -34,6 +34,7 @@ from kfm.events import (
     Approval,
     Changed,
     Delivered,
+    Dismissed,
     FleetEvent,
     Instructed,
     Notice,
@@ -397,10 +398,18 @@ class Manager:
         if self.up and supervisor is not None and supervisor.active:
             self._spawn(self._tell_quietly(supervisor, units.retasked_note(unit)))
 
-    async def remove(self, unit: Unit) -> None:
-        """Take the unit and everything under it out of the fleet: their processes end
-        and what they kept is deleted. Its supervisor, if it is at work, is told."""
-        supervisor = self.fleet.supervisor_of(unit)
+    async def dismiss(self, supervisor: Unit, unit: Unit) -> int:
+        """A supervisor lets go of an agent of its own that it will not use again: it and
+        everything under it leave the fleet, and what they spent stays in the fleet's
+        total. Returns how many left with it."""
+        # Said first: the record still names them, and a frontend keeps what they did.
+        self._emit(Dismissed(unit.id, supervisor.id,
+                             {each.id: each.called for each in self.fleet.subtree(unit)}))
+        return len(await self._take_out(unit)) - 1
+
+    async def _take_out(self, unit: Unit) -> list[Unit]:
+        """End the unit and everything under it and take them out of the fleet's record;
+        what they kept is deleted."""
         await self.stop_unit(unit)
         gone = self.fleet.remove(unit)
         for each in gone:
@@ -408,6 +417,13 @@ class Manager:
         self._changed()
         await self._save()
         await asyncio.to_thread(_forget, self.folder, gone)
+        return gone
+
+    async def remove(self, unit: Unit) -> None:
+        """Take the unit and everything under it out of the fleet: their processes end
+        and what they kept is deleted. Its supervisor, if it is at work, is told."""
+        supervisor = self.fleet.supervisor_of(unit)
+        gone = await self._take_out(unit)
         self._emit(Notice(f"You removed {unit.called}"
                           + (f" and the {len(gone) - 1} under it." if len(gone) > 1 else ".")))
         if self.up and supervisor is not None and supervisor.active:

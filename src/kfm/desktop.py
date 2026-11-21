@@ -86,6 +86,7 @@ from kfm.events import (
     Approval,
     Changed,
     Delivered,
+    Dismissed,
     FleetEvent,
     Instructed,
     Notice,
@@ -1348,6 +1349,9 @@ class FleetView(QWidget):
         self._held: list[tuple[int, FleetEvent]] = []  # what happens until its history is shown
         self._load: asyncio.Future[None] | None = None
         self._approvals: dict[str, ApprovalCard] = {}
+        # Agents a supervisor dismissed, by id, as they were called: what they said and
+        # reported stays in the feed.
+        self._dismissed: dict[str, str] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         # The agent on the page as its own Kadence conversation, where it has one to
         # show; else the page is the feed, of that agent or of all.
@@ -1549,9 +1553,10 @@ class FleetView(QWidget):
 
     def updated(self) -> None:
         """Its record or state changed in the service."""
-        here = self.fleet.units.keys() if self.fleet is not None else set()
+        here = set(self.fleet.units) if self.fleet is not None else set()
         if self.shown is not None and self.shown not in here:
             self.choose(None)
+        here |= self._dismissed.keys()
         for entry in [e for e in self.entries if not e.concerns <= here]:
             self.entries.remove(entry)  # what was about an agent taken out goes with it
             entry.setParent(None)
@@ -1745,7 +1750,7 @@ class FleetView(QWidget):
     def _called(self, unit_id: str) -> str:
         """What people read for the unit; its id for one the record does not have."""
         unit = self.fleet.units.get(unit_id) if self.fleet is not None else None
-        return unit.called if unit is not None else unit_id
+        return unit.called if unit is not None else self._dismissed.get(unit_id, unit_id)
 
     def _show(self, event: FleetEvent) -> None:
         match event:
@@ -1780,6 +1785,11 @@ class FleetView(QWidget):
                 self._add(YouEntry(text, to, files))
             case Notice(text=text):
                 self.say(text, tone="warning")
+            case Dismissed(unit=unit, by=by, gone=gone):
+                self._dismissed.update(gone)
+                under = len(gone) - 1
+                self._add(Line(f"{self._called(by)} dismissed {self._called(unit)}"
+                               + (f" and the {under} under it" if under else ""), {by, unit}))
 
     def _add(self, entry: QWidget) -> None:
         entry.setMaximumWidth(COLUMN)

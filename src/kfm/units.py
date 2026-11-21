@@ -150,8 +150,8 @@ def brief(unit: Unit, supervisor: Unit | None, under: list[Unit], words: Vocabul
             f"- {words.tool('delegate')} starts a K{unit.rank - 1} agent on a task you give "
             "it. It works in the same folder and sees nothing of your conversation, only "
             "that task. Its reports and questions arrive as messages; "
-            f"{words.tool('message')} reaches it, and {words.tool('status')} shows all of "
-            "yours.")
+            f"{words.tool('message')} reaches it, {words.tool('status')} shows all of "
+            f"yours, and {words.tool('dismiss')} lets go of one you will not use again.")
     else:
         lines.append("- You are the lowest rank: there is no rank below you to hand work to.")
     if in_project and supervisor is None:

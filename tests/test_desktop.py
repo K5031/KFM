@@ -31,6 +31,7 @@ from kfm.desktop import (
     DeliveryCard,
     FleetView,
     FleetWindow,
+    Line,
     SaidEntry,
     YouEntry,
     saved_theme,
@@ -625,6 +626,23 @@ async def test_a_project_of_another_version_is_listed_to_be_deleted(window, tmp_
     assert "Old one" in shown.dialog.question.text()
     shown.dialog.delete.click()
     await until(lambda: not old.exists() and shown.projects.count() == 0)
+
+
+async def test_an_agent_its_supervisor_dismissed_leaves_the_chart_and_not_the_feed(
+        window, tmp_path: Path):
+    shown, _ = window({
+        "K5001": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]},
+                  {"when": "[Report from Scout", "do": [("tool", "dismiss", {"agent": "K4001"})]}],
+        "Scout": [{"do": [("report", "Mapped the docs.")]}]})
+    view = await start(shown, tmp_path, "Tidy up", duty=True)
+    await until(lambda: view.fleet is not None and list(view.fleet.units) == ["K5001"]
+                and any(isinstance(e, DeliveryCard) for e in view.entries))
+    await until(lambda: any(isinstance(e, Line) and e.text() == "K5001 dismissed Scout"
+                            for e in view.entries))
+    [report] = [e for e in view.entries if isinstance(e, DeliveryCard)]
+    assert "K4001" in report.concerns  # what it reported is still there
+    shown.back_button.click()
+    await until(lambda: chart(shown) == {"dev": ["K5001"]})
 
 
 async def test_a_fleet_is_deleted_from_the_chart(window, tmp_path: Path):

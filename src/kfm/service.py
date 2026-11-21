@@ -23,7 +23,7 @@ from kfm.draft import Draft
 from kfm.events import Approval, FleetEvent
 from kfm.fleet import Fleet
 
-VERSION = 8  # of this contract; a service and a client of different versions do not talk
+VERSION = 9  # of this contract; a service and a client of different versions do not talk
 
 
 @dataclass(frozen=True, slots=True)

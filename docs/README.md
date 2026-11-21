@@ -173,6 +173,10 @@ opens a window on the same service the commands talk to, without a terminal. It 
 
   ![A fleet built by hand](images/built-light.png)
 
+- **A supervisor lets go of agents it will not use again.** A dismissed agent leaves
+  the chart and no longer counts toward the fleet's limit of agents; what it spent
+  stays counted, and what it said and reported stays in the feed, with a line saying
+  who dismissed it.
 - **Right-click an agent** on the chart of any fleet to shape its team. **Add agent**
   puts a new agent under it; its supervisor is told. **Model** changes the model the
   agent runs on: pick one from the list or type its id; leave it empty for the one its

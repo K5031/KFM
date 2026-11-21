@@ -11,7 +11,7 @@ import pytest
 
 from kfm import api, harnesses, log
 from kfm.config import FleetConfig
-from kfm.events import Delivered, FleetEvent, Instructed, Notice, Told
+from kfm.events import Delivered, Dismissed, FleetEvent, Instructed, Notice, Told
 from kfm.fleet import Fleet, FleetError
 from kfm.harnesses.kadence import KadenceHarness
 from kfm.manager import Manager
@@ -397,6 +397,47 @@ async def test_files_go_with_a_message_to_the_agent_it_is_for(tmp_path: Path):
     waiting = await manager.add(scout, "", "")
     await manager.say("Check the links", waiting, files=["/tmp/links.txt"])
     await until(lambda: harness.files[-1] == ("K3001", ["/tmp/links.txt"], False))
+    await manager.aclose()
+
+
+async def test_a_supervisor_dismisses_an_agent_it_will_not_use_again(tmp_path: Path):
+    """The agent and those under it leave the fleet; what they spent stays counted, and
+    the record still says who they were."""
+    harness = FakeHarness({
+        "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]},
+                 {"when": "[Report from Scout",
+                  "do": [("tool", "dismiss", {"agent": "K4001"}), ("say", "Scout is let go.")]}],
+        "Scout": [{"do": [("tool", "delegate", {"name": "Helper", "task": "Count pages"})]},
+                  {"when": "[Report from Helper", "do": [("report", "Mapped.")]}],
+        "Helper": [{"do": [("report", "12 pages.")]}]})
+    manager, events = await run(tmp_path, harness)
+    await manager.add(None, "Lead", "Tidy up", ongoing=True)
+    await until(lambda: any(name == "dismiss" for _, name, _ in harness.results))
+    assert ("Lead", "dismiss", "Dismissed Scout (K4001) and the 1 under it.") in harness.results
+    assert list(manager.fleet.units) == ["K5001"]
+    [gone] = [e for e in events if isinstance(e, Dismissed)]
+    assert (gone.unit, gone.by, gone.gone) == ("K4001", "K5001", {"K4001": "Scout",
+                                                                 "K3001": "Helper"})
+    spent = manager.fleet.spent_usd
+    assert spent > manager.fleet.units["K5001"].spent_usd  # theirs is still in the total
+    assert not (manager.folder / "units" / "K4001").exists()
+    # Nobody tells the lead what it did itself, and a second agent is a new one.
+    assert not any("removed" in heard for heard in harness.heard["Lead"])
+    with pytest.raises(FleetError):
+        manager.fleet.subordinate(manager.fleet.units["K5001"], "K4001")
+    await manager.aclose()
+    assert Fleet.load(tmp_path / "fleet").spent_usd == spent
+
+
+async def test_only_its_own_agents_are_a_supervisors_to_dismiss(tmp_path: Path):
+    harness = FakeHarness({
+        "Lead": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Map the docs"})]}],
+        "Scout": [{"do": [("tool", "dismiss", {"agent": "K5001"}), ("say", "Tried.")]}]})
+    manager, _ = await run(tmp_path, harness)
+    await manager.add(None, "Lead", "Tidy up", ongoing=True)
+    await until(lambda: any(name == "dismiss" for _, name, _ in harness.results))
+    [(_, _, said)] = [r for r in harness.results if r[1] == "dismiss"]
+    assert "You have no agent" in said and list(manager.fleet.units) == ["K5001", "K4001"]
     await manager.aclose()
 
 

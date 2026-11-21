@@ -154,6 +154,21 @@ def fleet_tools(manager: Manager) -> MCPServer:
         return f"Stopped {unit.label}."
 
     @server.tool(description=(
+        "Let go of one of your agents that you will not use again, with every agent "
+        "under it: it leaves the fleet, no longer counts toward the fleet's limit of "
+        "agents, and what it spent stays counted. An agent sends its whole conversation "
+        "with each request it makes, so one given a second task carries the first into "
+        "every step of it; a new agent starts with its task alone."))
+    async def dismiss(agent: Annotated[str, Field(description="The agent's id.")],
+                      ctx: Context) -> str:
+        with _refusals():
+            me = caller(ctx)
+            unit = manager.fleet.subordinate(me, agent)
+            label = unit.label
+            others = await manager.dismiss(me, unit)
+        return f"Dismissed {label}" + (f" and the {others} under it." if others else ".")
+
+    @server.tool(description=(
         "Send your supervisor an update without ending your work."))
     async def report(text: Annotated[str, Field(min_length=1)], ctx: Context) -> str:
         with _refusals():

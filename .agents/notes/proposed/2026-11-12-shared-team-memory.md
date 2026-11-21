@@ -17,7 +17,7 @@ A fleet passes everything through messages. In the runs of 2026-11-12:
 
 In the run of 2026-11-14 each worker hired for a feature was told to read about eight
 files before it began. Keeping workers alive to save that reading costs more than it
-saves ([short-lived workers](2026-11-14-short-lived-workers.md)), which leaves notes a
+saves ([short-lived workers](../implemented/2026-11-14-short-lived-workers.md)), which leaves notes a
 new worker starts with as the way to spare it.
 
 If passing information around costs more than it saves, a fleet is less efficient than

@@ -175,8 +175,8 @@ opens a window on the same service the commands talk to, without a terminal. It 
 
 - **Right-click an agent** on the chart of any fleet to shape its team. **Add agent**
   puts a new agent under it; its supervisor is told. **Model** changes the model the
-  agent runs on, by the model's id; leave it empty for the one its rank has in the
-  settings. In a running fleet both happen at once (an agent starts again on its new
+  agent runs on: pick one from the list or type its id; leave it empty for the one its
+  rank has in the settings. In a running fleet both happen at once (an agent starts again on its new
   model); in a stopped one they take effect when you start it.
 - **Task…** in an agent's right-click menu gives it another task. It keeps its
   conversation, is told, and its supervisor is told. In a stopped fleet the agent works

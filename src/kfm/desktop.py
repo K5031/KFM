@@ -458,6 +458,34 @@ class LeadModel(QComboBox):
         return self.currentText() or None if not self.isHidden() else None
 
 
+class ModelBox(QComboBox):
+    """A model to choose or to type: empty until `offer` lists the models there are."""
+
+    def __init__(self, text: str = "", placeholder: str = "") -> None:
+        super().__init__(editable=True)
+        self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)  # typed is not listed
+        self.setCurrentText(text)
+        self.lineEdit().setPlaceholderText(placeholder)
+
+    def text(self) -> str:
+        return self.currentText()
+
+    def setText(self, text: str) -> None:
+        self.setCurrentText(text)
+
+    def offer(self, models: Sequence[tuple[str, str, str]]) -> None:
+        """The models there are to choose from, each by its id with its name and price
+        beside it in a tooltip; what the field holds stays, listed or not."""
+        held = self.currentText()
+        self.clear()
+        self.addItem("")  # the default
+        for model_id, name, about in models:
+            self.addItem(model_id)
+            self.setItemData(self.count() - 1, ", ".join(p for p in (name, about) if p),
+                             Qt.ItemDataRole.ToolTipRole)
+        self.setCurrentText(held)
+
+
 class KindSwitch(QFrame):
     """Task or Duty, as two segments."""
 
@@ -934,8 +962,7 @@ class AgentDialog(QDialog):
         self.task.submitted.connect(self.add_asked)
         self.kind = KindSwitch()
         self.kind.task_kind.setChecked(True)
-        self.model = QLineEdit()
-        self.model.setPlaceholderText(f"Model (K{rank}'s, if empty)")
+        self.model = ModelBox(placeholder=f"Model (K{rank}'s, if empty)")
         self.warning = label("", role="small", tone="error")
         self.warning.hide()
         self.add = QPushButton("Add")
@@ -1051,12 +1078,10 @@ class SettingsDialog(QDialog):
         models.addRow("Allowed", self.auto)
         self._show_auto()
         # "default" is the model of every rank that has none of its own (FleetConfig.models).
-        self.models: dict[str, QComboBox] = {}
+        self.models: dict[str, ModelBox] = {}
         for key in ("secretary", "default",
                     *(f"K{rank}" for rank in range(config.top_rank, 0, -1))):
-            field = self.models[key] = QComboBox(editable=True)
-            field.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)  # typed is not listed
-            field.setCurrentText(config.models.get(key, ""))
+            field = self.models[key] = ModelBox(config.models.get(key, ""))
             models.addRow({"default": "Default", "secretary": "Secretary"}.get(key, key), field)
         self.models["secretary"].setToolTip("The model a project's secretary runs on")
         every = self.models["default"]
@@ -1171,14 +1196,7 @@ class SettingsDialog(QDialog):
         """The models there are to choose from, each by its id with its name and price
         beside it in a tooltip; what a field holds stays, listed or not."""
         for field in self.models.values():
-            held = field.currentText()
-            field.clear()
-            field.addItem("")  # the default
-            for model_id, name, about in models:
-                field.addItem(model_id)
-                field.setItemData(field.count() - 1, ", ".join(p for p in (name, about) if p),
-                                  Qt.ItemDataRole.ToolTipRole)
-            field.setCurrentText(held)
+            field.offer(models)
         menu = self.auto.menu()
         menu.clear()
         for model_id, name, about in models:
@@ -1224,7 +1242,7 @@ class TaskDialog(QDialog):
 
 
 class LineDialog(QDialog):
-    """One line to change: a name, a model."""
+    """One line to change: a name."""
 
     def __init__(self, parent: QWidget, title: str, text: str, placeholder: str = "") -> None:
         super().__init__(parent)
@@ -1247,13 +1265,27 @@ class LineDialog(QDialog):
         rows.addLayout(foot)
 
 
-class ModelDialog(LineDialog):
+class ModelDialog(QDialog):
     """The model an agent runs on; empty: its rank's."""
 
     def __init__(self, parent: QWidget, unit: Unit) -> None:
-        super().__init__(parent, f"{unit.called}'s model", unit.model or "",
-                         f"K{unit.rank}'s, if empty")
-        self.model = self.line
+        super().__init__(parent)
+        self.setWindowTitle(f"{unit.called}'s model")
+        self.setMinimumWidth(380)
+        rows = QVBoxLayout(self)
+        self.model = ModelBox(unit.model or "", f"K{unit.rank}'s, if empty")
+        self.model.lineEdit().returnPressed.connect(self.accept)
+        save = QPushButton("Save")
+        save.setProperty("primary", True)
+        save.clicked.connect(self.accept)
+        cancel = QPushButton("Cancel")
+        cancel.clicked.connect(self.reject)
+        foot = QHBoxLayout()
+        foot.addStretch(1)
+        foot.addWidget(cancel)
+        foot.addWidget(save)
+        rows.addWidget(self.model)
+        rows.addLayout(foot)
 
 
 def _dropped_files(source: QMimeData) -> list[str]:
@@ -2630,6 +2662,7 @@ class FleetWindow(QMainWindow):
 
         dialog.add_asked.connect(lambda: self._run(add()))
         dialog.open()
+        self._run(self._offer_models(dialog))
 
     def _choose_model(self, key: str, unit_id: str) -> None:
         view = self.views.get(key)
@@ -2640,6 +2673,14 @@ class FleetWindow(QMainWindow):
         dialog.accepted.connect(
             lambda: self._run(view.set_model(unit, dialog.model.text().strip())))
         dialog.open()
+        self._run(self._offer_models(dialog))
+
+    async def _offer_models(self, dialog: AgentDialog | ModelDialog) -> None:
+        """List the models there are in the dialog's model field."""
+        with contextlib.suppress(*REFUSALS):
+            offered = await self.service.models()
+            if self.dialog is dialog:
+                dialog.model.offer(offered)
 
     def _agent_rows(self) -> list[QTreeWidgetItem]:
         """Every row of the agents list, top down. For use at once, not to keep."""

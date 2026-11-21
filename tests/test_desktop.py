@@ -501,11 +501,21 @@ async def test_a_fleet_is_built_by_hand_and_then_started(window, tmp_path: Path)
     chief.add_action.trigger()
     shown.dialog.name.setText("Writer")
     shown.dialog.task.setPlainText("Write the posts")
-    shown.dialog.model.setText("small-1")
+    # The models the agent program offers are there to pick; another can be typed.
+    offered = shown.dialog.model
+    await until(lambda: offered.count() == 3)
+    assert [offered.itemText(i) for i in range(3)] == ["", "big-1", "small-1"]
+    offered.setText("small-1")
     shown.dialog.add.click()
     await until(lambda: chart(shown) == {"content": ["Chief K5001", "Writer K4001"]})
     chief.model_action.trigger()
-    shown.dialog.model.setText("big-1")
+    offered = shown.dialog.model
+    await until(lambda: offered.count() == 3)
+    assert offered.itemData(1, Qt.ItemDataRole.ToolTipRole) == (
+        "Big One, $5 in, $25 out per million tokens")
+    assert offered.text() == ""  # none of its own, and the list did not choose one
+    offered.setCurrentIndex(1)
+    assert offered.text() == "big-1"
     shown.dialog.accept()
     await until(lambda: view.fleet.units["K5001"].model == "big-1")
     assert not harness.models and not view.running  # nothing has run

@@ -15,7 +15,6 @@ Agent Note (`notes/proposed/`, where some already are) and leaves this list.
 
 - Desktop notifications when an agent waits for the person.
 - A run of two hours to cite, with real models and a limit of $25.
-- The models to choose from in the chart's dialog for one agent's model.
 - The Settings dialog without the desktop's title bar.
 - Proposed already: [Build](notes/proposed/2026-11-18-build.md),
   [shared team memory](notes/proposed/2026-11-12-shared-team-memory.md),

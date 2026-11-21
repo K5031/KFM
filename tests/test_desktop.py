@@ -32,6 +32,7 @@ from kfm.desktop import (
     FleetWindow,
     SaidEntry,
     YouEntry,
+    saved_theme,
 )
 from kfm.events import Said, Told
 from kfm.fleet import Fleet
@@ -801,8 +802,8 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         assert [a.text() for a in shown.profile_button.menu().actions() if a.text()][1:] == [
             "Settings", "Add to App Menu", "Quit"]
         # The menu at the top is about KFM as it runs.
-        assert [a.text() for a in shown.menu_button.menu().actions()] == [
-            "Restart KFM", "Stop KFM"]
+        assert [a.text() for a in shown.menu_button.menu().actions() if a.text()] == [
+            "Theme", "Restart KFM", "Stop KFM"]
         shown.gear_button.click()
         await until(lambda: shown.dialog is not None and shown.dialog.isVisible())
         dialog = shown.dialog
@@ -1066,6 +1067,28 @@ async def test_kfm_is_restarted_from_the_menu(window, tmp_path: Path):
     shown.dialog.button(shown.dialog.StandardButton.Yes).click()
     await until(lambda: again == [True])
     assert not shown.service.state(view.id).running
+
+
+async def test_the_theme_is_chosen_in_the_menu_and_kept(tmp_path: Path, qapp: QApplication):
+    """Light, dark or the desktop's: kept in a file, and the window starts again in it
+    (the service and its fleets are not touched)."""
+    look = tmp_path / "window.json"
+    assert saved_theme(look) == "system"  # none kept: the desktop's
+    shown = FleetWindow(LocalService(tmp_path / "home", harness=FakeHarness({})), look=look)
+    shown.show()
+    try:
+        again: list[bool] = []
+        shown.relaunch = lambda: again.append(True)
+        [themes] = [a.menu() for a in shown.menu_button.menu().actions() if a.text() == "Theme"]
+        assert [(a.text(), a.isChecked()) for a in themes.actions()] == [
+            ("System", True), ("Light", False), ("Dark", False)]
+        themes.actions()[1].trigger()
+        await until(lambda: again == [True])
+        assert saved_theme(look) == "light"
+        look.write_text("not json")
+        assert saved_theme(look) == "system"
+    finally:
+        await shown.shut()
 
 
 async def test_kfm_is_stopped_from_the_menu(window, tmp_path: Path):

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import getpass
+import json
 import os
 import sys
 import tempfile
@@ -77,7 +78,7 @@ from PySide6.QtWidgets import (
 from kfm import app_menu, draft, project
 from kfm.api import UnitError
 from kfm.chart import Chart, ChartFleet, state_tone
-from kfm.config import AUTO, MANUAL, FleetConfig
+from kfm.config import AUTO, HOME, MANUAL, FleetConfig
 from kfm.conversation import AgentPage
 from kfm.events import (
     Across,
@@ -1815,9 +1816,11 @@ class FleetView(QWidget):
 class FleetWindow(QMainWindow):
     """A frontend of `service`: everything it shows and does goes through it."""
 
-    def __init__(self, service: Service, notifier: Notifier | None = None) -> None:
+    def __init__(self, service: Service, notifier: Notifier | None = None,
+                 look: Path | None = None) -> None:
         super().__init__()
         self.service = service
+        self.look = look  # where the theme chosen is kept; None: nowhere
         self.service.subscribe(self._update)
         self.notifier = notifier  # None: nothing is said outside the window
         self._noticed: set[str] = set()  # what waits and was seen or notified
@@ -1894,6 +1897,13 @@ class FleetWindow(QMainWindow):
         self.menu_button.setAccessibleName("Menu")
         self.menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         main_menu = QMenu(self)
+        themes = main_menu.addMenu("Theme")
+        for name in theme.THEMES:
+            action = themes.addAction(name.capitalize())
+            action.setCheckable(True)
+            action.setChecked(name == theme.choice())
+            action.triggered.connect(lambda _=False, name=name: self._run(self.set_theme(name)))
+        main_menu.addSeparator()
         main_menu.addAction("Restart KFM").triggered.connect(lambda: self.ask_restart())
         main_menu.addAction("Stop KFM").triggered.connect(lambda: self.ask_stop())
         self.menu_button.setMenu(main_menu)
@@ -2308,6 +2318,14 @@ class FleetWindow(QMainWindow):
     async def restart(self) -> None:
         if await self._end():
             self.relaunch()
+
+    async def set_theme(self, name: str) -> None:
+        """Light, dark, or what the desktop is set to: kept, and the window started
+        again in it. The service and its fleets are not touched."""
+        if self.look is not None:
+            await asyncio.to_thread(self.look.write_text, json.dumps({"theme": name}),
+                                    encoding="utf-8")
+        self.relaunch()
 
     def ask_stop(self) -> None:
         """End the service that holds the fleets and close the window: closing the window
@@ -2954,6 +2972,15 @@ class FleetWindow(QMainWindow):
         task.add_done_callback(self._tasks.discard)
 
 
+def saved_theme(path: Path) -> str:
+    """The theme kept in `path` (theme.THEMES); the desktop's where there is none."""
+    try:
+        name = json.loads(path.read_text(encoding="utf-8")).get("theme")
+    except (OSError, ValueError, AttributeError):
+        return "system"
+    return name if name in theme.THEMES else "system"
+
+
 def main() -> None:
 
     app = QApplication(sys.argv)
@@ -2961,7 +2988,8 @@ def main() -> None:
     app.setDesktopFileName(app_menu.APP_ID)  # the app menu's entry: its icon and its name
     app.setWindowIcon(QIcon(str(app_menu.ICON)))
     app.setQuitOnLastWindowClosed(False)  # the service is let go of first
-    theme.apply(app)
+    look = HOME / "window.json"
+    theme.set_theme(app, saved_theme(look))
     loop = QtEventLoop(app)
     asyncio.set_event_loop(loop)
     with loop:
@@ -2970,7 +2998,7 @@ def main() -> None:
         except ServiceError as e:
             QMessageBox.critical(None, "KFM", str(e))
             return
-        window = FleetWindow(service, Notifier())
+        window = FleetWindow(service, Notifier(), look)
         window.resize(1180, 760)
         window.show()
         window.offer_restart()

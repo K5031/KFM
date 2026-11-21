@@ -31,6 +31,7 @@ from kfm.service import Service
 _REFUSALS = (FleetError, UnitError, ValueError, OSError, RuntimeError)
 
 
+
 class UnitChannel:
     """Kadence's channel to an agent's process, as its RemoteRuntime uses one, carried by
     KFM's service."""
@@ -129,10 +130,6 @@ class AgentPage:
                 pass
             case _:
                 self.view.changed(change)  # type: ignore[arg-type]
-        # A card made after its holder was shown is not shown with it.
-        for index in range(self.view.prompts.count()):
-            if (card := self.view.prompts.itemAt(index).widget()) is not None:
-                card.show()
 
     async def close(self) -> None:
         """Let go of the agent and of the widgets."""

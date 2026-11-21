@@ -1517,10 +1517,15 @@ class FleetView(QWidget):
                     chose=self.input.setFocus, ended=self._gone)
                 if await page.begin():
                     self.conversation, self._refused = page, None
+                    # The message box has the focus, as in Kadence. Left in the page
+                    # that goes, the stack moves it to the first thing in the
+                    # conversation that takes it, and the view scrolls up to that.
+                    self.input.setFocus()
                     self.pages.addWidget(page.view)
                     self.pages.setCurrentWidget(page.view)
                     self._prompts.addWidget(page.prompts)
                     page.prompts.show()
+                    QTimer.singleShot(0, page.view.to_end)
                 else:
                     self._refused = stands
                     await page.close()
@@ -2135,6 +2140,9 @@ class FleetWindow(QMainWindow):
         """The fleet's timeline, for one agent or for all."""
         self.view, self.adding = view, False
         self.fleet_pages.setCurrentWidget(view)
+        view.input.setFocus()
+        if view.conversation is not None:  # one that was open before: at its latest
+            QTimer.singleShot(0, view.conversation.view.to_end)
         self._refresh()
         self.agents.setCurrentItem(self._agent_row(unit_id))
 

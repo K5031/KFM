@@ -60,8 +60,11 @@ def qapp() -> QApplication:
 
 
 async def until(predicate: Callable[[], Any], timeout: float = 10.0) -> None:
+    """Qt's own events (timers, layout, what is shown later) are run as well: the tests'
+    loop is asyncio's, which does not run them as the app's loop does."""
     async def poll() -> None:
         while not predicate():
+            QApplication.processEvents()
             await asyncio.sleep(0.01)
 
     await asyncio.wait_for(poll(), timeout)
@@ -1249,3 +1252,47 @@ async def test_an_agents_page_is_its_kadence_conversation(kadence_window, tmp_pa
     shown.show_all.click()  # back to the whole fleet: its timeline
     await until(lambda: view.conversation is None)
     assert view.pages.currentWidget() is view.scroll
+
+
+async def test_an_agents_page_opens_at_the_end_of_its_conversation(kadence_window,
+                                                                  tmp_path: Path):
+    long = "\n\n".join(f"Line {n} of what was found." for n in range(12))
+    shown = kadence_window({"K5001": [{"text": long}] * 6})
+    view = await start(shown, tmp_path, "Look at the art", duty=True)
+    for n in range(1, 6):  # more than a page of it
+        await until(lambda n=n: sum(isinstance(e, SaidEntry) for e in view.entries) == n,
+                    timeout=30)
+        await shown.service.say(view.id, f"More {n}")
+    await until(lambda: sum(isinstance(e, SaidEntry) for e in view.entries) == 6, timeout=30)
+    shown.agents.setCurrentItem(shown._agent_row(view.fleet.lead.id))
+    await until(lambda: view.conversation is not None, timeout=30)
+    bar = view.conversation.view.verticalScrollBar()
+    await until(lambda: bar.maximum() > 0, timeout=30)
+    await asyncio.sleep(0.3)
+    assert bar.value() >= bar.maximum() - 4
+
+
+async def test_a_conversation_that_grew_off_screen_is_at_its_end_when_opened(kadence_window,
+                                                                            tmp_path: Path):
+    long = "\n\n".join(f"Line {n} of what was found." for n in range(12))
+    shown = kadence_window({"K5001": [{"text": long}] * 8})
+    view = await start(shown, tmp_path, "Look at the art", duty=True)
+    await until(lambda: any(isinstance(e, SaidEntry) for e in view.entries), timeout=30)
+    shown.agents.setCurrentItem(shown._agent_row(view.fleet.lead.id))
+    await until(lambda: view.conversation is not None, timeout=30)
+    page = view.conversation
+    shown.back_button.click()  # to the chart: the page is not on screen
+    await until(lambda: shown.chart.isVisibleTo(shown))
+    for n in range(1, 7):
+        before = len(page.model.items)
+        await shown.service.say(view.id, f"More {n}", view.fleet.lead.id)
+        await until(lambda before=before: len(page.model.items) >= before + 2
+                    and not page.model.busy, timeout=30)
+    shown.open_fleet(view, view.fleet.lead.id)
+    await until(lambda: view.conversation is not None and view.conversation.view.isVisibleTo(shown))
+    bar = view.conversation.view.verticalScrollBar()
+    await until(lambda: bar.maximum() > 0, timeout=30)
+    for _ in range(20):
+        QApplication.processEvents()
+        await asyncio.sleep(0.02)
+    assert bar.value() >= bar.maximum() - 4

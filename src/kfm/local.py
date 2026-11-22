@@ -11,7 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from kadence.frontends.wire import to_json
+from kaden.frontends.wire import to_json
 
 from kfm import draft, harnesses, log, project
 from kfm import fleet as records

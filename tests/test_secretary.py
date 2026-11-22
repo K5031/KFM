@@ -174,12 +174,12 @@ async def test_leads_reach_each_other_and_the_secretary(tmp_path: Path):
     await service.aclose()
 
 
-async def test_a_real_kadence_unit_is_the_secretary_on_a_scripted_model(tmp_path: Path,
+async def test_a_real_kaden_unit_is_the_secretary_on_a_scripted_model(tmp_path: Path,
                                                                         monkeypatch):
     import tomli_w
 
     monkeypatch.setenv("PYTHONPATH", str(Path(__file__).resolve().parents[1]))
-    base = tmp_path / "kadence.toml"
+    base = tmp_path / "kaden.toml"
     base.write_text(tomli_w.dumps({
         "core": {"factory": "tests.fakecore:factory", "options": {"scripts": {"Secretary": [
             {"calls": [{"name": "mcp__fleet__propose", "arguments": {"teams": TEAMS}}]}]}}},
@@ -192,7 +192,7 @@ async def test_a_real_kadence_unit_is_the_secretary_on_a_scripted_model(tmp_path
     made = await service.create_project("Studio", str(tmp_path / "work"), "Run my game studio")
     await until(lambda: Proposed(made.id) in seen, timeout=30)
     assert [team.name for team in (await service.proposal(made.id)).teams] == ["dev", "trailer"]
-    # What a Kadence agent does is seen as it does it: the tool it used, in words.
+    # What a Kaden agent does is seen as it does it: the tool it used, in words.
     from kfm.service import Live
     await until(lambda: any(isinstance(u, Live) and u.doing.startswith("propose ")
                             for u in seen), timeout=30)
@@ -309,7 +309,7 @@ async def test_a_secretary_waiting_on_her_question_waits_for_its_answer(tmp_path
     question = {"question": "Which genre?", "header": "Genre", "multiSelect": False,
                 "options": [{"label": "Puzzle", "description": ""},
                             {"label": "Racing", "description": ""}]}
-    base = tmp_path / "kadence.toml"
+    base = tmp_path / "kaden.toml"
     base.write_text(tomli_w.dumps({
         "core": {"factory": "tests.fakecore:factory", "options": {"scripts": {"Secretary": [
             {"calls": [{"name": "AskUserQuestion", "arguments": {"questions": [question]}}]},

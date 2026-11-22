@@ -12,7 +12,7 @@ doing and what it has spent were in `kfm status`, a second command. Nothing show
 report in full, and when the terminal closed the lines were gone: of what passed between
 the agents, the fleet's record kept each agent's last report.
 
-The user wants a proper frontend, as Kadence has one.
+The user wants a proper frontend, as Kaden has one.
 
 ## Decision
 
@@ -26,7 +26,7 @@ frontend that opens a fleet later shows its history from this file.
 command line, on the same service ([one API, many
 frontends](2026-11-14-one-api-many-frontends.md)): a fleet's events in, the service's
 calls out. Nothing
-about units or harnesses is in it. It is built with PySide6 on Kadence's desktop code: its
+about units or harnesses is in it. It is built with PySide6 on Kaden's desktop code: its
 event loop, its theme, its Markdown view.
 
 - **Agents** on the left, as the tree of who supervises whom: name, rank, state and
@@ -36,9 +36,9 @@ event loop, its theme, its Markdown view.
   or was stopped.
 - **The message box** at the bottom goes to the lead.
 - **The bar** on top: the fleet's task, whether it runs, what it has spent of its limit,
-  and Stop or Resume. The window has no title bar, as Kadence's has none: the bar is where
+  and Stop or Resume. The window has no title bar, as Kaden's has none: the bar is where
   it is grabbed and holds minimize, maximize and close, its edges resize it and its
-  corners are rounded unless it is maximized (Kadence's `DragArea`, `WindowEdges` and
+  corners are rounded unless it is maximized (Kaden's `DragArea`, `WindowEdges` and
   `RoundedCorners`).
 - **Starting a fleet** is a screen built like a chat's first screen: the fleet's name,
   one box for what it should do, with Task or Duty, the folder and the limit along its
@@ -51,25 +51,25 @@ event loop, its theme, its Markdown view.
 
 ## Alternatives considered
 
-- **A terminal interface** (Textual, as Kadence's). No new dependency for people on a
+- **A terminal interface** (Textual, as Kaden's). No new dependency for people on a
   server, but a tree of agents beside a feed of long reports is what a terminal shows
-  worst, and the user uses Kadence's window.
+  worst, and the user uses Kaden's window.
 - **A web page served by the manager.** Reachable from anywhere, and a fleet could run
-  without a window. A second stack (HTTP, a page, its own look) where Kadence's desktop
+  without a window. A second stack (HTTP, a page, its own look) where Kaden's desktop
   code already gives the loop, the theme and the widgets.
-- **A fleet view inside Kadence's own window.** Kadence would then know fleets, which it
+- **A fleet view inside Kaden's own window.** Kaden would then know fleets, which it
   must not.
 
 ## Consequences
 
-- The window's tests run on the second harness: nothing of Kadence's units is needed to
+- The window's tests run on the second harness: nothing of Kaden's units is needed to
   show a fleet. Checked beyond them, without a screen: on the Qt event loop with real
-  Kadence units on a scripted model, a fleet started from the form, delegated, reported
+  Kaden units on a scripted model, a fleet started from the form, delegated, reported
   and was closed. Not checked: on a real display, and with a real model.
 - Closing the window leaves its fleets running in the service.
-- KFM's window depends on Kadence's desktop code (`theme`, `QtEventLoop`,
-  `MarkdownView`, `DragArea`, `WindowEdges`, `RoundedCorners`), which Kadence may change for its own needs; the manager stays free of
-  it. The `desktop` extra brings all of Kadence's, its speech libraries included.
+- KFM's window depends on Kaden's desktop code (`theme`, `QtEventLoop`,
+  `MarkdownView`, `DragArea`, `WindowEdges`, `RoundedCorners`), which Kaden may change for its own needs; the manager stays free of
+  it. The `desktop` extra brings all of Kaden's, its speech libraries included.
 - An agent's own conversation cannot be read in it: only what it
   said, reported and asked.
 - The record grows for as long as a duty runs; nothing trims it.

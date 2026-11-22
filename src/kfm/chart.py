@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from kadence.frontends.desktop import theme
+from kaden.frontends.desktop import theme
 from PySide6.QtCore import QPointF, QRect, Qt, Signal
 from PySide6.QtGui import (
     QColor,

@@ -25,7 +25,7 @@ tenth of the price, not free, and a working agent makes dozens of requests a tas
 tenth feature pays for the nine before it at every step. The provider's cache lasts
 about five minutes, and KFM's longest check-in gap is five minutes, so a standing agent
 that wakes after a quiet spell pays in full to load everything it has ever done.
-Kadence compacts a long conversation, which bounds the cost at the price of detail and
+Kaden compacts a long conversation, which bounds the cost at the price of detail and
 of a model call.
 
 ## Decision

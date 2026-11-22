@@ -13,11 +13,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-import kadence.frontends.desktop  # noqa: F401 - before any Qt import
+import kaden.frontends.desktop  # noqa: F401 - before any Qt import
 import pytest
 import tomli_w
-from kadence.frontends.desktop import theme
-from kadence.frontends.desktop.window import PREVIEW_ROLE, AssistantBubble, WrapUpCard
+from kaden.frontends.desktop import theme
+from kaden.frontends.desktop.window import PREVIEW_ROLE, AssistantBubble, WrapUpCard
 from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
 from PySide6.QtGui import QDropEvent, QImage
 from PySide6.QtWidgets import QApplication, QPushButton
@@ -892,7 +892,7 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         every = dialog.models["default"]
         assert list(dialog.models) == ["secretary", "default", "K5", "K4", "K3", "K2", "K1"]
         assert dialog.models["secretary"].lineEdit().placeholderText() == "As K5"
-        assert every.lineEdit().placeholderText() == "Kadence's model"
+        assert every.lineEdit().placeholderText() == "Kaden's model"
         every.setCurrentText("small-1")
         assert field.lineEdit().placeholderText() == "Default: small-1"
         every.setCurrentText("")
@@ -920,7 +920,7 @@ async def test_settings_are_reached_from_the_profile_corner(tmp_path: Path, qapp
         assert shown.dialog.models["K4"].currentText() == "my-own-model"
         assert shown.dialog.models["default"].currentText() == "small-1"
         assert shown.dialog.models["K3"].lineEdit().placeholderText() == "Default: small-1"
-        # What agents may do without asking: Kadence's levels, by Kadence's words.
+        # What agents may do without asking: Kaden's levels, by Kaden's words.
         levels = shown.dialog.permissions
         assert levels.currentData() == "allow_workspace"
         assert [levels.itemData(i) for i in range(levels.count())] == [
@@ -1321,7 +1321,7 @@ async def test_the_window_has_no_title_bar_and_its_own_controls(window, qapp: QA
 
 async def test_the_window_has_rounded_corners_and_a_shadow_unless_maximized(
         window, qapp: QApplication):
-    from kadence.frontends.desktop.window import RoundedCorners
+    from kaden.frontends.desktop.window import RoundedCorners
 
     shown, _ = window({})
     shown.resize(1100, 720)
@@ -1377,14 +1377,14 @@ async def test_fleets_an_update_stopped_are_resumed_from_the_strip(window, tmp_p
 
 
 @pytest.fixture
-async def kadence_window(tmp_path: Path, qapp: QApplication, monkeypatch: pytest.MonkeyPatch):
-    """make(scripts) -> a window on a service whose agents are real Kadence processes
+async def kaden_window(tmp_path: Path, qapp: QApplication, monkeypatch: pytest.MonkeyPatch):
+    """make(scripts) -> a window on a service whose agents are real Kaden processes
     with a scripted model (tests/fakecore.py)."""
     monkeypatch.setenv("PYTHONPATH", str(Path(__file__).resolve().parents[1]))
     made: list[FleetWindow] = []
 
     def make(scripts: dict[str, list[dict[str, Any]]]) -> FleetWindow:
-        base = tmp_path / "kadence.toml"
+        base = tmp_path / "kaden.toml"
         base.write_text(tomli_w.dumps({
             "core": {"factory": "tests.fakecore:factory", "options": {"scripts": scripts}},
             "runtime": {"model": "fake-1"}}))
@@ -1402,10 +1402,10 @@ async def kadence_window(tmp_path: Path, qapp: QApplication, monkeypatch: pytest
         await shown.shut()
 
 
-async def test_an_agents_page_is_its_kadence_conversation(kadence_window, tmp_path: Path):
-    """Its turns as Kadence draws them, and a card it ends a turn with, whose buttons
+async def test_an_agents_page_is_its_kaden_conversation(kaden_window, tmp_path: Path):
+    """Its turns as Kaden draws them, and a card it ends a turn with, whose buttons
     answer it through KFM."""
-    shown = kadence_window({"K5001": [
+    shown = kaden_window({"K5001": [
         {"calls": [{"name": "wrap_up", "arguments": {
             "recap": "The art is listed.", "question": "Order more art?",
             "options": [{"label": "Yes, order it"}, {"label": "Not now"}]}}]},
@@ -1438,10 +1438,10 @@ async def test_an_agents_page_is_its_kadence_conversation(kadence_window, tmp_pa
     assert view.pages.currentWidget() is view.scroll
 
 
-async def test_an_agents_page_opens_at_the_end_of_its_conversation(kadence_window,
+async def test_an_agents_page_opens_at_the_end_of_its_conversation(kaden_window,
                                                                   tmp_path: Path):
     long = "\n\n".join(f"Line {n} of what was found." for n in range(12))
-    shown = kadence_window({"K5001": [{"text": long}] * 6})
+    shown = kaden_window({"K5001": [{"text": long}] * 6})
     view = await start(shown, tmp_path, "Look at the art", duty=True)
     for n in range(1, 6):  # more than a page of it
         await until(lambda n=n: sum(isinstance(e, SaidEntry) for e in view.entries) == n,
@@ -1456,10 +1456,10 @@ async def test_an_agents_page_opens_at_the_end_of_its_conversation(kadence_windo
     assert bar.value() >= bar.maximum() - 4
 
 
-async def test_a_conversation_that_grew_off_screen_is_at_its_end_when_opened(kadence_window,
+async def test_a_conversation_that_grew_off_screen_is_at_its_end_when_opened(kaden_window,
                                                                             tmp_path: Path):
     long = "\n\n".join(f"Line {n} of what was found." for n in range(12))
-    shown = kadence_window({"K5001": [{"text": long}] * 8})
+    shown = kaden_window({"K5001": [{"text": long}] * 8})
     view = await start(shown, tmp_path, "Look at the art", duty=True)
     await until(lambda: any(isinstance(e, SaidEntry) for e in view.entries), timeout=30)
     shown.agents.setCurrentItem(shown._agent_row(view.fleet.lead.id))
@@ -1483,7 +1483,7 @@ async def test_a_conversation_that_grew_off_screen_is_at_its_end_when_opened(kad
 
 
 def test_an_answer_on_an_agents_page_reaches_kfm_as_it_was_meant():
-    from kadence.api import Decision
+    from kaden.api import Decision
 
     from kfm.conversation import answer
 

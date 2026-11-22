@@ -1,6 +1,6 @@
 # KFM
 
-Kadence Fleet Manager runs teams of [Kadence](https://github.com/K5031/Kadence) agents that
+Kaden Fleet Manager runs teams of [Kaden](https://github.com/K5031/Kaden) agents that
 work without supervision. You say what you want; a lead agent hands parts of the work to
 agents below it, checks what comes back and reports to you. A project holds several such
 teams and a secretary you talk to about all of them. Everything stays inside the spending
@@ -35,12 +35,12 @@ It is an early version, built and tested mostly against scripted agents.
 
 ## Quick start
 
-Requires Linux, Python 3.12+ and [uv](https://docs.astral.sh/uv/). KFM runs Kadence
-agents, so Kadence is checked out beside it and needs a model provider and a key (see
-[its quick start](https://github.com/K5031/Kadence#quick-start)).
+Requires Linux, Python 3.12+ and [uv](https://docs.astral.sh/uv/). KFM runs Kaden
+agents, so Kaden is checked out beside it and needs a model provider and a key (see
+[its quick start](https://github.com/K5031/Kaden#quick-start)).
 
 ```bash
-git clone https://github.com/K5031/Kadence.git
+git clone https://github.com/K5031/Kaden.git
 git clone https://github.com/K5031/KFM.git
 cd KFM
 uv tool install --editable ".[desktop]"
@@ -60,7 +60,7 @@ work, not your home folder.
 
 ## How it works
 
-Each agent is a separate Kadence process with its own conversation, memory and limit. It
+Each agent is a separate Kaden process with its own conversation, memory and limit. It
 knows only its task and what is reported to it. KFM carries messages between agents,
 holds the limits and keeps the record of what happened; it decides nothing about the
 work. What an agent is told are facts about where it stands and what its tools do, not

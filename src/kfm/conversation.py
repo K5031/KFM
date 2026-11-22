@@ -1,4 +1,4 @@
-"""An agent's own Kadence conversation in KFM's window, drawn as Kadence draws it: its
+"""An agent's own Kaden conversation in KFM's window, drawn as Kaden draws it: its
 view and its model, fed through KFM's service (Service.follow, Service.ask). What the
 person writes and decides still goes through KFM, which tells the agent's supervisor and
 keeps the fleet's record."""
@@ -9,9 +9,9 @@ import asyncio
 from collections.abc import Callable, Sequence
 from typing import Any
 
-import kadence.frontends.desktop  # noqa: F401 - before any Qt import
-from kadence.api import Decision, EventEnvelope, Refusal, RuntimeStateError
-from kadence.frontends.desktop.viewmodel import (
+import kaden.frontends.desktop  # noqa: F401 - before any Qt import
+from kaden.api import Decision, EventEnvelope, Refusal, RuntimeStateError
+from kaden.frontends.desktop.viewmodel import (
     Controller,
     ConversationListChanged,
     ConversationModel,
@@ -19,9 +19,9 @@ from kadence.frontends.desktop.viewmodel import (
     Reset,
     StatusChanged,
 )
-from kadence.frontends.desktop.window import ConversationView
-from kadence.frontends.remote import ChannelClosed, RemoteRuntime
-from kadence.frontends.wire import from_json, to_json
+from kaden.frontends.desktop.window import ConversationView
+from kaden.frontends.remote import ChannelClosed, RemoteRuntime
+from kaden.frontends.wire import from_json, to_json
 from PySide6.QtWidgets import QWidget
 
 from kfm.api import UnitError
@@ -33,7 +33,7 @@ _REFUSALS = (FleetError, UnitError, ValueError, OSError, RuntimeError)
 
 
 class UnitChannel:
-    """Kadence's channel to an agent's process, as its RemoteRuntime uses one, carried by
+    """Kaden's channel to an agent's process, as its RemoteRuntime uses one, carried by
     KFM's service."""
 
     def __init__(self, service: Service, fleet_id: str, unit_id: str) -> None:
@@ -60,7 +60,7 @@ class UnitChannel:
 
 
 class AgentController(Controller):
-    """Kadence's controller, for an agent of a fleet: a message and an answer to what it
+    """Kaden's controller, for an agent of a fleet: a message and an answer to what it
     asks permission for go through KFM."""
 
     def __init__(self, runtime: RemoteRuntime, model: ConversationModel,
@@ -77,7 +77,7 @@ class AgentController(Controller):
 
 
 def answer(decision: Decision) -> tuple[bool, bool]:
-    """What Kadence's answer to a permission prompt is to KFM: whether the call runs, and
+    """What Kaden's answer to a permission prompt is to KFM: whether the call runs, and
     whether the agent no longer asks for calls of its kind. A "never" is a no."""
     allowed = decision in (Decision.ALLOW_ONCE, Decision.ALLOW_CONVERSATION,
                            Decision.ALLOW_ALWAYS)

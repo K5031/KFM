@@ -19,14 +19,14 @@ CONFIG_FILE = "fleet.toml"
 class FleetConfig:
     """`models` maps a rank ("K5") or "default" to a model id, `teams` a team's name to one;
     a team's model wins over its rank's; a unit with no model here uses its harness's own.
-    `harness_options` is what Kadence, which every unit runs, is made with
+    `harness_options` is what Kaden, which every unit runs, is made with
     (kfm.harnesses.load)."""
 
     top_rank: int = 5
     max_units: int = 12
     budget_usd: float = 10.0  # the whole fleet; reaching it stops every unit
     unit_budget_usd: float = 2.0  # each unit's own limit, unless its supervisor sets less
-    permissions: str = "allow_workspace"  # Kadence's level for every unit
+    permissions: str = "allow_workspace"  # Kaden's level for every unit
     models: Mapping[str, str] = field(default_factory=dict)
     teams: Mapping[str, str] = field(default_factory=dict)
     harness_options: Mapping[str, Any] = field(default_factory=dict)

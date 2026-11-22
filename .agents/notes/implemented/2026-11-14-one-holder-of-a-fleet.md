@@ -70,5 +70,5 @@ may not start anything: the limit is tested where a fleet starts.
   It costs a record in memory: the agent program and the tool server are made on start.
 - `fleet.json` is format 11: `planned` is every new agent's state, and `idle` no longer
   means "waits for a task".
-- Checked on the second harness. With real Kadence units only the paths the earlier
+- Checked on the second harness. With real Kaden units only the paths the earlier
   tests cover (start, resume, another task while running) were run.

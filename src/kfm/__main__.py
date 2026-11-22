@@ -16,7 +16,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from kadence.frontends.common import PERMISSION_LABELS
+from kaden.frontends.common import PERMISSION_LABELS
 
 from kfm.api import UnitError
 from kfm.config import HOME
@@ -44,7 +44,7 @@ STALE = ("kfm: KFM was updated since its service started, which still runs the c
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="kfm", description="Run fleets of Kadence agents on tasks, or continuously.")
+        prog="kfm", description="Run fleets of Kaden agents on tasks, or continuously.")
     parser.add_argument("--home", type=Path, default=HOME,
                         help="where projects and settings are kept (default: ~/.kfm)")
     commands = parser.add_subparsers(dest="command", required=True)

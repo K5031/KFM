@@ -1,8 +1,8 @@
 """The unit contract: what KFM needs from the agent program its units run (a harness).
 
 A harness opens units: agents that work by themselves on an instruction, in their own
-data folder, and say what they do through events. The units are Kadence
-(kfm.harnesses.kadence) and nothing else is offered: this is the line inside KFM between
+data folder, and say what they do through events. The units are Kaden
+(kfm.harnesses.kaden) and nothing else is offered: this is the line inside KFM between
 what a fleet does and how one agent's process is run, and where a scripted unit stands in
 for a test.
 

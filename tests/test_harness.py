@@ -1,4 +1,4 @@
-"""A fleet on a harness that is not Kadence (tests/fakeharness.py): what the manager needs
+"""A fleet on a harness that is not Kaden (tests/fakeharness.py): what the manager needs
 of a unit is in kfm.api and nowhere else."""
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from kfm import api, harnesses, log
 from kfm.config import FleetConfig
 from kfm.events import Delivered, Dismissed, FleetEvent, Instructed, Notice, Told
 from kfm.fleet import Fleet, FleetError
-from kfm.harnesses.kadence import KadenceHarness
+from kfm.harnesses.kaden import KadenHarness
 from kfm.manager import Manager
 from tests.fakeharness import FakeHarness
 
@@ -53,7 +53,7 @@ async def test_a_fleet_runs_on_another_harness(tmp_path: Path):
                                  ("Scout", "Lead", "report", "Tidied docs/"),
                                  ("Lead", None, "report", "Docs are tidy.")]
     assert lead.session == "session-K5001" and lead.spent_usd > 0
-    # The words KFM wrote to the units name this harness's tools, not Kadence's.
+    # The words KFM wrote to the units name this harness's tools, not Kaden's.
     brief, question = harness.heard["Lead"][0], harness.heard["Lead"][1]
     assert "fleet.delegate" in brief and "done with a report ends the task" in brief
     assert "fleet.message(agent=\"K4001\"" in question
@@ -130,9 +130,9 @@ async def test_what_happens_in_a_fleet_is_kept_in_its_record(tmp_path: Path):
     assert log.read(tmp_path / "fleet") == []
 
 
-def test_units_run_on_kadence_made_with_the_settings_options(tmp_path: Path):
-    made = harnesses.load({"config": str(tmp_path / "kadence.toml")})
-    assert isinstance(made, KadenceHarness) and made.config == tmp_path / "kadence.toml"
+def test_units_run_on_kaden_made_with_the_settings_options(tmp_path: Path):
+    made = harnesses.load({"config": str(tmp_path / "kaden.toml")})
+    assert isinstance(made, KadenHarness) and made.config == tmp_path / "kaden.toml"
     with pytest.raises(ValueError, match="harness_options"):
         harnesses.load({"wrong": 1})
 
@@ -554,14 +554,14 @@ async def until(predicate, timeout: float = 10.0) -> None:
     await asyncio.wait_for(poll(), timeout)
 
 
-async def test_kadence_says_which_models_it_offers(tmp_path: Path, monkeypatch):
-    """Asked of a Kadence started for that alone, with the configuration units get."""
+async def test_kaden_says_which_models_it_offers(tmp_path: Path, monkeypatch):
+    """Asked of a Kaden started for that alone, with the configuration units get."""
     import tomli_w
 
     from kfm import harnesses
 
     monkeypatch.setenv("PYTHONPATH", str(Path(__file__).resolve().parents[1]))
-    base = tmp_path / "kadence.toml"
+    base = tmp_path / "kaden.toml"
     base.write_text(tomli_w.dumps({
         "core": {"factory": "tests.fakecore:factory", "options": {"scripts": {}}},
         "runtime": {"model": "fake-1"}}))

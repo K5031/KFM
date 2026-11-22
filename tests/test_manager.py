@@ -1,4 +1,4 @@
-"""A fleet end to end: real Kadence units, run headless, with a scripted model
+"""A fleet end to end: real Kaden units, run headless, with a scripted model
 (tests/fakecore.py)."""
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ async def fleet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     async def make(scripts: dict[str, list[dict[str, Any]]], *, resume: bool = False,
                    **settings: Any) -> tuple[Manager, list[FleetEvent]]:
-        base = tmp_path / "kadence.toml"
+        base = tmp_path / "kaden.toml"
         base.write_text(tomli_w.dumps({
             "core": {"factory": "tests.fakecore:factory", "options": {"scripts": scripts}},
             "runtime": {"model": "fake-1"}}))
@@ -136,7 +136,7 @@ async def test_a_finished_agent_that_is_told_more_has_its_goal_again_and_finishe
     # Its process has ended. Opened again (the scripted model starts its script anew), it
     # takes its turn on the message, and has its goal by then to finish with.
     scripts["Scout"] = [finish("Still 3 files.", when="Count again")]
-    (tmp_path / "kadence.toml").write_text(tomli_w.dumps({
+    (tmp_path / "kaden.toml").write_text(tomli_w.dumps({
         "core": {"factory": "tests.fakecore:factory", "options": {"scripts": scripts}},
         "runtime": {"model": "fake-1"}}))
     await manager.say("go on")
@@ -202,7 +202,7 @@ async def test_an_answer_can_hold_for_the_rest_of_an_agents_work(fleet, tmp_path
 
 
 async def test_a_card_an_agent_ends_its_turn_with_is_said_in_words(fleet):
-    """Kadence's wrap_up is a card in its own window. In a fleet's feed it is what the
+    """Kaden's wrap_up is a card in its own window. In a fleet's feed it is what the
     agent said, or the turn would show nothing."""
     manager, events = await fleet({"Lead": [call(
         "wrap_up", recap="The art is listed.", question="Order more art?",
@@ -232,7 +232,7 @@ async def test_questions_an_agent_waits_on_are_asked_and_answered_like_any(fleet
 
 async def test_a_report_that_arrives_while_a_lead_waits_on_a_question_is_not_its_answer(
         fleet):
-    """Kadence takes a message sent while AskUserQuestion waits as the answer; the fleet
+    """Kaden takes a message sent while AskUserQuestion waits as the answer; the fleet
     keeps the lead's other messages until the person has answered."""
     question = {"question": "Which colour?", "header": "Colour", "multiSelect": False,
                 "options": [{"label": "Red", "description": ""},
@@ -254,7 +254,7 @@ async def test_a_report_that_arrives_while_a_lead_waits_on_a_question_is_not_its
 
 
 async def test_an_agents_plan_is_approved_without_waiting_for_anyone(fleet):
-    """Kadence's plan mode waits for the user to approve the plan. Nobody approves a unit's,
+    """Kaden's plan mode waits for the user to approve the plan. Nobody approves a unit's,
     so the harness does, and the plan is what the agent said."""
     manager, events = await fleet({"Lead": [
         call("EnterPlanMode"), call("ExitPlanMode", plan="1. Paint it green"),
@@ -347,7 +347,7 @@ async def test_a_stopped_fleet_carries_on_where_it_was(fleet, tmp_path: Path):
     assert stopped.units["K5001"].state == "working"  # interrupted, not failed or stopped
     assert not stopped.running
 
-    # Its Kadence waits for a message after it was closed: the manager says what happened.
+    # Its Kaden waits for a message after it was closed: the manager says what happened.
     manager, events = await fleet({"Lead": [{"when": "started again", "text": "Back on watch."},
                                             {"when": "anything new", "text": "All quiet."}]},
                                   resume=True)
@@ -380,7 +380,7 @@ async def test_a_resumed_fleet_finishes_what_was_under_way(fleet, tmp_path: Path
                                  ("Lead", None, "report", "Docs are tidy.")]
 
 
-async def test_a_kadence_unit_is_given_another_task(fleet, tmp_path: Path):
+async def test_a_kaden_unit_is_given_another_task(fleet, tmp_path: Path):
     manager, events = await fleet({"Lead": [{"text": "On watch."},
                                             {"when": "task was changed", "text": "Counting."}]})
     lead = await manager.add(None, "Lead", "Keep watch over the folder", ongoing=True)

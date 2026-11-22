@@ -1,6 +1,6 @@
-"""Kadence as a fleet's unit: an unchanged Kadence, run headless in the unit's data folder.
+"""Kaden as a fleet's unit: an unchanged Kaden, run headless in the unit's data folder.
 This module writes that folder's configuration, starts the process, and turns what
-Kadence's headless channel says into the unit contract's events (kfm.api)."""
+Kaden's headless channel says into the unit contract's events (kfm.api)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import tomli_w
-from kadence.api import (
+from kaden.api import (
     DESCRIPTION_ARG,
     AgentState,
     ConversationUpdated,
@@ -38,8 +38,8 @@ from kadence.api import (
     ToolStarted,
     UsageUpdated,
 )
-from kadence.frontends.remote import Channel
-from kadence.frontends.wire import from_json
+from kaden.frontends.remote import Channel
+from kaden.frontends.wire import from_json
 
 from kfm.api import (
     ApprovalNeeded,
@@ -66,29 +66,29 @@ from kfm.api import (
 
 TOOLS = "fleet"  # the MCP server's name in a unit: its tools are mcp__fleet__<tool>
 WORDS = Vocabulary(finish="finish_goal", ask="ask_for_help", tools=f"mcp__{TOOLS}__")
-CARD = "wrap_up"  # Kadence's tool that ends a turn with a recap, a question and its answers
+CARD = "wrap_up"  # Kaden's tool that ends a turn with a recap, a question and its answers
 UNIT_RECORD = "unit.json"
 _LINE_LIMIT = 16 * 1024 * 1024
 DOING_CHARS = 160  # of a tool call, as it is shown while it runs
-MODELS_S = 30.0  # for a Kadence asked which models it offers to answer
+MODELS_S = 30.0  # for a Kaden asked which models it offers to answer
 MODELS_GRACE_S = 5.0  # for it to end afterwards
 _ACTIVE = (AgentState.THINKING, AgentState.RUNNING_TOOLS, AgentState.AWAITING_PERMISSION,
            AgentState.FINISHING)  # a turn is over when what follows the answer is too
 
 
-def factory(options: dict[str, Any]) -> KadenceHarness:
-    """Options: `config`, the Kadence configuration every unit starts from: its provider,
-    key and options (default ~/.kadence/config.toml); `command`, how Kadence is started
-    (default: this Python's `-m kadence`)."""
+def factory(options: dict[str, Any]) -> KadenHarness:
+    """Options: `config`, the Kaden configuration every unit starts from: its provider,
+    key and options (default ~/.kaden/config.toml); `command`, how Kaden is started
+    (default: this Python's `-m kaden`)."""
     options = dict(options)
-    config = Path(options.pop("config", Path.home() / ".kadence" / "config.toml")).expanduser()
-    command = tuple(options.pop("command", (sys.executable, "-m", "kadence")))
+    config = Path(options.pop("config", Path.home() / ".kaden" / "config.toml")).expanduser()
+    command = tuple(options.pop("command", (sys.executable, "-m", "kaden")))
     if options:
         raise TypeError(f"unknown option {', '.join(sorted(options))}")
-    return KadenceHarness(config, command)
+    return KadenHarness(config, command)
 
 
-class KadenceHarness(Harness):
+class KadenHarness(Harness):
     def __init__(self, config: Path, command: Sequence[str]) -> None:
         self.config, self.command = config, tuple(command)
 
@@ -116,7 +116,7 @@ class KadenceHarness(Harness):
         return opened
 
     async def model_choices(self, folder: Path) -> Sequence[tuple[str, str, str]]:
-        """What the configured provider lists: asked of a Kadence started for that alone,
+        """What the configured provider lists: asked of a Kaden started for that alone,
         which makes no request to a model. UnitError when it cannot be asked."""
         def configure() -> None:
             folder.mkdir(parents=True, exist_ok=True)
@@ -138,13 +138,13 @@ class KadenceHarness(Harness):
             listed = await asyncio.wait_for(channel.request("list_models"), MODELS_S)
         except (RuntimeStateError, RuntimeError, ValueError, KeyError, OSError,
                 TimeoutError) as e:
-            raise UnitError(f"Kadence could not list its models: {e}") from e
+            raise UnitError(f"Kaden could not list its models: {e}") from e
         finally:
             await channel.close(MODELS_GRACE_S)
         return [(each["id"], each.get("name") or each["id"], _price(each)) for each in listed]
 
     def prepare(self, spec: UnitSpec) -> None:
-        """The unit's Kadence data folder: the base configuration with this unit's model,
+        """The unit's Kaden data folder: the base configuration with this unit's model,
         limit and permissions, the fleet tools, and the folder the fleet works in.
         Blocking."""
         spec.folder.mkdir(parents=True, exist_ok=True)
@@ -172,7 +172,7 @@ class _Session(Session):
         self._active = False
         self._questioned = False  # an AskUserQuestion waits for the next send
         self._has_duty = False
-        self._failure: str | None = None  # what Kadence said before its state became failed
+        self._failure: str | None = None  # what Kaden said before its state became failed
         self._closed = False
         self._tools: dict[str, str] = {}  # the tool calls under way, in words, by call id
         self._answers: set[asyncio.Task[Any]] = set()
@@ -214,16 +214,16 @@ class _Session(Session):
         self._closed = True
         await self._channel.close(grace_s)
 
-    # Not of the contract: Kadence's own channel, for a window that shows the unit's
-    # conversation as Kadence does (Manager.follow, Manager.ask).
+    # Not of the contract: Kaden's own channel, for a window that shows the unit's
+    # conversation as Kaden does (Manager.follow, Manager.ask).
 
     @property
     def listeners(self) -> list[Callable[[EventEnvelope | None], None]]:
-        """Called with each event of the unit's Kadence, and None when it ended."""
+        """Called with each event of the unit's Kaden, and None when it ended."""
         return self._channel.listeners
 
     async def ask(self, method: str, params: dict[str, Any]) -> Any:
-        """A request of Kadence's headless channel, in its JSON."""
+        """A request of Kaden's headless channel, in its JSON."""
         return await self._request(method, **params)
 
     async def _request(self, method: str, **params: Any) -> Any:
@@ -246,7 +246,7 @@ class _Session(Session):
             case MessageCommitted(message=message) if message.role == Role.ASSISTANT:
                 for block in message.blocks:
                     if isinstance(block, ToolCall) and block.name == WORDS.finish:
-                        if self._has_duty:  # else Kadence refuses the call
+                        if self._has_duty:  # else Kaden refuses the call
                             self._emit(Reported(block.arguments.get("report") or "Done."))
                     elif isinstance(block, ToolCall) and block.name == CARD:
                         self._emit(Said(_card(block.arguments)))
@@ -265,7 +265,7 @@ class _Session(Session):
                 self._tools.pop(result.call_id, None)
                 self._emit(Doing(next(reversed(self._tools.values()), None)))
             case QuestionAsked(questions=questions):
-                # Kadence waits in the call; to the fleet it is a unit that asked and
+                # Kaden waits in the call; to the fleet it is a unit that asked and
                 # rests, and the next send answers it.
                 self._emit(Asked(_questions(questions), waits=True))
                 if self._active:  # it carries on once answered, with or without a duty
@@ -274,7 +274,7 @@ class _Session(Session):
             case QuestionAnswered():
                 self._questioned = False
             case PlanProposed(call_id=call_id, plan=plan):
-                # Kadence waits for the plan's approval; nobody gives it in a fleet, so it
+                # Kaden waits for the plan's approval; nobody gives it in a fleet, so it
                 # is approved at once, with the unit's own permissions, and said.
                 self._emit(Said(plan.strip()))
                 self._answer("resolve_plan", call_id=call_id, approve=True)
@@ -305,14 +305,14 @@ class _Session(Session):
 
 
     def _answer(self, method: str, **params: Any) -> None:
-        """Answer what Kadence waits on, without waiting for its reply."""
+        """Answer what Kaden waits on, without waiting for its reply."""
         answer = asyncio.ensure_future(self._channel.request(method, **params))
         self._answers.add(answer)
         answer.add_done_callback(self._answers.discard)
 
 
 def _price(model: Mapping[str, Any]) -> str:
-    """What a model costs, as Kadence knows it; "" when it does not."""
+    """What a model costs, as Kaden knows it; "" when it does not."""
     paid, made = model.get("input_usd_per_mtok"), model.get("output_usd_per_mtok")
     if paid is None or made is None:
         return ""

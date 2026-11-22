@@ -694,9 +694,9 @@ wheels = [
 ]
 
 [[package]]
-name = "kadence"
+name = "kaden"
 version = "0.0.0"
-source = { editable = "../Kadence" }
+source = { editable = "../Kaden" }
 dependencies = [
     { name = "anthropic" },
     { name = "ddgs" },
@@ -755,7 +755,7 @@ provides-extras = ["desktop"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "kadence", extras = ["desktop"] },
+    { name = "kaden", extras = ["desktop"] },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -785,7 +785,7 @@ name = "kfm"
 version = "0.0.0"
 source = { editable = "." }
 dependencies = [
-    { name = "kadence" },
+    { name = "kaden" },
     { name = "mcp" },
     { name = "pydantic" },
     { name = "tomli-w" },
@@ -794,12 +794,12 @@ dependencies = [
 
 [package.optional-dependencies]
 desktop = [
-    { name = "kadence", extra = ["desktop"] },
+    { name = "kaden", extra = ["desktop"] },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "kadence", extra = ["desktop"] },
+    { name = "kaden", extra = ["desktop"] },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -807,8 +807,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "kadence", editable = "../Kadence" },
-    { name = "kadence", extras = ["desktop"], marker = "extra == 'desktop'", editable = "../Kadence" },
+    { name = "kaden", editable = "../Kaden" },
+    { name = "kaden", extras = ["desktop"], marker = "extra == 'desktop'", editable = "../Kaden" },
     { name = "mcp", specifier = ">=2.3.0" },
     { name = "pydantic", specifier = ">=2" },
     { name = "tomli-w", specifier = ">=1.2.0" },
@@ -818,7 +818,7 @@ provides-extras = ["desktop"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "kadence", extras = ["desktop"], editable = "../Kadence" },
+    { name = "kaden", extras = ["desktop"], editable = "../Kaden" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },

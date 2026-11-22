@@ -50,13 +50,13 @@ _ERRORS: dict[str, type[Exception]] = {
 
 def installed_at() -> float:
     """When the code this program runs was last changed: the newest of KFM's own files and
-    of Kadence's, which its agents run. Blocking."""
-    import kadence
+    of Kaden's, which its agents run. Blocking."""
+    import kaden
 
     import kfm
 
     return max((path.stat().st_mtime
-                for package in (kfm, kadence) if package.__file__ is not None
+                for package in (kfm, kaden) if package.__file__ is not None
                 for path in Path(package.__file__).parent.rglob("*.py")), default=0.0)
 
 

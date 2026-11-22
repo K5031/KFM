@@ -1,12 +1,12 @@
 # KFM documentation
 
-KFM (Kadence Fleet Manager) runs teams of Kadence agents. You talk to a team's lead agent;
+KFM (Kaden Fleet Manager) runs teams of Kaden agents. You talk to a team's lead agent;
 it hands work to agents below it and reports back. A project holds several teams and a
 secretary you ask about all of them.
 
 ## Install
 
-KFM needs [Kadence](https://github.com/K5031/Kadence) checked out next to it (`../Kadence`)
+KFM needs [Kaden](https://github.com/K5031/Kaden) checked out next to it (`../Kaden`)
 and set up with a provider and an API key, and [uv](https://docs.astral.sh/uv/).
 
 ```bash
@@ -229,8 +229,8 @@ opens a window on the same service the commands talk to, without a terminal. It 
   what its own agents sent it, in order. Unlike a chat, others speak in it too, it works
   whether you write or not, and its reports go to its supervisor. With no agent chosen
   the page is the whole fleet's feed.
-- **In a fleet that runs, an agent's page is its own Kadence conversation**, shown as
-  Kadence shows one: its thinking, a card for each tool it used, steps folded together,
+- **In a fleet that runs, an agent's page is its own Kaden conversation**, shown as
+  Kaden shows one: its thinking, a card for each tool it used, steps folded together,
   its plan, and what it asks you, with buttons to answer. The secretary's page is hers.
   What you write there still goes through KFM. In a stopped fleet the page is the feed.
 - **Attach files** to a message with the plus beside the box, by dropping them anywhere
@@ -274,7 +274,7 @@ event, whichever way the fleet was run.
 - **Ranks.** The lead has the top rank (K5 by default). An agent can hand work only to
   new agents one rank below it, so K1 agents do their work themselves. The fleet uses only
   as many levels as the lead and its agents decide the work needs.
-- **Each agent is a separate Kadence** with its own conversation and memory. It sees
+- **Each agent is a separate Kaden** with its own conversation and memory. It sees
   nothing of the others; it knows only its task and what is reported to it.
 - **Reports go up.** When an agent finishes, asks a question or fails, its supervisor gets
   a message and decides what to do next: answer, give the task again, or hand it to
@@ -295,8 +295,8 @@ unit_budget_usd = 2.0     # one agent
 permissions = "allow_workspace"
 projects_folder = "~/Projects"   # a new project gets a folder named after it in here
 
-[harness_options]         # for Kadence, which every agent is
-config = "~/.kadence/config.toml"   # the provider, key and options every agent uses
+[harness_options]         # for Kaden, which every agent is
+config = "~/.kaden/config.toml"   # the provider, key and options every agent uses
 
 [models]                  # a model per rank; "default" for the rest
 K5 = "claude-opus-5-5"
@@ -307,7 +307,7 @@ secretary = "claude-sonnet-5-5"   # a project's secretary; without it, the top r
 marketing = "claude-sonnet-5-5"
 ```
 
-Without `[models]`, every agent uses the model in your Kadence configuration. In the
+Without `[models]`, every agent uses the model in your Kaden configuration. In the
 window's Settings each field has a list of the models your provider offers; one that is
 not listed can be typed.
 
@@ -348,7 +348,7 @@ in fleets that are there already too, a project's secretary included.
 and what it allows runs with your rights. Deleting or overwriting what the task did not
 name, sending data anywhere, publishing or pushing, spending money, and changes to the
 system are what it is told to ask about, and anything that touches keys, passwords or
-Kadence's own data always asks you. In a fleet the task it judges by is the one the
+Kaden's own data always asks you. In a fleet the task it judges by is the one the
 agent's supervisor gave.
 
 ## Not there yet

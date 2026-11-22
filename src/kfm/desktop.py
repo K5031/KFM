@@ -1,6 +1,6 @@
 """The window (`kfm-desktop`): projects, each one's fleets as a chart, and for a fleet its
 agents, what passes between them and the person's part in it. A frontend on Managers, like
-the terminal's Console: their events in, their methods out. Built on Kadence's desktop code: its event loop, theme and Markdown
+the terminal's Console: their events in, their methods out. Built on Kaden's desktop code: its event loop, theme and Markdown
 view."""
 
 from __future__ import annotations
@@ -18,11 +18,11 @@ from collections.abc import Callable, Coroutine, Sequence
 from pathlib import Path
 from typing import Any
 
-import kadence.frontends.desktop  # noqa: F401 - before any Qt import
-from kadence.frontends.common import PERMISSION_LABELS, PERMISSION_SHORT
-from kadence.frontends.desktop import theme
-from kadence.frontends.desktop.loop import QtEventLoop
-from kadence.frontends.desktop.window import (
+import kaden.frontends.desktop  # noqa: F401 - before any Qt import
+from kaden.frontends.common import PERMISSION_LABELS, PERMISSION_SHORT
+from kaden.frontends.desktop import theme
+from kaden.frontends.desktop.loop import QtEventLoop
+from kaden.frontends.desktop.window import (
     DATE_ROLE,
     PREVIEW_ROLE,
     WINDOW_BUTTON,
@@ -1019,7 +1019,7 @@ class SettingsDialog(Warns, QDialog):
     def __init__(self, parent: QWidget, config: FleetConfig) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        # No title bar of the desktop's, as Kadence's settings: its own header, which
+        # No title bar of the desktop's, as Kaden's settings: its own header, which
         # moves it, and a button that closes it.
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self.setObjectName("settings")
@@ -1085,7 +1085,7 @@ class SettingsDialog(Warns, QDialog):
             models.addRow({"default": "Default", "secretary": "Secretary"}.get(key, key), field)
         self.models["secretary"].setToolTip("The model a project's secretary runs on")
         every = self.models["default"]
-        every.lineEdit().setPlaceholderText("Kadence's model")
+        every.lineEdit().setPlaceholderText("Kaden's model")
         every.setToolTip("The model of every rank that has none of its own; empty: the one "
                          "the agent program is set to")
         every.currentTextChanged.connect(lambda _: self._show_default())
@@ -1102,7 +1102,7 @@ class SettingsDialog(Warns, QDialog):
         self.budget.setToolTip("The most a new fleet may spend")
         self.each.setToolTip("The most one agent may spend")
         self.agents.setToolTip("The most agents in a fleet")
-        self.permissions = QComboBox()  # what agents do without asking: Kadence's levels
+        self.permissions = QComboBox()  # what agents do without asking: Kaden's levels
         for level, words in PERMISSION_SHORT.items():
             self.permissions.addItem(words, level.value)
             self.permissions.setItemData(self.permissions.count() - 1,
@@ -1181,7 +1181,7 @@ class SettingsDialog(Warns, QDialog):
             form.setRowVisible(field, key == "secretary" or not auto)
         top = next(key for key in self.models if key.startswith("K"))
         self.models["secretary"].lineEdit().setPlaceholderText(
-            "Kadence's model" if auto else f"As {top}")
+            "Kaden's model" if auto else f"As {top}")
         self.adjustSize()
 
     def offer(self, models: Sequence[tuple[str, str, str]]) -> None:
@@ -1284,7 +1284,7 @@ class FleetView(QWidget):
         # reported stays in the feed.
         self._dismissed: dict[str, str] = {}
         self._tasks: set[asyncio.Task[None]] = set()
-        # The agent on the page as its own Kadence conversation, where it has one to
+        # The agent on the page as its own Kaden conversation, where it has one to
         # show; else the page is the feed, of that agent or of all.
         self.conversation: AgentPage | None = None
         self._attaching: AgentPage | None = None  # being opened: it hears already
@@ -1326,7 +1326,7 @@ class FleetView(QWidget):
         self.send_button.setToolTip("Send")
         self.send_button.setAccessibleName("Send to the lead")
         self.send_button.clicked.connect(self._send_clicked)
-        # Kadence's message box: what is attached, then add files, the text and send.
+        # Kaden's message box: what is attached, then add files, the text and send.
         self.attachments = AttachmentStrip()
         self.input.attached.connect(self.attachments.add)
         self.input.pasted.connect(self._paste_image)
@@ -1507,7 +1507,7 @@ class FleetView(QWidget):
         return self.fleet.lead.id if self.fleet.lead is not None else None
 
     def _converse(self) -> None:
-        """Have the page show that agent's Kadence conversation, if it has one to show
+        """Have the page show that agent's Kaden conversation, if it has one to show
         now; it is looked at again whenever the fleet changes."""
         wanted = self._conversing
         if self._opening is not None or (
@@ -1533,7 +1533,7 @@ class FleetView(QWidget):
                     chose=self.input.setFocus, ended=self._gone)
                 if await page.begin():
                     self.conversation, self._refused = page, None
-                    # The message box has the focus, as in Kadence. Left in the page
+                    # The message box has the focus, as in Kaden. Left in the page
                     # that goes, the stack moves it to the first thing in the
                     # conversation that takes it, and the view scrolls up to that.
                     self.input.setFocus()
@@ -1838,7 +1838,7 @@ class FleetWindow(QMainWindow):
             f"QListWidget {{ background: transparent; border: none; }}")
         side_layout = QVBoxLayout(side)
         side_layout.setContentsMargins(10, 12, 10, 12)
-        # The menu at the top, as in Kadence: what is about KFM as it runs.
+        # The menu at the top, as in Kaden: what is about KFM as it runs.
         self.menu_button = QToolButton(objectName="menu")
         self.menu_button.setIcon(theme.icon("menu", theme.current().muted, 18))
         self.menu_button.setIconSize(QSize(18, 18))
@@ -1886,7 +1886,7 @@ class FleetWindow(QMainWindow):
         self.projects_label = label("Projects", role="small", tone="muted")
         side_layout.addWidget(self.projects_label)
         side_layout.addWidget(self.projects, 1)
-        # The corner at the bottom, as in Kadence: who you are, with the app's menu, and
+        # The corner at the bottom, as in Kaden: who you are, with the app's menu, and
         # the settings.
         user = getpass.getuser()
         self.profile_button = QToolButton(objectName="profile", text=f" {user}")

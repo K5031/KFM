@@ -325,11 +325,11 @@ class Manager:
 
     async def follow(self, unit: Unit, hear: Callable[[Any], None]) -> bool:
         """Have `hear` called with everything that happens in the unit's own
-        conversation, as its Kadence tells it, and with None when its process ended;
+        conversation, as its Kaden tells it, and with None when its process ended;
         `follow` again then. Its process is kept up meanwhile, and started on its
         conversation if it is closed, which asks its model nothing. False when there is
         nothing to follow: the fleet does not run, the unit has not begun, its process
-        does not come up, or it is not a Kadence."""
+        does not come up, or it is not a Kaden."""
         self._unfollow(unit)
         if not self.up or unit.session is None:
             return False
@@ -357,7 +357,7 @@ class Manager:
             listeners.remove(hear)
 
     async def ask(self, unit: Unit, method: str, params: dict[str, Any]) -> Any:
-        """A request to the unit's own Kadence, in its channel's JSON, and its answer.
+        """A request to the unit's own Kaden, in its channel's JSON, and its answer.
         UnitError when its process is not up or refuses."""
         session = self._sessions.get(unit.id)
         if session is None or not hasattr(session, "ask"):
@@ -375,7 +375,7 @@ class Manager:
         await self._close(unit)
         if unit.active and self.up:
             self._emit(Notice(f"{unit.called} was started again on "
-                              f"{self._runs_on(unit)[0] or "Kadence's model"}."))
+                              f"{self._runs_on(unit)[0] or "Kaden's model"}."))
             await self._carry_on(unit, units.MODEL_CHANGED)
 
     async def retask(self, unit: Unit, task: str, *, ongoing: bool | None = None) -> None:

@@ -1,6 +1,6 @@
 # KFM
 
-Kadence Fleet Manager: runs teams of Kadence agents toward a goal or a duty, without
+Kaden Fleet Manager: runs teams of Kaden agents toward a goal or a duty, without
 supervision. Read before coding:
 - `.agents/notes/`: the design decisions, as Agent Notes.
 - `src/kfm/service.py`: the frontend contract, normative: everything a person can do with
@@ -9,8 +9,8 @@ supervision. Read before coding:
   frontends of it.
 - `src/kfm/api.py`: the unit contract, normative: what a fleet needs from the agent
   program its units run.
-- Kadence (`../Kadence`): the built-in unit. `src/kfm/harnesses/kadence.py` uses its
-  headless channel (`docs/headless.md`), its client for it (`kadence.frontends.remote`),
+- Kaden (`../Kaden`): the built-in unit. `src/kfm/harnesses/kaden.py` uses its
+  headless channel (`docs/headless.md`), its client for it (`kaden.frontends.remote`),
   its configuration files and its MCP support.
 
 ## Stack
@@ -25,16 +25,16 @@ Python 3.14 (`requires-python >= 3.12`), asyncio, uv, pytest + pytest-asyncio, r
   program lives in its harness (`src/kfm/harnesses/`); a change the manager needs from
   units is a change to the contract, with the second harness in `tests/fakeharness.py`
   kept passing.
-- A Kadence unit is an unchanged Kadence process. Fleet concepts (ranks, teams,
-  supervisors) live here, never in Kadence. If KFM needs something from Kadence, it is a
-  general Kadence feature or it does not exist.
+- A Kaden unit is an unchanged Kaden process. Fleet concepts (ranks, teams,
+  supervisors) live here, never in Kaden. If KFM needs something from Kaden, it is a
+  general Kaden feature or it does not exist.
 - The manager bridges all communication: units never talk to each other directly.
 - No speculative abstractions, no features the user has not asked for, no unrequested
   refactoring.
 - No migration or compatibility code. A fleet folder of another format is refused.
 - Prefer established libraries over custom mechanisms.
 - Never block the event loop.
-- Tests never use a real model or the real `~/.kadence` and `~/.kfm`.
+- Tests never use a real model or the real `~/.kaden` and `~/.kfm`.
 
 ## Documentation
 `docs/` is the user wiki: plain language, by what a reader wants to do. Update it in the

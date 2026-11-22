@@ -17,7 +17,7 @@ polling one hung command, and that was found only by reading the agent's own eve
 on disk. A secretary drafting a project was a heading and a Cancel button (the user,
 2026-11-20: "a black box").
 
-Kadence sends all of it over the channel KFM drives it through. KFM's Kadence harness
+Kaden sends all of it over the channel KFM drives it through. KFM's Kaden harness
 passed on a finished assistant message as `Said` and dropped the rest.
 
 ## Decision
@@ -26,9 +26,9 @@ passed on a finished assistant message as `Said` and dropped the rest.
   more of what the agent is thinking or writing; `Doing`, the tool it is using, in
   words; `Discarded`, when a request to the model is made again. They are optional: an
   agent program that cannot give them gives none, and everything else works as it did.
-- **The Kadence harness gives them** from the reasoning and text as they stream and
+- **The Kaden harness gives them** from the reasoning and text as they stream and
   from each tool's start and end. A tool is put in words as what the agent said it is
-  for, then its name and arguments, cut at 160 characters (`harnesses.kadence._in_words`).
+  for, then its name and arguments, cut at 160 characters (`harnesses.kaden._in_words`).
 - **The manager keeps, for each unit, what it is doing now** (`Manager._live`): the end
   of its thinking and of its writing in the request it is on (4,000 characters), and its
   tool. Thinking and writing end when the message is whole (`Said`); all three end with
@@ -47,8 +47,8 @@ passed on a finished assistant message as `Said` and dropped the rest.
 
 ## Alternatives considered
 
-- **Read the agent's own event log from disk**, as was done by hand. It is Kadence's
-  file, in Kadence's format, which a frontend of KFM has no business knowing; another
+- **Read the agent's own event log from disk**, as was done by hand. It is Kaden's
+  file, in Kaden's format, which a frontend of KFM has no business knowing; another
   harness has no such file.
 - **Send activity only for the agents a frontend asked to watch.** The proposal's way
   of bounding what goes over the socket. Telling at most five times a second what each
@@ -66,7 +66,7 @@ passed on a finished assistant message as `Said` and dropped the rest.
 - **A tool's arguments are on the screen** of whoever looks, cut but not hidden.
 - **Nothing of it can be read later**: it is gone with the turn.
 - **The terminal does not show it**: `kfm watch` prints the record.
-- **With Kadence, reasoning is what the model's provider streams**: a summary for
+- **With Kaden, reasoning is what the model's provider streams**: a summary for
   Claude models, nothing where a provider gives none.
-- **Tried with scripted agents only**, and a real Kadence agent's tool use on a scripted
+- **Tried with scripted agents only**, and a real Kaden agent's tool use on a scripted
   model.

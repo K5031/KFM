@@ -1,6 +1,6 @@
 # Agent Note: Shared team memory
 
-Status: proposed — a supervisor publishes notes its agents can read but not change, as a Kadence Memory module; not to be built before a run shows a team needs it
+Status: proposed — a supervisor publishes notes its agents can read but not change, as a Kaden Memory module; not to be built before a run shows a team needs it
 
 Part of [Standing teams](2026-11-12-standing-teams.md).
 
@@ -36,10 +36,10 @@ what makes it a team.
   know and writes that as a team note; its agents read team notes and cannot change
   them. What an agent learns goes up in its report, as now, and the supervisor decides
   whether it becomes a team note.
-- **It is a Kadence Memory module, not part of the unit contract.** Memory is one of
-  Kadence's swappable modules: a module built on `kadence.memory.sqlite.SqliteArchive`, as
-  `kadence.memory.files` is, keeps the agent's private notes and shows the team's beside
-  them. KFM's Kadence harness names it in each unit's configuration; another harness
+- **It is a Kaden Memory module, not part of the unit contract.** Memory is one of
+  Kaden's swappable modules: a module built on `kaden.memory.sqlite.SqliteArchive`, as
+  `kaden.memory.files` is, keeps the agent's private notes and shows the team's beside
+  them. KFM's Kaden harness names it in each unit's configuration; another harness
   solves team memory its own way.
 - **Briefs and reports refer to it** instead of repeating content.
 
@@ -48,7 +48,7 @@ what makes it a team.
 - **Everything through the supervisor's messages**, as now. Nothing is shared that the
   supervisor did not think to pass on, and each pass is written once and read once.
 - **One memory folder for the whole fleet**, every agent reading and writing it: a
-  setting in KFM's Kadence harness that points `kadence.memory.files` at one folder
+  setting in KFM's Kaden harness that points `kaden.memory.files` at one folder
   (`projects`). Almost nothing to build, but agents see their supervisor's notes, and
   an agent that was misled (by a web page it read, by its own mistake) writes into what
   every agent above it reads: a wrong or planted note travels up the ranks.
@@ -63,8 +63,8 @@ what makes it a team.
 ## Risks
 
 - **Reading is paid for too.** A team notebook that grows unpruned becomes the new waste;
-  the index has to stay as short as Kadence already keeps it.
-- **An open conversation does not see new notes.** Kadence reads the index when a
+  the index has to stay as short as Kaden already keeps it.
+- **An open conversation does not see new notes.** Kaden reads the index when a
   conversation is first assembled; an agent that runs for hours sees a teammate's note
   only if it looks.
 - A wrong team note misleads every agent below, not one.

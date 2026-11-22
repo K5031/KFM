@@ -100,10 +100,10 @@ class Live:
 
 @dataclass(frozen=True, slots=True)
 class Within:
-    """Something happened in an agent's own Kadence conversation, for whoever follows it
-    (Service.follow): an event of Kadence's headless channel as that carries it
+    """Something happened in an agent's own Kaden conversation, for whoever follows it
+    (Service.follow): an event of Kaden's headless channel as that carries it
     ({"seq": ..., "event": ...}), or None when the agent's process ended. Not in the
-    fleet's history: the agent's Kadence keeps its conversation."""
+    fleet's history: the agent's Kaden keeps its conversation."""
 
     fleet: str
     unit: str
@@ -249,7 +249,7 @@ class Service(abc.ABC):
 
     @abc.abstractmethod
     async def follow(self, fleet: str, unit: str) -> bool:
-        """Have what happens in an agent's own Kadence conversation sent as `Within`,
+        """Have what happens in an agent's own Kaden conversation sent as `Within`,
         and its process kept up meanwhile; it is started on its conversation if it is
         closed, which asks its model nothing. After a `Within` with no event, follow
         again. False when there is nothing to follow: the fleet does not run, or the
@@ -261,7 +261,7 @@ class Service(abc.ABC):
 
     @abc.abstractmethod
     async def ask(self, fleet: str, unit: str, method: str, params: dict[str, Any]) -> Any:
-        """A request to a followed agent's own Kadence, of its headless channel and in
+        """A request to a followed agent's own Kaden, of its headless channel and in
         its JSON, and the answer: how a frontend reads its conversation. UnitError when
         its process is not up or refuses."""
 

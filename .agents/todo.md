@@ -5,6 +5,5 @@ Agent Note (`notes/proposed/`, where some already are) and leaves this list.
 
 ## Parked
 
-- Proposed already: [Build](notes/proposed/2026-11-18-build.md),
-  [shared team memory](notes/proposed/2026-11-12-shared-team-memory.md),
+- Proposed already: [shared team memory](notes/proposed/2026-11-12-shared-team-memory.md),
   [standing teams](notes/proposed/2026-11-12-standing-teams.md).

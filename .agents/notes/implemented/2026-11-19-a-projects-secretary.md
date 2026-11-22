@@ -4,7 +4,6 @@ Status: implemented — the agent that maps out a project stays as the person's 
 
 Builds on [projects](2026-11-13-projects.md). Related:
 [editing the tree](2026-11-13-editing-the-tree.md), the other way to shape a project;
-[Build](../proposed/2026-11-18-build.md);
 [short-lived workers](2026-11-14-short-lived-workers.md);
 [shared team memory](../proposed/2026-11-12-shared-team-memory.md).
 

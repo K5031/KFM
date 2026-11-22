@@ -111,7 +111,7 @@ from kfm.service import (
     Within,
 )
 
-SIDEBAR = 280  # px
+SIDEBAR = 288  # px, as Claude's and Kaden's
 FORM = 760  # px, the start screen's width
 AGENT_ROWS = 10  # agents shown before their list scrolls
 AGENT_ROW_PX = 30
@@ -122,7 +122,7 @@ QUIET_STATES = ("starting", "working", "waiting", "asking", "done")  # shown by 
 OVER = ("done", "idle", "failed", "stopped")  # an agent that is at nothing
 THINKING = 600  # characters, the end, of what an agent is thinking, under its feed
 BAR = 48  # px, the bar on top
-COLUMN = 720  # px, the widest the feed's entries get
+COLUMN = 780  # px, the widest the feed's entries get, as Kaden's column
 # What the service refuses, with words for the person (kfm.service).
 REFUSALS = (FleetError, UnitError, ValueError, OSError, RuntimeError)
 logger = logging.getLogger(__name__)
@@ -1343,7 +1343,7 @@ class FleetView(QWidget):
         box = QFrame(objectName="composer")
         box.setMaximumWidth(COLUMN)
         stacked = QVBoxLayout(box)
-        stacked.setContentsMargins(8, 8, 8, 8)
+        stacked.setContentsMargins(10, 12, 10, 12)  # Claude's room around the text
         stacked.setSpacing(6)
         stacked.addWidget(self.attachments)
         inside = QHBoxLayout()

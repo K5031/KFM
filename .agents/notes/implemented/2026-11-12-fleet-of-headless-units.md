@@ -4,7 +4,7 @@ Status: implemented — the manager runs every unit as an unchanged headless Kad
 
 ## Problem
 
-PHILOSOPHY.md asks for teams of Kadence agents in ranks, each supervising the rank below,
+KFM is for teams of Kadence agents in ranks, each supervising the rank below,
 that take a rough task from a person and finish it without supervision, inside budgets
 and permissions. Kadence already runs headless, works on a goal or a duty by itself,
 reports, asks for help and respects a budget. What is missing is everything between
@@ -51,7 +51,7 @@ concepts, so none of this can be added to it.
 - **Let each agent start its own children**, as Kadence's sub-sessions do. No manager is
   needed, but the hierarchy is then the process tree: nothing sees the whole fleet, a
   fleet-wide budget cannot be enforced, and a supervisor that dies takes its subtree with
-  it. PHILOSOPHY.md already leans toward bridging.
+  it.
 - **A KFM frontend module inside each unit** that offers the fleet tools
   (`Frontend.tools`) and speaks to the manager over the unit's stdin and stdout. No HTTP,
   but it needs requests from child to parent on a channel built for the other direction,

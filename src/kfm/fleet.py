@@ -1,5 +1,5 @@
-"""The fleet as data: its units, who supervises whom, and the rules of the hierarchy
-(PHILOSOPHY.md). No processes here; the manager runs them."""
+"""The fleet as data: its units, who supervises whom, and the rules of the hierarchy.
+No processes here; the manager runs them."""
 
 from __future__ import annotations
 

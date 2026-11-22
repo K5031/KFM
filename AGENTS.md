@@ -2,7 +2,6 @@
 
 Kadence Fleet Manager: runs teams of Kadence agents toward a goal or a duty, without
 supervision. Read before coding:
-- `PHILOSOPHY.md`: what the fleet is for (ranks K1 to K5, teams, goals and duties).
 - `.agents/notes/`: the design decisions, as Agent Notes.
 - `src/kfm/service.py`: the frontend contract, normative: everything a person can do with
   KFM. `local.py` is the service in a process, `server.py` and `remote.py` carry it over

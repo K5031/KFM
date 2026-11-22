@@ -66,8 +66,6 @@ holds the limits and keeps the record of what happened; it decides nothing about
 work. What an agent is told are facts about where it stands and what its tools do, not
 instructions on how to work.
 
-[PHILOSOPHY.md](PHILOSOPHY.md) says where this is going.
-
 ## Documentation
 
 The [documentation](docs/README.md) covers installing, running fleets from the terminal,

@@ -23,6 +23,7 @@ from kadence.api import (
     MessageCommitted,
     ModelRetry,
     PermissionRequested,
+    PlanProposed,
     QuestionAnswered,
     QuestionAsked,
     ReasoningDelta,
@@ -272,6 +273,11 @@ class _Session(Session):
                 self._active, self._questioned = False, True
             case QuestionAnswered():
                 self._questioned = False
+            case PlanProposed(call_id=call_id, plan=plan):
+                # Kadence waits for the plan's approval; nobody gives it in a fleet, so it
+                # is approved at once, with the unit's own permissions, and said.
+                self._emit(Said(plan.strip()))
+                self._answer("resolve_plan", call_id=call_id, approve=True)
             case HelpNeeded(question=question):
                 self._emit(Asked(question))
             case ConversationUpdated(info=info) if self._conversation in (None, info.id):
@@ -282,11 +288,8 @@ class _Session(Session):
                 self._failure = message
             case PermissionRequested(request=request):
                 if request.call.name.startswith(WORDS.tools):  # the fleet's own tools
-                    answer = asyncio.ensure_future(self._channel.request(
-                        "resolve_permission", request_id=request.id,
-                        decision="allow_conversation"))
-                    self._answers.add(answer)
-                    answer.add_done_callback(self._answers.discard)
+                    self._answer("resolve_permission", request_id=request.id,
+                                 decision="allow_conversation")
                 else:
                     self._emit(ApprovalNeeded(request.id, request.call.name,
                                               str(request.call.arguments)))
@@ -299,6 +302,13 @@ class _Session(Session):
                 elif self._active and not active:
                     self._emit(Rested(self._has_duty))
                 self._active = active
+
+
+    def _answer(self, method: str, **params: Any) -> None:
+        """Answer what Kadence waits on, without waiting for its reply."""
+        answer = asyncio.ensure_future(self._channel.request(method, **params))
+        self._answers.add(answer)
+        answer.add_done_callback(self._answers.discard)
 
 
 def _price(model: Mapping[str, Any]) -> str:

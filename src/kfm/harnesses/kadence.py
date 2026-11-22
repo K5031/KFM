@@ -64,6 +64,7 @@ from kfm.api import (
 TOOLS = "fleet"  # the MCP server's name in a unit: its tools are mcp__fleet__<tool>
 WORDS = Vocabulary(finish="finish_goal", ask="ask_for_help", tools=f"mcp__{TOOLS}__")
 CARD = "wrap_up"  # Kadence's tool that ends a turn with a recap, a question and its answers
+QUESTIONS = "AskUserQuestion"  # Kadence's tool that ends a turn with questions to answer
 UNIT_RECORD = "unit.json"
 _LINE_LIMIT = 16 * 1024 * 1024
 DOING_CHARS = 160  # of a tool call, as it is shown while it runs
@@ -246,6 +247,8 @@ class _Session(Session):
                             self._emit(Reported(block.arguments.get("report") or "Done."))
                     elif isinstance(block, ToolCall) and block.name == CARD:
                         self._emit(Said(_card(block.arguments)))
+                    elif isinstance(block, ToolCall) and block.name == QUESTIONS:
+                        self._emit(Said(_questions(block.arguments)))
                     elif isinstance(block, Text) and block.text.strip():
                         self._emit(Said(block.text.strip()))
             case ReasoningDelta(text=text):
@@ -305,6 +308,19 @@ def _card(arguments: dict[str, Any]) -> str:
     question = "\n".join([str(arguments.get("question") or "").strip(), *options]).strip()
     return "\n\n".join(part for part in (str(arguments.get("recap") or "").strip(), question)
                        if part)
+
+
+def _questions(arguments: dict[str, Any]) -> str:
+    """The questions a turn ended with, as what the unit said: each with its options."""
+    parts = []
+    for question in arguments.get("questions") or ():
+        if not isinstance(question, dict):
+            continue
+        options = [f"- {o['label']}" + (f": {o['description']}" if o.get("description") else "")
+                   for o in question.get("options") or ()
+                   if isinstance(o, dict) and o.get("label")]
+        parts.append("\n".join([str(question.get("question") or "").strip(), *options]))
+    return "\n\n".join(p for p in parts if p.strip())
 
 
 def _in_words(call: ToolCall) -> str:

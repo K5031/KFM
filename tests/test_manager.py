@@ -230,6 +230,19 @@ async def test_questions_an_agent_waits_on_are_asked_and_answered_like_any(fleet
     assert delivered(manager, events)[-1] == ("Lead", None, "report", "Painted it green.")
 
 
+async def test_an_agents_plan_is_approved_without_waiting_for_anyone(fleet):
+    """Kadence's plan mode waits for the user to approve the plan. Nobody approves a unit's,
+    so the harness does, and the plan is what the agent said."""
+    manager, events = await fleet({"Lead": [
+        call("EnterPlanMode"), call("ExitPlanMode", plan="1. Paint it green"),
+        finish("Painted it.")]})
+    lead = await manager.add(None, "Lead", "Paint it")
+    await asyncio.wait_for(manager.finished.wait(), 30)
+    assert "1. Paint it green" in [e.text for e in events if isinstance(e, Said)]
+    assert lead.state == "done"
+    await manager.aclose()
+
+
 async def test_an_agents_own_conversation_is_followed_and_asked(fleet):
     manager, _ = await fleet({"Lead": [finish("Counted."), {"when": "More", "text": "Two more."}]})
     lead = await manager.add(None, "Lead", "Count the files")

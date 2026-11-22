@@ -102,4 +102,4 @@ generalize.
 | The brief | Situation only, the same for any kind of fleet: who the agent is and its rank, its task, who gave it and that nobody watches, how to finish and how to ask, whether it can hand work down, that everyone shares one folder. What a unit is told when the fleet resumes is a fact it cannot know otherwise |
 | Not added | "Report where the results are, do not paste them" and "pass on what you know": the lead did the second unasked, and the first cost cents in runs of two minutes. Nothing is added on a hunch |
 | Known soft spot | "Say in each task which files it owns" stands in for a mechanism that is missing: nothing stops two agents editing one file |
-
+| Waiting questions | A unit whose question waits in a call (`Asked.waits`, Kadence's `AskUserQuestion`) gets only messages that answer: its supervisor's (`message`) and the person's (`say`). Reports, questions and failures from below, notes and other teams' messages are held (`Manager._held`) and sent, in order, right after the answer; a unit reopened after a stop gets them then, its question void. `ask_for_help` does not hold anything: the unit is not in a call |

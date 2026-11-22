@@ -84,15 +84,16 @@ ANSWERED = ("User has answered", "The user answered")  # an AskUserQuestion's re
 
 
 def _said_last(request: InferenceRequest) -> str:
-    """What the agent was told last: the user's answers to its questions, if they are the
-    last results, else the last user message."""
-    last = request.messages[-1] if request.messages else None
-    if last is not None and last.role == Role.TOOL:
-        answers = [b.content for b in last.blocks
-                   if isinstance(b, ToolResult) and b.content.startswith(ANSWERED)]
-        if answers:
-            return "".join(answers)
-    return _last_user(request)
+    """What the agent was told last: the user's answers to its questions, if they came
+    since its last message, else the last user message."""
+    since = []
+    for message in reversed(request.messages):
+        if message.role == Role.ASSISTANT:
+            break
+        since.append(message)
+    answers = [b.content for m in since for b in m.blocks
+               if isinstance(b, ToolResult) and b.content.startswith(ANSWERED)]
+    return "".join(answers) if answers else _last_user(request)
 
 
 def _last_result(request: InferenceRequest) -> str:

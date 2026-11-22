@@ -21,7 +21,9 @@ What a unit must do, beyond the methods below:
   that follows; it reports nothing and does not wake itself.
 - **Ask when blocked.** When only its supervisor can unblock it, the agent asks one
   question (`Asked`) and ends its turn. It does not wake itself while the question is
-  open; the next `send` is the answer.
+  open; the next `send` is the answer. An agent that waits in a call for it says so
+  (`Asked.waits`): it takes the next `send` as the answer whatever it says, so the fleet
+  sends it nothing else until its supervisor or the person has answered.
 - **Use the fleet tools.** `UnitSpec.tools_url` is an MCP server (streamable HTTP) with
   the tools an agent delegates, answers and reports with. The agent has them, and they
   run without asking anyone.
@@ -120,6 +122,9 @@ class Reported:
 @dataclass(frozen=True, slots=True)
 class Asked:
     question: str  # before the Rested of that turn
+    # The agent waits in a call for the answer, and takes the next send as it, whatever
+    # it says: the fleet sends nothing else until it has been answered.
+    waits: bool = False
 
 
 @dataclass(frozen=True, slots=True)

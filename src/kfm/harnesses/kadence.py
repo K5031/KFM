@@ -266,7 +266,7 @@ class _Session(Session):
             case QuestionAsked(questions=questions):
                 # Kadence waits in the call; to the fleet it is a unit that asked and
                 # rests, and the next send answers it.
-                self._emit(Asked(_questions({"questions": questions})))
+                self._emit(Asked(_questions({"questions": questions}), waits=True))
                 if self._active:
                     self._emit(Rested(self._has_duty))
                 self._active, self._questioned = False, True

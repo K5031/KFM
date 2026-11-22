@@ -230,6 +230,29 @@ async def test_questions_an_agent_waits_on_are_asked_and_answered_like_any(fleet
     assert delivered(manager, events)[-1] == ("Lead", None, "report", "Painted it green.")
 
 
+async def test_a_report_that_arrives_while_a_lead_waits_on_a_question_is_not_its_answer(
+        fleet):
+    """Kadence takes a message sent while AskUserQuestion waits as the answer; the fleet
+    keeps the lead's other messages until the person has answered."""
+    question = {"question": "Which colour?", "header": "Colour", "multiSelect": False,
+                "options": [{"label": "Red", "description": ""},
+                            {"label": "Green", "description": ""}]}
+    manager, events = await fleet({
+        "Lead": [{"calls": [
+                     {"name": "mcp__fleet__delegate",
+                      "arguments": {"name": "Scout", "task": "Count the files"}},
+                     {"name": "AskUserQuestion", "arguments": {"questions": [question]}}]},
+                 finish("Painted it green.", when="green")],
+        "Scout": [finish("Counted 3.")]})
+    lead = await manager.add(None, "Lead", "Paint it")
+    await until(lambda: ("Scout", "Lead", "report", "Counted 3.") in delivered(manager, events)
+                and lead.state == "waiting")
+    await asyncio.sleep(0.5)  # time for the report to reach the lead, if it were let
+    await manager.say("green")
+    await until(lambda: ("Lead", None, "report", "Painted it green.")
+                in delivered(manager, events), timeout=30)
+
+
 async def test_an_agents_own_conversation_is_followed_and_asked(fleet):
     manager, _ = await fleet({"Lead": [finish("Counted."), {"when": "More", "text": "Two more."}]})
     lead = await manager.add(None, "Lead", "Count the files")

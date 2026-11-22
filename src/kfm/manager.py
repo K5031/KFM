@@ -131,6 +131,9 @@ class Manager:
         self._tools: ToolServer  # the fleet tools, made each time it starts
         self._switch = asyncio.Lock()  # one start or stop at a time
         self._sessions: dict[str, Session] = {}
+        # Messages for a unit that waits in a call for its answer (Asked.waits), sent once
+        # it has one: it would take any of them as the answer.
+        self._held: dict[str, list[tuple[str, tuple[str, ...], bool]]] = {}
         self._opening: dict[str, asyncio.Lock] = {}  # one start of a unit's process at a time
         self._tasks: set[asyncio.Task[None]] = set()
         self._unsaved = False
@@ -282,7 +285,7 @@ class Manager:
         try:
             await self._give(unit, text,
                              text if supervisor is None else units.from_person(text),
-                             files=files, spoken=spoken)
+                             files=files, spoken=spoken, answering=True)
         except (FleetError, UnitError) as e:
             self._emit(Notice(f"That message did not reach {unit.called}: {e}"))
             raise
@@ -455,18 +458,24 @@ class Manager:
                                ongoing=ongoing, budget_usd=budget_usd, model=model)
 
     async def tell(self, unit: Unit, text: str, *, files: Sequence[str] = (),
-                   spoken: bool = False) -> None:
+                   spoken: bool = False, answering: bool = False) -> None:
         """Put a message into the conversation of a unit that has begun, starting its
         process if it is not up: it then works on what the message says. One whose goal
         has ended has it again, and ends it again with a report. `files` and `spoken` are
-        the session's (api.Session.send). FleetError or UnitError when it cannot be."""
+        the session's (api.Session.send). A unit that waits for the answer to its question
+        gets only what `answering` (its supervisor, the person); the rest follows the
+        answer. FleetError or UnitError when it cannot be."""
         if self.fleet.units.get(unit.id) is not unit:
             raise FleetError(f"{unit.label} is not in the fleet.")
         if not self.up:
             raise FleetError("The fleet is not running.")
         if unit.session is None:
             raise FleetError(f"{unit.label} has not begun.")
+        if unit.id in self._held and not answering:
+            self._held[unit.id].append((text, tuple(files), spoken))
+            return
         session = await self._session(unit)
+        held = self._held.pop(unit.id, [])
         unit.question = None  # this is its answer
         self._changed()
         ended = unit.state in ("done", "idle")  # its instruction stands no more
@@ -482,11 +491,15 @@ class Manager:
             raise
         if ended:  # the message is what it takes its turn on, with its goal to end again
             await session.instruct(self._instruction(unit))
+        for later, later_files, later_spoken in held:
+            self._spawn(self._tell_quietly(unit, later, files=later_files,
+                                           spoken=later_spoken))
 
     async def message(self, supervisor: Unit, unit: Unit, text: str) -> None:
         """A supervisor's message to one of its agents."""
         await self._give(unit, text,
-                         f"[Message from {supervisor.label}, your supervisor] {text}")
+                         f"[Message from {supervisor.label}, your supervisor] {text}",
+                         answering=True)
         self._emit(Instructed(unit.id, supervisor.id, "message", text))
 
     async def hear(self, team: str, text: str) -> None:
@@ -603,6 +616,8 @@ class Manager:
         """Open a unit that was at work when the fleet stopped, on its session, with its
         instruction as the fleet now has it. False: it could not be."""
         unit.question = None  # an open question does not outlive the unit's process
+        for text, files, spoken in self._held.pop(unit.id, []):
+            self._spawn(self._tell_quietly(unit, text, files=files, spoken=spoken))
         self._emit(Changed(unit.id, unit.state))
         try:
             await (await self._session(unit)).instruct(self._instruction(unit))
@@ -613,7 +628,7 @@ class Manager:
         return True
 
     async def _give(self, unit: Unit, task: str, framed: str, *, files: Sequence[str] = (),
-                    spoken: bool = False) -> None:
+                    spoken: bool = False, answering: bool = False) -> None:
         """A message for the unit: its task, when it has none yet, else `framed`, which
         says who it is from."""
         if unit.state == "planned":
@@ -621,7 +636,7 @@ class Manager:
             if files:  # a task carries none
                 await self.tell(unit, "", files=files, spoken=spoken)
         else:
-            await self.tell(unit, framed, files=files, spoken=spoken)
+            await self.tell(unit, framed, files=files, spoken=spoken, answering=answering)
 
     def _note(self, supervisor: Unit | None, text: str) -> None:
         """Tell a supervisor that is at work what happened to one of its agents; one that
@@ -704,8 +719,10 @@ class Manager:
                 self._watched(unit, thinking="", writing="")
             case api.Reported(text=text):
                 unit.report = text
-            case api.Asked(question=question):
+            case api.Asked(question=question, waits=waits):
                 unit.question = question
+                if waits:
+                    self._held.setdefault(unit.id, [])
             case api.Spent(usd=usd):
                 unit.spent_usd = usd
                 self._changed()
@@ -817,9 +834,10 @@ class Manager:
         if supervisor is not None:
             self._spawn(self._tell_quietly(supervisor, message))
 
-    async def _tell_quietly(self, unit: Unit, text: str) -> None:
+    async def _tell_quietly(self, unit: Unit, text: str, *, files: Sequence[str] = (),
+                            spoken: bool = False) -> None:
         try:
-            await self.tell(unit, text)
+            await self.tell(unit, text, files=files, spoken=spoken)
         except (FleetError, UnitError) as e:
             self._emit(Notice(f"A message for {unit.label} could not be delivered: {e}"))
 

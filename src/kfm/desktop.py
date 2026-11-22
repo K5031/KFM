@@ -511,7 +511,7 @@ class ModelBox(QComboBox):
 
 
 class KindSwitch(QFrame):
-    """Task or Duty, as two segments."""
+    """Task or Continuous, as two segments."""
 
     def __init__(self) -> None:
         super().__init__(objectName="segments")
@@ -528,7 +528,7 @@ class KindSwitch(QFrame):
         kinds.setSpacing(2)
         self.task_kind = QPushButton("Task", objectName="segment")
         self.task_kind.setToolTip("Ends when the lead reports")
-        self.duty = QPushButton("Duty", objectName="segment")
+        self.duty = QPushButton("Continuous", objectName="segment")
         self.duty.setToolTip("Runs until you stop it")
         self.group = QButtonGroup(self)
         for button in (self.task_kind, self.duty):
@@ -752,7 +752,7 @@ def _centred(form: QWidget) -> QWidget:
 
 
 class DraftRow(QFrame):
-    """A fleet of a draft: its name, what it does, Task or Duty, and a way out of it."""
+    """A fleet of a draft: its name, what it does, Task or Continuous, and a way out of it."""
 
     def __init__(self, name: str = "", does: str = "", ongoing: bool = False) -> None:
         super().__init__(objectName="composer")
@@ -1202,7 +1202,7 @@ class SettingsDialog(Warns, QDialog):
 
 
 class TaskDialog(QDialog):
-    """An agent's task, and whether it is a task or a duty, to change."""
+    """An agent's task, and whether it is a task or continuous, to change."""
 
     def __init__(self, parent: QWidget, unit: Unit) -> None:
         super().__init__(parent)

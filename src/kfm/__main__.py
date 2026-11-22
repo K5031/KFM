@@ -44,14 +44,14 @@ STALE = ("kfm: KFM was updated since its service started, which still runs the c
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="kfm", description="Run fleets of Kadence agents on tasks and duties.")
+        prog="kfm", description="Run fleets of Kadence agents on tasks, or continuously.")
     parser.add_argument("--home", type=Path, default=HOME,
                         help="where projects and settings are kept (default: ~/.kfm)")
     commands = parser.add_subparsers(dest="command", required=True)
 
     run = commands.add_parser("run", help="start a fleet on a task and follow it")
     run.add_argument("task", help="what the fleet should achieve")
-    run.add_argument("--duty", action="store_true",
+    run.add_argument("--continuous", action="store_true", dest="duty",
                      help="standing work that never ends, instead of a goal")
     run.add_argument("--work", type=Path, default=Path.cwd(),
                      help="the folder the agents work in (default: this one)")
@@ -102,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     new.add_argument("project")
     new.add_argument("name")
     new.add_argument("task", nargs="?", default="")
-    new.add_argument("--duty", action="store_true",
+    new.add_argument("--continuous", action="store_true", dest="duty",
                      help="standing work that never ends, instead of a task that finishes")
     new.add_argument("--work", type=Path, help="default: the project's folder")
     new.add_argument("--budget", type=float, dest="budget_usd")
@@ -122,10 +122,10 @@ def main(argv: list[str] | None = None) -> int:
     add.add_argument("--name", default="")
     add.add_argument("--task", default="",
                      help="with none it waits for its first message")
-    add.add_argument("--duty", action="store_true")
+    add.add_argument("--continuous", action="store_true", dest="duty")
     add.add_argument("--model")
     for name, extra in (("remove", ()), ("rename", ("name",)), ("task", ("task",)),
-                        ("duty", ("task",)), ("model", ("model",))):
+                        ("continuous", ("task",)), ("model", ("model",))):
         change = what.add_parser(name)
         change.add_argument("fleet")
         change.add_argument("unit", help="the agent's id, such as K4001")
@@ -372,7 +372,7 @@ async def _proposal(service: Service, args: argparse.Namespace) -> int:
         await service.settle_proposal(owner.id)
         return 0
     for team in made.teams:
-        print(f"{team.name} ({'duty' if team.ongoing else 'task'}"
+        print(f"{team.name} ({'continuous' if team.ongoing else 'task'}"
               + (f", in {team.folder}" if team.folder else "") + f"): {team.does}")
     if args.start:
         for team in made.teams:
@@ -418,13 +418,13 @@ async def _agent(service: Service, args: argparse.Namespace) -> int:
             await service.remove_agent(fleet, args.unit)
         case "rename":
             await service.rename_agent(fleet, args.unit, args.name)
-        case "task" | "duty":  # work that ends, or standing work
+        case "task" | "continuous":  # work that ends, or standing work
             task = args.task
             if not task:  # only its kind changes
                 await service.watch(fleet)
                 known = service.fleet(fleet).units.get(args.unit)
                 task = known.task if known is not None else ""
-            await service.set_task(fleet, args.unit, task, ongoing=args.action == "duty")
+            await service.set_task(fleet, args.unit, task, ongoing=args.action == "continuous")
         case "model":
             await service.set_model(fleet, args.unit, args.model)
     return 0

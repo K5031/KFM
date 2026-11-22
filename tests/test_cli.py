@@ -66,9 +66,9 @@ def test_run_follows_a_fleet_and_the_other_commands_reach_it(tmp_path: Path):
     assert kfm("agent", "model", "hand", "K4002", "small-1", home=tmp_path).returncode == 0
     assert kfm("agent", "task", "hand", "K4002", "Count the files", home=tmp_path).returncode == 0
     # A duty, and a task again: with no text, only its kind changes.
-    assert kfm("agent", "duty", "hand", "K4002", home=tmp_path).returncode == 0
+    assert kfm("agent", "continuous", "hand", "K4002", home=tmp_path).returncode == 0
     assert "Count the files" in kfm("status", "hand", home=tmp_path).stdout
-    assert kfm("agent", "duty", "hand", "K4002", "Watch the files", home=tmp_path).returncode == 0
+    assert kfm("agent", "continuous", "hand", "K4002", "Watch the files", home=tmp_path).returncode == 0
     assert kfm("agent", "task", "hand", "K4002", "Count the files", home=tmp_path).returncode == 0
     built = kfm("status", "hand", home=tmp_path).stdout
     assert "hand (" in built and "Boss (K5002): planned" in built
@@ -91,7 +91,7 @@ def test_a_fleet_keeps_running_after_the_command_that_started_it(tmp_path: Path)
                                   {"when": "anything new", "text": "All quiet."}]})
     work = tmp_path / "work"
     work.mkdir()
-    ran = kfm("run", "Keep watch", "--duty", "--detach", "--name", "watch", "--work",
+    ran = kfm("run", "Keep watch", "--continuous", "--detach", "--name", "watch", "--work",
               str(work), home=tmp_path)
     assert ran.returncode == 0 and "runs on its own" in ran.stdout, ran.stderr
     assert "watch (" in kfm("status", home=tmp_path).stdout
@@ -119,7 +119,7 @@ def test_the_service_is_shown_and_stopped_from_the_terminal(tmp_path: Path):
     work = tmp_path / "work"
     work.mkdir()
     assert "No KFM service runs" in kfm("service", home=tmp_path).stdout
-    kfm("run", "Keep watch", "--duty", "--detach", "--name", "watch", "--work", str(work),
+    kfm("run", "Keep watch", "--continuous", "--detach", "--name", "watch", "--work", str(work),
         home=tmp_path)
     shown = kfm("service", home=tmp_path).stdout
     assert "runs since" in shown and "process" in shown

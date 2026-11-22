@@ -19,8 +19,8 @@ each agent is doing and what it has spent.
 - **A hierarchy that sizes itself.** A lead hires agents one rank below it as the work
   needs, and they hire below themselves. Reports and questions go up; only what a lead
   cannot settle reaches you.
-- **Tasks and duties.** A task ends with the lead's report. A duty is standing work with
-  no end ("be the support team"): the team finds its own work and keeps at it.
+- **A task, or continuous.** A task ends with the lead's report. A continuous team does
+  standing work with no end ("be the support team"): the team finds its own work and keeps at it.
 - **Projects with a secretary.** Describe a project and its secretary proposes the
   teams. Afterwards she is the one agent you ask how things stand or tell what to
   change; team leads can also write to each other.

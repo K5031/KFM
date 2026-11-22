@@ -505,7 +505,7 @@ async def test_the_person_adds_an_agent_and_sets_a_model_on_the_chart(window, tm
     await until(lambda: chart(shown) == {"dev": ["K5001", "Tester K4001"]})
     await until(lambda: not dialog.isVisible())  # once its process is up
     assert ("Tester", "small-1") in harness.models
-    assert not view.fleet.units["K4001"].ongoing  # a task, unless Duty is chosen
+    assert not view.fleet.units["K4001"].ongoing  # a task, unless Continuous is chosen
     tester = shown.chart.nodes[(view.id, "K4001")]
     assert "small-1" in tester.toolTip()
 

@@ -26,7 +26,7 @@ kfm run "Audit the docs in this repository and fix what is out of date" --budget
 | Option | Does |
 |---|---|
 | `--budget 5` | The most the whole fleet may spend, in US dollars (default: the settings', 10) |
-| `--duty` | Standing work that never ends ("be the support team") instead of a task that finishes |
+| `--continuous` | Standing work that never ends ("be the support team") instead of a task that finishes |
 | `--work PATH` | The folder the agents work in (default: the current one) |
 | `--project NAME` | The project the fleet belongs to (default: the one whose folder this is, made if there is none) |
 | `--name NAME` | What the fleet is called |
@@ -83,9 +83,9 @@ Everything the window does has a command. A fleet is named by its name, by
 | `kfm projects` | List the projects |
 | `kfm project new NAME [--work PATH] [--does "text"]`, `rename`, `delete` | Make, rename or delete a project. With `--does`, its secretary proposes its teams. Without `--work` it works in a folder named after it in the projects folder, if one is set, else in the current folder |
 | `kfm proposal PROJECT [--start\|--drop]` | The teams its secretary proposed; start them all, or drop the proposal |
-| `kfm fleet new PROJECT NAME ["task"] [--duty] [--model M]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
-| `kfm agent add FLEET [--under K5001] [--name N] [--task T] [--duty] [--model M]` | An agent under another, or the lead of a fleet with none |
-| `kfm agent remove\|rename\|task\|duty\|model FLEET UNIT [...]` | Change an agent; `task [TEXT]` makes its work a task (it ends), `duty [TEXT]` a duty (it stands); with no text it keeps the task it has |
+| `kfm fleet new PROJECT NAME ["task"] [--continuous] [--model M]`, `rename`, `delete` | Add a fleet: with a task a lead builds it, with none you do |
+| `kfm agent add FLEET [--under K5001] [--name N] [--task T] [--continuous] [--model M]` | An agent under another, or the lead of a fleet with none |
+| `kfm agent remove\|rename\|task\|continuous\|model FLEET UNIT [...]` | Change an agent; `task [TEXT]` makes its work a task (it ends), `continuous [TEXT]` continuous (it stands); with no text it keeps the task it has |
 | `kfm settings [--budget N] [--unit-budget N] [--max-agents N] [--model K5=ID] [--model-mode auto\|manual] [--auto-models ID,ID] [--permissions LEVEL]` | Show or change the settings. A change reaches every fleet there is; `--budget` is what a new fleet may spend |
 | `kfm serve` | Run the service in this terminal instead of in the background |
 
@@ -156,7 +156,7 @@ opens a window on the same service the commands talk to, without a terminal. It 
   needs.
 - **Add fleet**, after the last fleet on the chart: give it a name, write what it does and
   press Enter. A lead starts on that and hires the agents it needs. Under the text you choose **Task** (ends when the lead reports it done; what a
-  fleet is unless you say otherwise) or **Duty** (standing work that never ends), a folder of its own if it should not
+  fleet is unless you say otherwise) or **Continuous** (standing work that never ends), a folder of its own if it should not
   work in the project's, and the most the fleet may spend.
 
   ![A new fleet](images/start-light.png)
@@ -183,7 +183,7 @@ opens a window on the same service the commands talk to, without a terminal. It 
   rank has in the settings. In a running fleet both happen at once (an agent starts again on its new
   model); in a stopped one they take effect when you start it.
 - **Task…** in an agent's right-click menu gives it another task, and switches it
-  between **Task** and **Duty**. It keeps its conversation, is told, and its supervisor
+  between **Task** and **Continuous**. It keeps its conversation, is told, and its supervisor
   is told. In a stopped fleet the agent works
   on the new task when you start the fleet.
 - **Remove…** takes an agent out of the fleet, with every agent under it: they stop,

@@ -73,8 +73,15 @@ class AgentController(Controller):
         self._tell(text, list(files))
 
     def resolve(self, request_id: str, decision: Decision) -> None:
-        self._approve(request_id, decision is not Decision.DENY,
-                      decision is Decision.ALLOW_CONVERSATION)
+        self._approve(request_id, *answer(decision))
+
+
+def answer(decision: Decision) -> tuple[bool, bool]:
+    """What Kadence's answer to a permission prompt is to KFM: whether the call runs, and
+    whether the agent no longer asks for calls of its kind. A "never" is a no."""
+    allowed = decision in (Decision.ALLOW_ONCE, Decision.ALLOW_CONVERSATION,
+                           Decision.ALLOW_ALWAYS)
+    return allowed, decision in (Decision.ALLOW_CONVERSATION, Decision.ALLOW_ALWAYS)
 
 
 class AgentPage:

@@ -1480,3 +1480,15 @@ async def test_a_conversation_that_grew_off_screen_is_at_its_end_when_opened(kad
         QApplication.processEvents()
         await asyncio.sleep(0.02)
     assert bar.value() >= bar.maximum() - 4
+
+
+def test_an_answer_on_an_agents_page_reaches_kfm_as_it_was_meant():
+    from kadence.api import Decision
+
+    from kfm.conversation import answer
+
+    assert answer(Decision.ALLOW_ONCE) == (True, False)
+    assert answer(Decision.ALLOW_CONVERSATION) == (True, True)
+    assert answer(Decision.ALLOW_ALWAYS) == (True, True)
+    assert answer(Decision.DENY) == (False, False)
+    assert answer(Decision.DENY_ALWAYS) == (False, False)  # never is no, not yes

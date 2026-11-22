@@ -113,7 +113,6 @@ from kfm.service import (
 
 SIDEBAR = 280  # px
 FORM = 760  # px, the start screen's width
-LOGO = 64  # px, on the start screen
 AGENT_ROWS = 10  # agents shown before their list scrolls
 AGENT_ROW_PX = 30
 PROJECT_ROLE = Qt.ItemDataRole.UserRole  # a project row's id
@@ -546,7 +545,7 @@ BOX_STYLE = ("QFrame#budget {{ border: 1px solid {line}; border-radius: 10px; }}
 
 
 class ComposerForm(Warns, QWidget):
-    """A form in the middle of the page: the logo, a heading, and one box that holds a
+    """A form in the middle of the page: a heading, and one box that holds a
     name, what it is to do, and along its lower edge whatever else it needs (`_lower`).
     `submitted` when the person wants it made."""
 
@@ -562,14 +561,9 @@ class ComposerForm(Warns, QWidget):
         outer = QVBoxLayout(self)
         outer.setSpacing(0)
         outer.addStretch(3)
-        logo = QLabel()
-        logo.setPixmap(QIcon(str(app_menu.ICON)).pixmap(LOGO, LOGO))
-        logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.heading = label(heading, wrap=False)
         self.heading.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.heading.setStyleSheet("font-size: 22px; font-weight: 600;")
-        outer.addWidget(logo)
-        outer.addSpacing(14)
         outer.addWidget(self.heading)
         outer.addSpacing(22)
 

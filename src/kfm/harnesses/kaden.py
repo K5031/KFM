@@ -22,10 +22,10 @@ from kaden.api import (
     HelpNeeded,
     MessageCommitted,
     ModelRetry,
-    PermissionRequested,
-    PlanProposed,
-    QuestionAnswered,
-    QuestionAsked,
+    Prompt,
+    PromptClosed,
+    PromptKind,
+    PromptOpened,
     ReasoningDelta,
     Role,
     RuntimeSnapshot,
@@ -170,7 +170,7 @@ class _Session(Session):
                  conversation: str | None) -> None:
         self._channel, self._emit, self._conversation = channel, on_event, conversation
         self._active = False
-        self._questioned = False  # an AskUserQuestion waits for the next send
+        self._questioned: str | None = None  # the prompt that waits for the next send
         self._has_duty = False
         self._failure: str | None = None  # what Kaden said before its state became failed
         self._closed = False
@@ -208,7 +208,7 @@ class _Session(Session):
 
     async def approve(self, request_id: str, allow: bool, *, always: bool = False) -> None:
         decision = "deny" if not allow else "allow_conversation" if always else "allow_once"
-        await self._request("resolve_permission", request_id=request_id, decision=decision)
+        await self._request("respond", prompt_id=request_id, reply=decision)
 
     async def close(self, grace_s: float) -> None:
         self._closed = True
@@ -264,20 +264,10 @@ class _Session(Session):
             case ToolFinished(result=result):
                 self._tools.pop(result.call_id, None)
                 self._emit(Doing(next(reversed(self._tools.values()), None)))
-            case QuestionAsked(questions=questions):
-                # Kaden waits in the call; to the fleet it is a unit that asked and
-                # rests, and the next send answers it.
-                self._emit(Asked(_questions(questions), waits=True))
-                if self._active:  # it carries on once answered, with or without a duty
-                    self._emit(Rested(True))
-                self._active, self._questioned = False, True
-            case QuestionAnswered():
-                self._questioned = False
-            case PlanProposed(call_id=call_id, plan=plan):
-                # Kaden waits for the plan's approval; nobody gives it in a fleet, so it
-                # is approved at once, with the unit's own permissions, and said.
-                self._emit(Said(plan.strip()))
-                self._answer("resolve_plan", call_id=call_id, approve=True)
+            case PromptOpened(prompt=prompt):
+                self._prompted(prompt)
+            case PromptClosed(prompt_id=prompt_id) if prompt_id == self._questioned:
+                self._questioned = None
             case HelpNeeded(question=question):
                 self._emit(Asked(question))
             case ConversationUpdated(info=info) if self._conversation in (None, info.id):
@@ -286,15 +276,8 @@ class _Session(Session):
                 self._emit(Spent(snapshot.usage.cost_usd or 0.0))
             case Failure(message=message):
                 self._failure = message
-            case PermissionRequested(request=request):
-                if request.call.name.startswith(WORDS.tools):  # the fleet's own tools
-                    self._answer("resolve_permission", request_id=request.id,
-                                 decision="allow_conversation")
-                else:
-                    self._emit(ApprovalNeeded(request.id, request.call.name,
-                                              str(request.call.arguments)))
             case StateChanged(state=state):
-                active = state in _ACTIVE and not self._questioned
+                active = state in _ACTIVE and self._questioned is None
                 if state == AgentState.FAILED:
                     self._emit(Failed(self._failure or "It stopped with an error."))
                 elif active and not self._active:
@@ -303,6 +286,28 @@ class _Session(Session):
                     self._emit(Rested(self._has_duty))
                 self._active = active
 
+
+    def _prompted(self, prompt: Prompt) -> None:
+        """What a unit's Kaden waits on, as the fleet handles it: a permission goes up as
+        an approval (the fleet's own tools are allowed at once); a plan is said and
+        approved, since nobody approves plans in a fleet; anything a message answers (a
+        question) goes up as the unit asking, and its turn rests until the next send. A
+        proposal stays open: a unit's ideas wait for nobody."""
+        call = prompt.call
+        if prompt.kind == PromptKind.PERMISSION and call is not None:
+            if call.name.startswith(WORDS.tools):
+                self._answer("respond", prompt_id=prompt.id, reply="allow_conversation")
+            else:
+                self._emit(ApprovalNeeded(prompt.id, call.name, str(call.arguments)))
+        elif prompt.kind == PromptKind.PLAN:
+            self._emit(Said(str(prompt.details.get("plan", "")).strip()))
+            self._answer("respond", prompt_id=prompt.id, reply={"approve": True})
+        elif prompt.words:
+            questions = prompt.details.get("questions")
+            self._emit(Asked(_questions(questions) if questions else prompt.text, waits=True))
+            if self._active:  # it carries on once answered, with or without a duty
+                self._emit(Rested(True))
+            self._active, self._questioned = False, prompt.id
 
     def _answer(self, method: str, **params: Any) -> None:
         """Answer what Kaden waits on, without waiting for its reply."""

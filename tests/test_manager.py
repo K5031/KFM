@@ -214,16 +214,20 @@ async def test_a_card_an_agent_ends_its_turn_with_is_said_in_words(fleet):
     await manager.aclose()
 
 
-async def test_questions_an_agent_ends_its_turn_with_are_said_in_words(fleet):
-    manager, events = await fleet({"Lead": [call("AskUserQuestion", questions=[{
-        "question": "Which colour?", "header": "Colour", "multiSelect": False,
-        "options": [{"label": "Red", "description": "Warm"},
-                    {"label": "Blue", "description": ""}]}])]})
-    await manager.add(None, "Lead", "Paint it", ongoing=True)
-    await until(lambda: any(isinstance(e, Said) for e in events))
-    [said] = [e.text for e in events if isinstance(e, Said)]
-    assert said == "Which colour?\n- Red: Warm\n- Blue"
-    await manager.aclose()
+async def test_questions_an_agent_waits_on_are_asked_and_answered_like_any(fleet):
+    manager, events = await fleet({"Lead": [
+        call("AskUserQuestion", questions=[{
+            "question": "Which colour?", "header": "Colour", "multiSelect": False,
+            "options": [{"label": "Red", "description": "Warm"},
+                        {"label": "Green", "description": ""}]}]),
+        finish("Painted it green.", when="green")]})
+    lead = await manager.add(None, "Lead", "Paint it")
+    await until(lambda: lead.state == "waiting")
+    assert delivered(manager, events) == [
+        ("Lead", None, "question", "Which colour?\n- Red: Warm\n- Green")]
+    await manager.say("green")
+    await asyncio.wait_for(manager.finished.wait(), 30)
+    assert delivered(manager, events)[-1] == ("Lead", None, "report", "Painted it green.")
 
 
 async def test_an_agents_own_conversation_is_followed_and_asked(fleet):

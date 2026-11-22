@@ -23,6 +23,8 @@ from kadence.api import (
     MessageCommitted,
     ModelRetry,
     PermissionRequested,
+    QuestionAnswered,
+    QuestionAsked,
     ReasoningDelta,
     Role,
     RuntimeSnapshot,
@@ -64,7 +66,6 @@ from kfm.api import (
 TOOLS = "fleet"  # the MCP server's name in a unit: its tools are mcp__fleet__<tool>
 WORDS = Vocabulary(finish="finish_goal", ask="ask_for_help", tools=f"mcp__{TOOLS}__")
 CARD = "wrap_up"  # Kadence's tool that ends a turn with a recap, a question and its answers
-QUESTIONS = "AskUserQuestion"  # Kadence's tool that ends a turn with questions to answer
 UNIT_RECORD = "unit.json"
 _LINE_LIMIT = 16 * 1024 * 1024
 DOING_CHARS = 160  # of a tool call, as it is shown while it runs
@@ -168,6 +169,7 @@ class _Session(Session):
                  conversation: str | None) -> None:
         self._channel, self._emit, self._conversation = channel, on_event, conversation
         self._active = False
+        self._questioned = False  # an AskUserQuestion waits for the next send
         self._has_duty = False
         self._failure: str | None = None  # what Kadence said before its state became failed
         self._closed = False
@@ -247,8 +249,6 @@ class _Session(Session):
                             self._emit(Reported(block.arguments.get("report") or "Done."))
                     elif isinstance(block, ToolCall) and block.name == CARD:
                         self._emit(Said(_card(block.arguments)))
-                    elif isinstance(block, ToolCall) and block.name == QUESTIONS:
-                        self._emit(Said(_questions(block.arguments)))
                     elif isinstance(block, Text) and block.text.strip():
                         self._emit(Said(block.text.strip()))
             case ReasoningDelta(text=text):
@@ -263,6 +263,15 @@ class _Session(Session):
             case ToolFinished(result=result):
                 self._tools.pop(result.call_id, None)
                 self._emit(Doing(next(reversed(self._tools.values()), None)))
+            case QuestionAsked(questions=questions):
+                # Kadence waits in the call; to the fleet it is a unit that asked and
+                # rests, and the next send answers it.
+                self._emit(Asked(_questions({"questions": questions})))
+                if self._active:
+                    self._emit(Rested(self._has_duty))
+                self._active, self._questioned = False, True
+            case QuestionAnswered():
+                self._questioned = False
             case HelpNeeded(question=question):
                 self._emit(Asked(question))
             case ConversationUpdated(info=info) if self._conversation in (None, info.id):
@@ -282,7 +291,7 @@ class _Session(Session):
                     self._emit(ApprovalNeeded(request.id, request.call.name,
                                               str(request.call.arguments)))
             case StateChanged(state=state):
-                active = state in _ACTIVE
+                active = state in _ACTIVE and not self._questioned
                 if state == AgentState.FAILED:
                     self._emit(Failed(self._failure or "It stopped with an error."))
                 elif active and not self._active:

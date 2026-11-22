@@ -54,7 +54,7 @@ class ScriptedCore(Core):
         step: dict[str, Any] = {"text": ""}
         if not request.maintenance:
             step = {"text": "ok"}
-            if self._script and self._script[0].get("when", "") in _last_user(request):
+            if self._script and self._script[0].get("when", "") in _said_last(request):
                 step = self._script.pop(0)
             if step.get("report_last_result"):
                 step = {"calls": [{"name": "finish_goal",
@@ -78,6 +78,21 @@ def _last_user(request: InferenceRequest) -> str:
         if message.role == Role.USER:
             return "".join(b.text for b in message.blocks if isinstance(b, Text))
     return ""
+
+
+ANSWERED = ("User has answered", "The user answered")  # an AskUserQuestion's result
+
+
+def _said_last(request: InferenceRequest) -> str:
+    """What the agent was told last: the user's answers to its questions, if they are the
+    last results, else the last user message."""
+    last = request.messages[-1] if request.messages else None
+    if last is not None and last.role == Role.TOOL:
+        answers = [b.content for b in last.blocks
+                   if isinstance(b, ToolResult) and b.content.startswith(ANSWERED)]
+        if answers:
+            return "".join(answers)
+    return _last_user(request)
 
 
 def _last_result(request: InferenceRequest) -> str:

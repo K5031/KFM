@@ -297,3 +297,33 @@ async def test_in_auto_the_secretary_names_the_model_of_each_teams_lead(tmp_path
                 and ("K5002", "small-1") in harness.models)
     assert await service.proposal(made.id) is None
     await service.aclose()
+
+
+async def test_a_secretary_waiting_on_her_question_waits_for_its_answer(tmp_path: Path,
+                                                                       monkeypatch):
+    """She has no work to end, but a question that waits in its call is not the end of her
+    turn: she waits for the answer, and the person is asked."""
+    import tomli_w
+
+    monkeypatch.setenv("PYTHONPATH", str(Path(__file__).resolve().parents[1]))
+    question = {"question": "Which genre?", "header": "Genre", "multiSelect": False,
+                "options": [{"label": "Puzzle", "description": ""},
+                            {"label": "Racing", "description": ""}]}
+    base = tmp_path / "kadence.toml"
+    base.write_text(tomli_w.dumps({
+        "core": {"factory": "tests.fakecore:factory", "options": {"scripts": {"Secretary": [
+            {"calls": [{"name": "AskUserQuestion", "arguments": {"questions": [question]}}]},
+            {"when": "Puzzle", "text": "Puzzle it is."}]}}},
+        "runtime": {"model": "fake-1"}}))
+    (tmp_path / "work").mkdir()
+    service = LocalService(tmp_path / "home", config=FleetConfig(
+        harness_options={"config": str(base)}))
+    made = await service.create_project("Studio", str(tmp_path / "work"), "Run my game studio")
+    secretary = service.fleet(made.secretary).lead
+    await until(lambda: secretary.state == "waiting", timeout=30)
+    assert secretary.question.startswith("Which genre?")
+    await service.say(made.secretary, "Puzzle")
+    await until(lambda: secretary.state == "done", timeout=30)
+    history, _ = await service.history(made.secretary)
+    assert any("Puzzle it is." in str(event) for event in history)
+    await service.aclose()

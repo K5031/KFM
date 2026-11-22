@@ -475,7 +475,7 @@ class Manager:
             self._held[unit.id].append((text, tuple(files), spoken))
             return
         session = await self._session(unit)
-        held = self._held.pop(unit.id, [])
+        held = self._held.get(unit.id, [])
         unit.question = None  # this is its answer
         self._changed()
         ended = unit.state in ("done", "idle")  # its instruction stands no more
@@ -489,6 +489,7 @@ class Manager:
             if woken:  # it did not take it, over its limit say: it is not at work
                 await self._could_not_start(unit, e)
             raise
+        self._held.pop(unit.id, None)  # answered: what waited for it goes now
         if ended:  # the message is what it takes its turn on, with its goal to end again
             await session.instruct(self._instruction(unit))
         for later, later_files, later_spoken in held:

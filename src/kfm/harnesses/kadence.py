@@ -267,9 +267,9 @@ class _Session(Session):
             case QuestionAsked(questions=questions):
                 # Kadence waits in the call; to the fleet it is a unit that asked and
                 # rests, and the next send answers it.
-                self._emit(Asked(_questions({"questions": questions}), waits=True))
-                if self._active:
-                    self._emit(Rested(self._has_duty))
+                self._emit(Asked(_questions(questions), waits=True))
+                if self._active:  # it carries on once answered, with or without a duty
+                    self._emit(Rested(True))
                 self._active, self._questioned = False, True
             case QuestionAnswered():
                 self._questioned = False
@@ -329,10 +329,10 @@ def _card(arguments: dict[str, Any]) -> str:
                        if part)
 
 
-def _questions(arguments: dict[str, Any]) -> str:
-    """The questions a turn ended with, as what the unit said: each with its options."""
+def _questions(questions: Sequence[Any]) -> str:
+    """An AskUserQuestion's questions, as the unit asks them: each with its options."""
     parts = []
-    for question in arguments.get("questions") or ():
+    for question in questions:
         if not isinstance(question, dict):
             continue
         options = [f"- {o['label']}" + (f": {o['description']}" if o.get("description") else "")

@@ -80,20 +80,16 @@ def _last_user(request: InferenceRequest) -> str:
     return ""
 
 
-ANSWERED = ("User has answered", "The user answered")  # an AskUserQuestion's result
-
-
 def _said_last(request: InferenceRequest) -> str:
-    """What the agent was told last: the user's answers to its questions, if they came
-    since its last message, else the last user message."""
+    """What the agent was told: the last user message, and everything since its own last
+    message (results, an AskUserQuestion's answers among them)."""
     since = []
     for message in reversed(request.messages):
         if message.role == Role.ASSISTANT:
             break
-        since.append(message)
-    answers = [b.content for m in since for b in m.blocks
-               if isinstance(b, ToolResult) and b.content.startswith(ANSWERED)]
-    return "".join(answers) if answers else _last_user(request)
+        since += [b.text if isinstance(b, Text) else b.content for b in message.blocks
+                  if isinstance(b, Text | ToolResult)]
+    return "\n".join([*since, _last_user(request)])
 
 
 def _last_result(request: InferenceRequest) -> str:

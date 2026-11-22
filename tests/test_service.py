@@ -380,7 +380,7 @@ async def test_what_waits_for_the_person_is_known_without_opening_a_fleet(tmp_pa
     """An agent that asks for approval stands still: its state, its fleet's state and its
     project's count say so, here and over the socket."""
     harness = FakeHarness({"K5001": [
-        {"do": [("approval", "r1", "shell", "uv run pytest"), ("say", "Ran them.")]}]})
+        {"do": [("approval", "r1", "Bash", "uv run pytest"), ("say", "Ran them.")]}]})
     (tmp_path / "work").mkdir()
     home, socket = tmp_path / "home", tmp_path / "s"
     server = Server(LocalService(home, harness=harness, config=FleetConfig()), socket,
@@ -393,7 +393,7 @@ async def test_what_waits_for_the_person_is_known_without_opening_a_fleet(tmp_pa
     await until(lambda: remote.state(fleet).approvals)
     [asked] = remote.state(fleet).approvals
     assert (asked.unit, asked.request_id, asked.tool, asked.arguments) == (
-        "K5001", "r1", "shell", "uv run pytest")
+        "K5001", "r1", "Bash", "uv run pytest")
     assert remote.fleet(fleet).units["K5001"].state == "asking"
     assert (await remote.projects())[0].waiting == 1
     await remote.approve(fleet, "K5001", "r1", True)

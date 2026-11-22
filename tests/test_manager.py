@@ -172,12 +172,12 @@ async def test_the_lead_asks_the_person_and_carries_on_with_the_answer(fleet):
 async def test_the_person_approves_what_permissions_do_not_cover(fleet, tmp_path: Path):
     outside = tmp_path / "outside.txt"  # not in the fleet's work folder
     manager, events = await fleet({
-        "Lead": [call("write_file", path=str(outside), content="hello"),
+        "Lead": [call("Write", file_path=str(outside), content="hello"),
                  {"report_last_result": True}]})
     await manager.add(None, "Lead", "Leave a note outside")
     await until(lambda: any(isinstance(e, Approval) for e in events))
     approval = next(e for e in events if isinstance(e, Approval))
-    assert approval.tool == "write_file" and str(outside) in approval.arguments
+    assert approval.tool == "Write" and str(outside) in approval.arguments
     assert not outside.exists()
     await manager.approve(manager.fleet.units[approval.unit], approval.request_id, True)
     await asyncio.wait_for(manager.finished.wait(), 30)
@@ -187,8 +187,8 @@ async def test_the_person_approves_what_permissions_do_not_cover(fleet, tmp_path
 async def test_an_answer_can_hold_for_the_rest_of_an_agents_work(fleet, tmp_path: Path):
     first, second = tmp_path / "first.txt", tmp_path / "second.txt"  # both outside
     manager, events = await fleet({
-        "Lead": [call("write_file", path=str(first), content="1"),
-                 call("write_file", path=str(second), content="2"),
+        "Lead": [call("Write", file_path=str(first), content="1"),
+                 call("Write", file_path=str(second), content="2"),
                  {"report_last_result": True}]})
     await manager.add(None, "Lead", "Leave two notes outside")
     await until(lambda: any(isinstance(e, Approval) for e in events))

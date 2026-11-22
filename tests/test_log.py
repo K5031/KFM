@@ -30,7 +30,7 @@ def test_events_round_trip_through_the_record_in_order(tmp_path: Path):
         events.Said("K4001", "reading files"),
         events.Delivered("K4001", "K5001", "report", "done"),
         events.Instructed("K4001", "K5001", "message", "more"),
-        events.Approval("K4001", "r1", "shell", "rm -rf x"),
+        events.Approval("K4001", "r1", "Bash", "rm -rf x"),
         events.Answered("K4001", "r1", False),
         events.Answered("K4001", "r2", True, always=True),
         events.Told("start", to="K5001", files=("a.txt", "b.txt")),

@@ -196,14 +196,14 @@ async def test_a_project_and_its_first_fleet_are_made(window, tmp_path: Path):
 
 async def test_the_person_answers_approves_stops_and_resumes(window, tmp_path: Path):
     shown, harness = window({"K5001": [
-        {"do": [("approval", "r1", "write_file", "{'path': '/etc/motd'}"), ("say", "Wrote it.")]},
+        {"do": [("approval", "r1", "Write", "{'file_path': '/etc/motd'}"), ("say", "Wrote it.")]},
         {"when": "hello", "do": [("say", "Hi there.")]},
         {"when": "started again", "do": [("say", "Back on watch.")]},
         {"when": "still there", "do": [("say", "Yes.")]}]})
     view = await start(shown, tmp_path, "Keep watch", duty=True)
     await until(lambda: any(isinstance(e, ApprovalCard) for e in view.entries))
     [card] = [e for e in view.entries if isinstance(e, ApprovalCard)]
-    assert "write_file" in card.question.text() and "/etc/motd" in card.question.text()
+    assert "Write" in card.question.text() and "/etc/motd" in card.question.text()
     card.allow.click()
     await until(lambda: harness.approved == [("r1", True)])
     await until(lambda: not card.allow.isVisibleTo(shown) and "Allowed" in card.question.text())
@@ -256,8 +256,8 @@ class Notified:
 async def test_what_waits_for_the_person_is_notified_while_they_are_elsewhere(
         window, tmp_path: Path):
     shown, harness = window({"K5001": [
-        {"do": [("approval", "r1", "write_file", "{'path': '/etc/motd'}"), ("say", "Wrote.")]},
-        {"when": "again", "do": [("approval", "r2", "shell", "{'command': 'ls'}")]}]})
+        {"do": [("approval", "r1", "Write", "{'file_path': '/etc/motd'}"), ("say", "Wrote.")]},
+        {"when": "again", "do": [("approval", "r2", "Bash", "{'command': 'ls'}")]}]})
     notified = shown.notifier = Notified()
     shown.away = lambda: False  # looking at the window: it shows what waits
     view = await start(shown, tmp_path, "Keep watch", duty=True)
@@ -274,7 +274,7 @@ async def test_what_waits_for_the_person_is_notified_while_they_are_elsewhere(
     view.send_button.click()
     await until(lambda: len(notified.sent) == 1)
     title, body, clicked = notified.sent[0]
-    assert title == "dev › K5001" and "shell" in body and "ls" in body
+    assert title == "dev › K5001" and "Bash" in body and "ls" in body
     shown._refresh()
     assert len(notified.sent) == 1  # once
     clicked()  # a click on it opens the fleet it is about
@@ -283,7 +283,7 @@ async def test_what_waits_for_the_person_is_notified_while_they_are_elsewhere(
 
 async def test_an_approval_can_be_given_for_the_rest_of_an_agents_work(window, tmp_path: Path):
     shown, harness = window({"K5001": [
-        {"do": [("approval", "r1", "shell", "{'command': 'uv run pytest'}")]}]})
+        {"do": [("approval", "r1", "Bash", "{'command': 'uv run pytest'}")]}]})
     view = await start(shown, tmp_path, "Keep watch", duty=True)
     await until(lambda: any(isinstance(e, ApprovalCard) for e in view.entries))
     [card] = [e for e in view.entries if isinstance(e, ApprovalCard)]
@@ -423,7 +423,7 @@ async def test_a_described_project_is_drafted_and_started_by_the_person(window,
 async def test_waiting_for_a_proposal_shows_what_she_writes_and_can_be_cancelled(
         window, tmp_path: Path):
     shown, _ = window({"Secretary": [
-        {"do": [("say", "Looking at the folder."), ("approval", "r1", "shell", "ls")]}]})
+        {"do": [("say", "Looking at the folder."), ("approval", "r1", "Bash", "ls")]}]})
     form = shown.project_form
     form.name.setText("Studio")
     form.does.setPlainText("Run my game studio")
@@ -1226,7 +1226,7 @@ async def test_what_an_agent_does_shows_under_the_feed_as_it_does_it(window, tmp
     shown, _ = window({
         "K5001": [{"do": [("tool", "delegate", {"name": "Scout", "task": "Look"}),
                           ("think", "Who should look? "), ("think", "Scout."),
-                          ("doing", "Run the tests: shell uv run pytest"),
+                          ("doing", "Run the tests: Bash uv run pytest"),
                           ("write", "Tests "), ("write", "pass."), ("wait", 0.6),
                           ("say", "Tests pass."), ("wait", 0.4)]}],
         "Scout": [{"do": [("think", "Looking around."), ("wait", 1.2)]}]})
@@ -1234,7 +1234,7 @@ async def test_what_an_agent_does_shows_under_the_feed_as_it_does_it(window, tmp
     await until(lambda: "K5001" in view.lives and view.lives["K5001"].writing.text() == "Tests pass.")
     lead = view.lives["K5001"]
     assert lead.isVisibleTo(shown) and lead.thinking.text() == "Who should look? Scout."
-    assert lead.doing.text() == "Run the tests: shell uv run pytest"
+    assert lead.doing.text() == "Run the tests: Bash uv run pytest"
     assert lead not in view.entries  # no part of the feed
     await until(lambda: "K4001" in view.lives and view.lives["K4001"].thinking.text())
     said = [e for e in view.entries if isinstance(e, SaidEntry)]
@@ -1255,7 +1255,7 @@ async def test_drafting_shows_what_the_secretary_does_and_thinks(window, tmp_pat
     shown, _ = window({"Secretary": [{"do": [
         ("think", "A game needs code and art. "),
         ("doing", "See what is there: list_files"), ("wait", 0.5), ("doing", None),
-        ("think", "The folder is empty."), ("wait", 0.5), ("approval", "r1", "shell", "ls")]}]})
+        ("think", "The folder is empty."), ("wait", 0.5), ("approval", "r1", "Bash", "ls")]}]})
     form = shown.project_form
     form.name.setText("Studio")
     form.does.setPlainText("Make a game")
@@ -1274,13 +1274,13 @@ async def test_what_waits_for_the_person_shows_wherever_they_are(window, tmp_pat
     fleet's page; a lead's question leads to its fleet."""
     shown, harness = window({
         "K5001": [{"when": "Build it", "do": [
-                      ("approval", "r1", "shell", "uv run pytest"), ("say", "Ran them.")]}],
+                      ("approval", "r1", "Bash", "uv run pytest"), ("say", "Ran them.")]}],
         "K5002": [{"when": "Draw it", "do": [("ask", "Which palette?")]}]})
     dev = await start(shown, tmp_path, "Build it", name="dev", duty=True)
     shown.back_button.click()
     await until(lambda: shown.attention.isVisibleTo(shown) and len(shown.attention.rows) == 1)
     [row] = shown.attention.rows
-    assert row.text.text() == "dev › K5001 wants to run shell uv run pytest"
+    assert row.text.text() == "dev › K5001 wants to run Bash uv run pytest"
     assert [b.text() for b in row.buttons] == ["Allow", "Always allow", "Deny"]
     assert chart(shown) == {"dev": ["K5001"]} and shown.chart.isVisibleTo(shown)
     node = shown.chart.nodes[(dev.id, "K5001")]

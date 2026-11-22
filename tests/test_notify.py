@@ -19,11 +19,11 @@ async def test_a_notification_is_sent_and_a_click_on_it_is_heard(tmp_path: Path)
     said = tmp_path / "said"
     notifier = Notifier(program(tmp_path, f'printf "%s\\n" "$@" > {said}\necho default'))
     clicked: list[bool] = []
-    notifier.send("dev › Lead", "wants to run shell", lambda: clicked.append(True))
+    notifier.send("dev › Lead", "wants to run Bash", lambda: clicked.append(True))
     async with asyncio.timeout(5):
         while not clicked:
             await asyncio.sleep(0.01)
-    assert said.read_text().splitlines()[-2:] == ["dev › Lead", "wants to run shell"]
+    assert said.read_text().splitlines()[-2:] == ["dev › Lead", "wants to run Bash"]
     await notifier.aclose()
 
 

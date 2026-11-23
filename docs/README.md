@@ -6,7 +6,7 @@ secretary you ask about all of them.
 
 ## Install
 
-KFM needs [Kaden Chat](https://github.com/K5031/Kaden) checked out next to it (`../Kaden_Chat`)
+KFM needs [Kaden](https://github.com/K5031/Kaden) checked out next to it (`../Kaden`)
 and set up with a provider and an API key, and [uv](https://docs.astral.sh/uv/).
 
 ```bash

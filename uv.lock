@@ -696,7 +696,7 @@ wheels = [
 [[package]]
 name = "kaden"
 version = "0.0.0"
-source = { editable = "../Kaden_Chat" }
+source = { editable = "../Kaden" }
 dependencies = [
     { name = "anthropic" },
     { name = "ddgs" },
@@ -810,8 +810,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "kaden", editable = "../Kaden_Chat" },
-    { name = "kaden", extras = ["desktop"], marker = "extra == 'desktop'", editable = "../Kaden_Chat" },
+    { name = "kaden", editable = "../Kaden" },
+    { name = "kaden", extras = ["desktop"], marker = "extra == 'desktop'", editable = "../Kaden" },
     { name = "mcp", specifier = ">=2.3.0" },
     { name = "pydantic", specifier = ">=2" },
     { name = "tomli-w", specifier = ">=1.2.0" },
@@ -821,7 +821,7 @@ provides-extras = ["desktop"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "kaden", extras = ["desktop"], editable = "../Kaden_Chat" },
+    { name = "kaden", extras = ["desktop"], editable = "../Kaden" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },

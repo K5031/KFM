@@ -24,7 +24,7 @@ desktop = ["kaden[desktop]"]  # the window is built on Kaden's desktop code
 
 
 [tool.uv.sources]
-kaden = { path = "../Kaden_Chat", editable = true }
+kaden = { path = "../Kaden", editable = true }
 
 [dependency-groups]
 dev = [

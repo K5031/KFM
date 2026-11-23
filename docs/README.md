@@ -6,7 +6,7 @@ secretary you ask about all of them.
 
 ## Install
 
-KFM needs [Kaden](https://github.com/K5031/Kaden) checked out next to it (`../Kaden`)
+KFM needs [Kaden Chat](https://github.com/K5031/Kaden) checked out next to it (`../Kaden_Chat`)
 and set up with a provider and an API key, and [uv](https://docs.astral.sh/uv/).
 
 ```bash
@@ -246,9 +246,12 @@ opens a window on the same service the commands talk to, without a terminal. It 
   right.
 - **Stop** ends the open fleet's processes; **Resume** carries it on. Closing the window
   leaves fleets running: stop the ones you do not want to keep paying for.
+- **Closing the window keeps KFM in the system tray,** so its notifications go on; click
+  its icon there to open the window again, or choose **Quit** in that icon's menu. On a
+  desktop without a system tray, closing the window quits.
 - **A desktop notification** tells you when an agent asks for approval or a lead asks
   you a question while you are in another window. Click it to open that fleet. It needs
-  the KFM window to be open (it may be minimized) and `notify-send` (libnotify), which
+  KFM running (its window open, minimized or closed to the tray) and `notify-send` (libnotify), which
   most Linux desktops have. To silence it, mute KFM in your desktop's notification
   settings.
 - **The ☰ menu, at the top left**, is about KFM as it runs. **Theme** keeps the window

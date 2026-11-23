@@ -68,6 +68,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
+    QSystemTrayIcon,
     QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -110,6 +111,7 @@ from kfm.service import (
     Updated,
     Within,
 )
+from kfm.tray import Tray
 
 SIDEBAR = 288  # px, as Claude's and Kaden's
 FORM = 760  # px, the start screen's width
@@ -1769,9 +1771,13 @@ class FleetWindow(QMainWindow):
     """A frontend of `service`: everything it shows and does goes through it."""
 
     def __init__(self, service: Service, notifier: Notifier | None = None,
-                 look: Path | None = None) -> None:
+                 look: Path | None = None, *, tray: bool = False) -> None:
         super().__init__()
         self.service = service
+        # With a system tray, closing the window hides it and KFM runs on; quit() quits.
+        self.tray = Tray(self, self.bring_forward, self.quit) if tray else None
+        self.told_of_tray = False  # the first close in a run says KFM runs on
+        self._quitting = False
         self.look = look  # where the theme chosen is kept; None: nowhere
         self.service.subscribe(self._update)
         self.notifier = notifier  # None: nothing is said outside the window
@@ -1911,7 +1917,7 @@ class FleetWindow(QMainWindow):
         self.app_menu_action.triggered.connect(lambda: self._run(self._add_to_app_menu()))
         self.app_menu_action.setVisible(False)
         menu.addSeparator()
-        menu.addAction("Quit").triggered.connect(self.close)
+        menu.addAction("Quit").triggered.connect(self.quit)
         self.profile_button.setMenu(menu)
         corner = QHBoxLayout()
         corner.setContentsMargins(0, 6, 0, 0)
@@ -2417,9 +2423,34 @@ class FleetWindow(QMainWindow):
             self._paint_controls()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self.tray is not None and not self._quitting and not self.closed.is_set():
+            event.ignore()  # KFM runs on in the tray, its fleets too
+            self.hide()
+            if not self.told_of_tray:
+                self.tray.showMessage("KFM", "Still running. Quit from this icon.",
+                                      QIcon(str(app_menu.ICON)), 4000)
+                self.told_of_tray = True
+            return
+        if self.tray is not None:
+            self.tray.hide()
         if not self.closed.is_set():
             self._run(self.shut())
         event.accept()
+
+    def bring_forward(self) -> None:
+        """Its tray icon asked for this window: shown as it was before it was hidden or
+        minimized."""
+        if self.isMinimized():
+            self.showNormal()
+        else:
+            self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def quit(self) -> None:
+        """Close the window and let go of the service, tray or not."""
+        self._quitting = True
+        self.close()
 
     async def _open_newest(self) -> None:
         """The window opens on the project made last."""
@@ -2822,9 +2853,7 @@ class FleetWindow(QMainWindow):
         """Bring the window forward on the fleet, if it is still there."""
         if self.views.get(view.id) is not view:
             return
-        self.showNormal()
-        self.raise_()
-        self.activateWindow()
+        self.bring_forward()
         self.open_fleet(view)
 
     def _refresh(self) -> None:
@@ -2978,7 +3007,8 @@ def main() -> None:
         except ServiceError as e:
             QMessageBox.critical(None, "KFM", str(e))
             return
-        window = FleetWindow(service, Notifier(), look)
+        window = FleetWindow(service, Notifier(), look,
+                             tray=QSystemTrayIcon.isSystemTrayAvailable())
         window.resize(1180, 760)
         window.show()
         window.offer_restart()

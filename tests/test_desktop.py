@@ -1492,3 +1492,33 @@ def test_an_answer_on_an_agents_page_reaches_kfm_as_it_was_meant():
     assert answer(Decision.ALLOW_ALWAYS) == (True, True)
     assert answer(Decision.DENY) == (False, False)
     assert answer(Decision.DENY_ALWAYS) == (False, False)  # never is no, not yes
+
+
+async def test_closing_hides_to_the_tray_and_quit_quits(tmp_path, qapp):
+    """With a system tray, closing the window leaves KFM, and the fleets of the service it
+    started, running; the tray brings it back; Quit quits."""
+    shown = FleetWindow(LocalService(tmp_path / "home", harness=FakeHarness({})), tray=True)
+    shown.show()
+    shown.close()
+    assert shown.isHidden() and not shown.closed.is_set()  # hidden, still running
+    assert shown.tray is not None and shown.told_of_tray
+    shown.tray.open_action.trigger()
+    assert not shown.isHidden()
+    shown.tray.quit_action.trigger()
+    await until(shown.closed.is_set)
+
+
+async def test_without_a_tray_closing_quits(tmp_path, qapp):
+    shown = FleetWindow(LocalService(tmp_path / "home", harness=FakeHarness({})))
+    shown.show()
+    shown.close()
+    await until(shown.closed.is_set)
+    assert shown.tray is None
+
+
+async def test_stop_kfm_quits_even_with_a_tray(tmp_path, qapp):
+    """Stop KFM ends the service and closes the window: not hidden to the tray."""
+    shown = FleetWindow(LocalService(tmp_path / "home", harness=FakeHarness({})), tray=True)
+    shown.show()
+    await shown.stop_kfm()
+    assert shown.closed.is_set() and shown.isHidden() and not shown.tray.isVisible()

@@ -9,7 +9,7 @@ supervision. Read before coding:
   frontends of it.
 - `src/kfm/api.py`: the unit contract, normative: what a fleet needs from the agent
   program its units run.
-- Kaden (`../Kaden`): the built-in unit. `src/kfm/harnesses/kaden.py` uses its
+- Kaden Chat (`../Kaden_Chat`, package `kaden`): the built-in unit. `src/kfm/harnesses/kaden.py` uses its
   headless channel (`docs/headless.md`), its client for it (`kaden.frontends.remote`),
   its configuration files and its MCP support.
 

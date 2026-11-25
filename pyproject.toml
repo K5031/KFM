@@ -3,7 +3,7 @@ name = "kfm"
 version = "0.0.0"
 description = "Kaden Fleet Manager: teams of Kaden agents that work toward a goal without supervision"
 readme = "README.md"
-license = "MIT"
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
     "kaden",

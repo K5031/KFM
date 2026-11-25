@@ -73,4 +73,5 @@ the window, settings, and what is not there yet.
 
 ## License
 
-MIT; see `LICENSE`.
+GNU Affero General Public License, version 3 or later; see `LICENSE`. Contributions
+need a signed [Contributor License Agreement](CLA.md).

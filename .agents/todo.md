@@ -18,3 +18,13 @@ From [standing teams](notes/proposed/2026-11-12-standing-teams.md), as it stands
   it closed, a question or an approval waits unseen.
 - **Coming back after a reboot.** Every fleet stops, and none starts until the person
   resumes it.
+
+## From the user
+
+- **Agents that argue with their supervisor** (2026-11-24), as emergent behaviour, never
+  asked for. Every unit can already push back: ask its supervisor, report without ending
+  its work, or finish with a report that says why it did otherwise; nothing in the brief
+  tells it to obey. First read real fleet logs for whether units ever question their
+  task. One inaccuracy to fix: the brief names `report` only for standing work, though
+  every unit has it. Not to do: a line in the brief meant to make it disagree (a fact
+  added to change behaviour is a rule).

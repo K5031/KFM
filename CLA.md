@@ -2,10 +2,10 @@
 
 Version 1.0
 
-Thank you for contributing to KFM. This agreement is between you and K5031, who maintains
-KFM ("the Maintainer"). It lets the Maintainer accept your contributions, keep KFM under
-the GNU Affero General Public License, and also offer it under other terms. You keep the
-copyright to your work.
+Thank you for contributing to KFM. This agreement is between you and K5031, who
+maintains KFM, together with their successors and assigns ("the Maintainer"). It lets
+the Maintainer accept your contributions, keep KFM under the GNU Affero General Public
+License, and also offer it under other terms. You keep the copyright to your work.
 
 You accept this agreement by commenting on your pull request as the CLA check asks. It
 covers every contribution you submit to KFM from then on.
@@ -59,3 +59,10 @@ any kind.
 
 Apart from the licenses granted here, You keep all right, title and interest in Your
 Contributions, and You may use them in any way you like.
+
+## 7. Successors
+
+The Maintainer may assign this agreement, with the rights and licenses granted under it,
+to any successor, such as a company the Maintainer forms or one that acquires KFM,
+without Your consent. This agreement binds You and Your successors, and benefits the
+Maintainer's successors and assigns.

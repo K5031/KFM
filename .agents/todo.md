@@ -28,3 +28,12 @@ From [standing teams](notes/proposed/2026-11-12-standing-teams.md), as it stands
   task. One inaccuracy to fix: the brief names `report` only for standing work, though
   every unit has it. Not to do: a line in the brief meant to make it disagree (a fact
   added to change behaviour is a rule).
+- **Fleets as tools for a Kaden agent** (2026-11-27), for example Continuous starting and
+  following fleets. An MCP server over KFM's API (tools: start a fleet for a goal, how the
+  fleets are doing, tell a fleet's secretary something, stop one), added to the agent's
+  Kaden as a tool server. MCP because it is how Kaden runs tools beside its built-in ones
+  (a Kaden Tools module would replace them: Kaden runs one Tools module at a time), and
+  the fleet tools would work in any MCP app too. Open: a fleet spends from its own budget,
+  not the agent's daily amount (a budget required per fleet; starting one asks the person
+  first?); whose questions a fleet started by an agent escalates to, the agent's or the
+  person's.

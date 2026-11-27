@@ -37,7 +37,7 @@ It is an early version, built and tested mostly against scripted agents.
 
 Requires Linux, Python 3.12+ and [uv](https://docs.astral.sh/uv/). KFM runs Kaden
 agents, so Kaden is checked out beside it and needs a model provider and a key (see
-[its quick start](https://github.com/K5031/Kaden#quick-start)).
+[installing it from source](https://github.com/K5031/Kaden#from-source)).
 
 ```bash
 git clone https://github.com/K5031/Kaden.git

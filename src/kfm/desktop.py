@@ -21,20 +21,13 @@ from typing import Any
 import kaden.frontends.desktop  # noqa: F401 - before any Qt import
 from kaden.frontends.common import PERMISSION_LABELS, PERMISSION_SHORT
 from kaden.frontends.desktop import theme
+from kaden.frontends.desktop.composer import AttachmentStrip, MessageBox
+from kaden.frontends.desktop.frame import DragArea, RoundedCorners, WindowEdges
 from kaden.frontends.desktop.loop import QtEventLoop
-from kaden.frontends.desktop.window import (
-    DATE_ROLE,
-    PREVIEW_ROLE,
-    WINDOW_BUTTON,
-    AttachmentStrip,
-    DragArea,
-    ElidedLabel,
-    MarkdownView,
-    MessageBox,
-    RoundedCorners,
-    RowDelegate,
-    WindowEdges,
-)
+from kaden.frontends.desktop.messages import MarkdownView
+from kaden.frontends.desktop.sidebar import RowDelegate
+from kaden.frontends.desktop.widgets import DATE_ROLE, PREVIEW_ROLE, ElidedLabel
+from kaden.frontends.desktop.window import WINDOW_BUTTON
 from PySide6.QtCore import QEvent, QMimeData, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QCloseEvent,
@@ -121,7 +114,7 @@ PROJECT_ROLE = Qt.ItemDataRole.UserRole  # a project row's id
 FLEETS_ROLE = Qt.ItemDataRole.UserRole + 10  # how many fleets it has
 UNREADABLE_ROLE = Qt.ItemDataRole.UserRole + 11  # made by another version: only deleted
 QUIET_STATES = ("starting", "working", "waiting", "asking", "done")  # shown by the agents list alone
-OVER = ("done", "idle", "failed", "stopped")  # an agent that is at nothing
+OVER = ("done", "failed", "stopped")  # an agent that is at nothing
 THINKING = 600  # characters, the end, of what an agent is thinking, under its feed
 BAR = 48  # px, the bar on top
 COLUMN = 780  # px, the widest the feed's entries get, as Kaden's column

@@ -19,9 +19,9 @@ FORMAT = 11  # of fleet.json; a file of another format is refused
 RECORD = "fleet.json"
 
 # planned: in the fleet and not begun; it begins when the fleet runs and it has a task.
-# starting: its process is coming up.  working: on its task, between check-ins included.
+# starting: its process is coming up.  working: on its task, resting between turns included.
 # waiting: it asked its supervisor and waits for the answer.  done: it reported.
-# idle: it ended a turn with nothing left to do and no report.  failed, stopped.
+# failed, stopped.
 ACTIVE = ("starting", "working", "waiting", "asking")  # asking: for the person's approval
 
 

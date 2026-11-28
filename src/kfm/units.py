@@ -39,6 +39,8 @@ def overheard(unit: Unit, text: str, files: Sequence[str]) -> str:
     return f"[The person told {unit.label}: {text}]"
 
 
+CHECK_IN = "[A check-in from the fleet: your work stands, and nothing has arrived since your last turn.]"
+
 RETASKED = ("[Your task was changed by the person the fleet works for. The new one is in "
             "your instruction.]")
 
@@ -127,14 +129,14 @@ def brief(unit: Unit, supervisor: Unit | None, under: list[Unit], words: Vocabul
     if supervisor is None:
         reader = "the person"
         lines.append("- A person gave you this task and you are their point of contact. "
-                     f"They are not watching. {words.ask} puts a question to them; the "
+                     f"They are not watching. {words.tool('ask')} puts a question to them; the "
                      "answer arrives as a message.")
     else:
         reader = "your supervisor"
         above = (f"{supervisor.name} (K{supervisor.rank})" if supervisor.name
                  else f"a K{supervisor.rank} agent")
         lines.append(f"- Your supervisor is {above}. It gave you this task, sees nothing of "
-                     f"your conversation, and gets what you report. {words.ask} puts a "
+                     f"your conversation, and gets what you report. {words.tool('ask')} puts a "
                      "question to it; the answer arrives as a message.")
     if unit.ongoing:
         again = (f" When a turn of yours ends, your next turn starts within {_span(wake_s)} "
@@ -143,7 +145,7 @@ def brief(unit: Unit, supervisor: Unit | None, under: list[Unit], words: Vocabul
         lines.append(f"- This is standing work, with no end. {words.tool('report')} sends "
                      f"{reader} something without ending it.{again}")
     else:
-        lines.append(f"- {words.finish} with a report ends the task. The report is all "
+        lines.append(f"- {words.tool('finish')} with a report ends the task. The report is all "
                      f"{reader} gets of your work.")
     if unit.rank > 1:
         lines.append(

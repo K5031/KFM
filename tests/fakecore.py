@@ -5,7 +5,8 @@ the script is used up the model answers "ok".
 
 A step with `when` is taken only once the newest user message contains that text; until
 then the model answers "ok" and keeps the step. A step with `report_last_result` finishes
-the goal with the newest tool result as its report, so a test can read what a tool said."""
+the task with the fleet tool, the newest tool result as its report, so a test can read what
+a tool said."""
 
 from __future__ import annotations
 
@@ -57,7 +58,7 @@ class ScriptedCore(Core):
             if self._script and self._script[0].get("when", "") in _said_last(request):
                 step = self._script.pop(0)
             if step.get("report_last_result"):
-                step = {"calls": [{"name": "finish_goal",
+                step = {"calls": [{"name": "mcp__fleet__finish",
                                    "arguments": {"report": _last_result(request)}}]}
         blocks: list[Any] = []
         if text := step.get("text"):

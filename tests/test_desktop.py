@@ -17,7 +17,8 @@ import kaden.frontends.desktop  # noqa: F401 - before any Qt import
 import pytest
 import tomli_w
 from kaden.frontends.desktop import theme
-from kaden.frontends.desktop.window import PREVIEW_ROLE, AssistantBubble, WrapUpCard
+from kaden.frontends.desktop.messages import AssistantBubble, WrapUpCard
+from kaden.frontends.desktop.widgets import PREVIEW_ROLE
 from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
 from PySide6.QtGui import QDropEvent, QImage
 from PySide6.QtWidgets import QApplication, QPushButton
@@ -568,6 +569,7 @@ async def test_a_fleet_is_built_by_hand_and_then_started(window, tmp_path: Path)
     head.start.click()
     await until(lambda: harness.models == [("Chief", "big-1"), ("Writer", "small-1")])
     await until(lambda: view.running and not head.start.isVisibleTo(shown))
+    await until(lambda: "Chief" in harness.heard)  # its first turn, which is a task's
     assert "Writer (K4001)" in harness.heard["Chief"][0]
     await until(lambda: chief.state.text() == "working")
 
@@ -979,7 +981,7 @@ async def test_an_agents_task_is_changed_and_an_agent_is_removed_on_the_chart(
     shown.dialog.kind.duty.setChecked(True)
     shown.dialog.save.click()
     await until(lambda: harness.instructed and "Map the code" in harness.instructed[0][1])
-    assert harness.kinds == [("Scout", True)] and view.fleet.units["K4001"].ongoing
+    assert "standing work" in harness.instructed[0][1] and view.fleet.units["K4001"].ongoing
     assert "Map the code" in scout.toolTip()
 
     assert any("K4001" in entry.concerns for entry in view.entries)

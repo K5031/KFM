@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 import tomli_w
 
+from kfm import units
 from kfm.api import UnitError
 from kfm.config import FleetConfig
 from kfm.events import Answered, Approval, Changed, Delivered, FleetEvent, Notice, Said
@@ -28,7 +29,7 @@ def call(tool: str, /, **arguments: Any) -> dict[str, Any]:
 
 
 def finish(report: str, when: str = "") -> dict[str, Any]:
-    return {"when": when, **call("finish_goal", report=report)}
+    return {"when": when, **call("mcp__fleet__finish", report=report)}
 
 
 async def until(predicate: Callable[[], Any], timeout: float = 30.0) -> None:
@@ -108,7 +109,7 @@ async def test_a_question_goes_to_the_supervisor_and_its_answer_back(fleet):
                  {"when": "[Question from Scout", **call("mcp__fleet__message", agent="K4001",
                                                          text="Use docs/")},
                  finish("Docs are tidy.", when="[Report from Scout")],
-        "Scout": [call("ask_for_help", question="Which folder?"),
+        "Scout": [call("mcp__fleet__ask", question="Which folder?"),
                   finish("Tidied docs/", when="your supervisor] Use docs/")]})
     await manager.add(None, "Lead", "Tidy up")
     await asyncio.wait_for(manager.finished.wait(), 30)
@@ -147,6 +148,21 @@ async def test_a_finished_agent_that_is_told_more_has_its_goal_again_and_finishe
     assert scout.state == "done"
 
 
+async def test_a_kaden_unit_is_told_its_brief_and_woken_while_its_task_stands(fleet):
+    """Kaden has no goals: the brief is the conversation's first message, and the fleet
+    sends a unit whose task stands a check-in when it has rested for the longest time."""
+    manager, events = await fleet({"Lead": [{"text": "Waiting for the build."},
+                                            finish("Built.", when=units.CHECK_IN)]},
+                                  check_in_s=(0.05, 0.3))
+    lead = await manager.add(None, "Lead", "Build it")
+    await asyncio.wait_for(manager.finished.wait(), 30)
+    assert delivered(manager, events) == [("Lead", None, "report", "Built.")]
+    assert await manager.follow(lead, lambda _: None)  # finished: opened to be read
+    history = await manager.ask(lead, "history", {"conversation_id": lead.session})
+    users = [str(m) for m in history if m["role"] == "user"]
+    assert "Your task: Build it" in users[0] and units.CHECK_IN in users[1]
+
+
 async def test_the_lowest_rank_is_told_it_cannot_delegate(fleet):
     manager, events = await fleet({
         "Lead": [call("mcp__fleet__delegate", name="Helper", task="Help"),
@@ -159,7 +175,7 @@ async def test_the_lowest_rank_is_told_it_cannot_delegate(fleet):
 
 async def test_the_lead_asks_the_person_and_carries_on_with_the_answer(fleet):
     manager, events = await fleet({
-        "Lead": [call("ask_for_help", question="Blue or green?"),
+        "Lead": [call("mcp__fleet__ask", question="Blue or green?"),
                  finish("Painted it green.", when="green")]})
     lead = await manager.add(None, "Lead", "Paint it")
     await until(lambda: lead.state == "waiting")
@@ -356,13 +372,16 @@ async def test_a_stopped_fleet_carries_on_where_it_was(fleet, tmp_path: Path):
     await manager.say("anything new?")
     await until(lambda: "All quiet." in said(manager, events, "Lead"))
     assert manager.fleet.units["K5001"].session == session
+    history = await manager.ask(manager.fleet.units["K5001"], "history",
+                                {"conversation_id": session})
+    assert sum("Your task: Keep watch" in str(m) for m in history) == 1  # not told again
     assert manager.fleet.spent_usd >= stopped.spent_usd
 
 
 async def test_a_resumed_fleet_finishes_what_was_under_way(fleet, tmp_path: Path):
     manager, events = await fleet({
         "Lead": [call("mcp__fleet__delegate", name="Scout", task="Tidy the docs")],
-        "Scout": [call("ask_for_help", question="Which folder?")]})
+        "Scout": [call("mcp__fleet__ask", question="Which folder?")]})
     await manager.add(None, "Lead", "Tidy up")
     await until(lambda: ("Scout", "Lead", "question", "Which folder?") in delivered(manager, events))
     await manager.aclose()
@@ -389,6 +408,8 @@ async def test_a_kaden_unit_is_given_another_task(fleet, tmp_path: Path):
     await manager.retask(lead, "Count the files")
     await until(lambda: "Counting." in said(manager, events, "Lead"))
     assert lead.session == session and lead.state == "working"
+    history = await manager.ask(lead, "history", {"conversation_id": session})
+    assert any("Your task: Count the files" in str(m) for m in history)
 
 
 async def test_a_running_fleet_is_not_resumed_again(fleet, tmp_path: Path):

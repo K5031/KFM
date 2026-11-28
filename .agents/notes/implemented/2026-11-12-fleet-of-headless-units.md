@@ -6,8 +6,8 @@ Status: implemented — the manager runs every unit as an unchanged headless Kad
 
 KFM is for teams of Kaden agents in ranks, each supervising the rank below,
 that take a rough task from a person and finish it without supervision, inside budgets
-and permissions. Kaden already runs headless, works on a goal or a duty by itself,
-reports, asks for help and respects a budget. What is missing is everything between
+and permissions. Kaden already runs headless, works by itself on what it is told, uses
+MCP tools and respects a budget. What is missing is everything between
 units: who starts whom, how a report or a question travels, who enforces the hierarchy
 and the fleet's spending, and how the person follows it. Kaden must stay free of fleet
 concepts, so none of this can be added to it.
@@ -22,19 +22,21 @@ concepts, so none of this can be added to it.
 - **The manager (`kfm.manager`) owns every process** and drives each over Kaden's
   headless channel with Kaden's own client (`kaden.frontends.remote.Channel`). The
   process tree is flat; the hierarchy is data (`kfm.fleet`).
-- **A unit's task is its duty**: a goal (ends with `finish_goal` and a report) or standing
-  work. The instruction is a brief (`units.brief`): the unit's name and rank, its task,
-  and how the fleet works from where it stands.
-- **Up the hierarchy, the manager carries what Kaden already emits.** A unit that
-  finishes its goal, asks for help, fails or stops ends a turn; the manager turns that
+- **A unit's task is a goal or standing work, kept by the fleet**
+  ([the fleet keeps a unit's work](2026-11-28-the-fleet-keeps-a-units-work.md)): a goal ends with the fleet tool
+  `finish` and a report, and the manager wakes a resting unit whose work stands. The
+  instruction is a brief (`units.brief`), the first message of the unit's conversation:
+  the unit's name and rank, its task, and how the fleet works from where it stands.
+- **Up the hierarchy, the manager carries what a unit does.** A unit that finishes its
+  task, asks its supervisor (`ask`), fails or stops ends a turn; the manager turns that
   into a message in its supervisor's conversation (`[Report from Scout (K4001)] ...`),
   which wakes the supervisor. For the lead, whose supervisor is the person, it becomes a
   fleet event the terminal shows.
 - **Down the hierarchy, agents use the fleet tools**, an MCP server in the manager
   (`kfm.tools`) that every unit connects to with its own token: `delegate` (a new agent
   one rank below), `message` (answer or redirect one of its agents, starting it again if
-  it had stopped), `status`, `stop` (an agent and everything under it) and `report` (an
-  update that does not end the work). The manager enforces the rules: one rank down,
+  it had stopped), `status`, `stop` (an agent and everything under it), `report` (an
+  update that does not end the work), `finish` and `ask`. The manager enforces the rules: one rank down,
   direct subordinates only, the lowest rank cannot delegate, a limit on the number of
   agents.
 - **Spending** has two limits: each unit's own, enforced by its Kaden, and the fleet's,

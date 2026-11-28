@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from kfm import api, harnesses, log
+from kfm import api, harnesses, log, units
 from kfm.config import FleetConfig
 from kfm.events import Delivered, Dismissed, FleetEvent, Instructed, Notice, Told
 from kfm.fleet import Fleet, FleetError
@@ -32,8 +32,8 @@ async def run(tmp_path: Path, harness: FakeHarness, **how) -> tuple[Manager, lis
     if how.pop("resume", False):
         manager = Manager.load(tmp_path / "fleet", harness=harness, on_event=events.append)
     else:
-        manager = Manager.new(FleetConfig(), tmp_path / "fleet", tmp_path / "work",
-                              harness=harness, on_event=events.append)
+        manager = Manager.new(how.pop("config", FleetConfig()), tmp_path / "fleet",
+                              tmp_path / "work", harness=harness, on_event=events.append)
     await manager.start()
     return manager, events
 
@@ -55,10 +55,48 @@ async def test_a_fleet_runs_on_another_harness(tmp_path: Path):
     assert lead.session == "session-K5001" and lead.spent_usd > 0
     # The words KFM wrote to the units name this harness's tools, not Kaden's.
     brief, question = harness.heard["Lead"][0], harness.heard["Lead"][1]
-    assert "fleet.delegate" in brief and "done with a report ends the task" in brief
+    assert "fleet.delegate" in brief and "fleet.finish with a report ends the task" in brief
     assert "fleet.message(agent=\"K4001\"" in question
-    assert not any("mcp__" in text or "finish_goal" in text
+    assert not any("mcp__" in text
                    for heard in harness.heard.values() for text in heard)
+    await manager.aclose()
+
+
+async def test_the_fleet_wakes_an_agent_whose_work_stands_until_it_finishes(tmp_path: Path):
+    """A unit only takes turns; the fleet sends one whose task stands a check-in once it
+    has rested for the longest time, and none once it has finished."""
+    harness = FakeHarness({"Lead": [{"do": [("say", "Waiting for the build.")]},
+                                    {"when": units.CHECK_IN, "do": [("report", "Built.")]}]})
+    manager, _ = await run(tmp_path, harness, config=FleetConfig(check_in_s=(0.01, 0.1)))
+    lead = await manager.add(None, "Lead", "Build it")
+    await asyncio.wait_for(manager.finished.wait(), 10)
+    assert harness.heard["Lead"][1] == units.CHECK_IN and lead.state == "done"
+    await asyncio.sleep(0.3)
+    assert len(harness.heard["Lead"]) == 2  # finished: nobody wakes it
+    await manager.aclose()
+
+
+async def test_a_waking_check_in_waits_for_the_answer_to_a_question(tmp_path: Path):
+    harness = FakeHarness({"Lead": [{"do": [("ask", "Blue or green?")]}]})
+    manager, _ = await run(tmp_path, harness, config=FleetConfig(check_in_s=(0.01, 0.05)))
+    lead = await manager.add(None, "Lead", "Paint it")
+    while lead.state != "waiting":
+        await asyncio.sleep(0.01)
+    await asyncio.sleep(0.2)
+    assert len(harness.heard["Lead"]) == 1  # nothing arrived, and it is not woken
+    await manager.aclose()
+
+
+async def test_standing_work_cannot_be_finished(tmp_path: Path):
+    harness = FakeHarness({"Lead": [{"do": [("report", "All done.")]}]})
+    manager, events = await run(tmp_path, harness)
+    lead = await manager.add(None, "Lead", "Keep watch", ongoing=True)
+    while not harness.results:
+        await asyncio.sleep(0.01)
+    [(_, tool, answer)] = harness.results
+    assert tool == "finish" and "standing work" in answer.lower()
+    assert lead.report is None and lead.state == "working"
+    assert not [e for e in events if isinstance(e, Delivered)]
     await manager.aclose()
 
 
@@ -295,8 +333,7 @@ async def test_a_finished_agent_that_is_told_more_has_its_goal_again(tmp_path: P
     lead = await manager.add(None, "Lead", "Count the files")
     await until(lambda: lead.state == "done")
     await manager.say("Count again")
-    assert [name for name, _ in harness.instructed] == ["Lead"]  # with the message
-    assert "Your task: Count the files" in harness.instructed[0][1]
+    assert not harness.instructed  # its task stands again, as it was told it
     await until(lambda: delivered(manager, events) == [("Lead", None, "report", "3 files"),
                                               ("Lead", None, "report", "Still 3.")])
     assert harness.heard["Lead"][1] == "Count again"  # the message, and no note with it
@@ -464,11 +501,11 @@ async def test_an_agent_is_given_another_task_and_an_agent_is_removed(tmp_path: 
     with pytest.raises(FleetError, match="empty"):
         await manager.retask(scout, "  ")
     # A task becomes a duty, or a duty a task, with the task: its instruction says which.
-    assert not scout.ongoing and harness.kinds == [("Scout", False)]
+    assert not scout.ongoing and "standing work" not in harness.instructed[-1][1]
     await manager.retask(scout, "Keep the map current", ongoing=True)
-    assert scout.ongoing and harness.kinds[-1] == ("Scout", True)
+    assert scout.ongoing and "standing work" in harness.instructed[-1][1]
     await manager.retask(scout, "Keep the map current")  # unsaid: as it is
-    assert scout.ongoing and harness.kinds[-1] == ("Scout", True)
+    assert scout.ongoing and "standing work" in harness.instructed[-1][1]
     waiting = await manager.add(lead, "", "")  # with no task: it begins on the one given
     await manager.retask(waiting, "Check the links")
     await until(lambda: any("Your task: Check the links" in heard
@@ -512,8 +549,8 @@ async def test_what_a_unit_says_while_it_is_closed_changes_nothing_but_its_spend
     await until(lambda: len(events) > 3 and lead.spent_usd > 0)
     await manager.stop_unit(lead)
     before = list(events)
-    for late in (api.Working(), api.Said("Still here."), api.Reported("Late."),
-                 api.Rested(False), api.Failed("Broke."), api.Exited("Gone.")):
+    for late in (api.Working(), api.Said("Still here."),
+                 api.Rested(), api.Failed("Broke."), api.Exited("Gone.")):
         harness.emit(late)
     assert (lead.state, lead.report, lead.failure) == ("stopped", None, None)
     assert events == before

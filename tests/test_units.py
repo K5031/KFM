@@ -55,11 +55,12 @@ def test_the_brief_says_where_the_unit_stands_in_its_harnesss_words():
                             "only where", "keep at it", "make it complete"):
             assert instruction not in told.lower(), instruction
     assert "mcp__fleet__delegate starts a K1 agent on a task you give it" in top
-    assert "finish_goal" in low and "finish_goal" not in standing
+    assert "mcp__fleet__finish" in low and "mcp__fleet__finish" not in standing
+    assert "mcp__fleet__ask puts a question to it" in low
     assert "mcp__fleet__report" in standing
     # Standing work is taken up again soon whatever it plans for later, which it knows.
     assert "your next turn starts within 5 minutes" in standing and "minutes" not in low
-    other = brief(worker, lead, [], Vocabulary(finish="done", ask="ask_boss", tools="fleet."))
-    assert "done with a report ends the task" in other
-    assert "ask_boss puts a question to it" in other
-    assert "finish_goal" not in other and "mcp__" not in other
+    other = brief(worker, lead, [], Vocabulary(tools="fleet."))
+    assert "fleet.finish with a report ends the task" in other
+    assert "fleet.ask puts a question to it" in other
+    assert "mcp__" not in other

@@ -69,7 +69,7 @@ What a standing team needs, against what KFM has:
 
 | A standing team needs | KFM today |
 |---|---|
-| To keep going on a duty | `--duty` exists; first run with a real model on 2026-11-12 |
+| To keep going on standing work | `--continuous`: the manager wakes it ([note](../implemented/2026-11-28-the-fleet-keeps-a-units-work.md)); first run with a real model on 2026-11-12 |
 | To find its own work | Seen once, in that run |
 | To survive the manager stopping | `kfm resume` ([note](../implemented/2026-11-12-resume.md)) |
 | To remember together | Each agent has its own memory |
@@ -85,7 +85,7 @@ Order of work:
    a role for a week, and everything long-running sits on this.
 2. **Shared team memory** ([note](2026-11-12-shared-team-memory.md)).
 3. **A fleet log** and a window, which are built.
-4. Then, by what duty runs show: waking on events instead of a timer, approvals for
+4. Then, by what standing runs show: waking on events instead of a timer, approvals for
    real-world actions, a model for hands-on work whatever the agent's rank.
 
 Left as they are: the top rank is always K5 and a fleet grows downward as far as the work

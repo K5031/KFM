@@ -16,10 +16,8 @@ import tomli_w
 from kaden.api import (
     DESCRIPTION_ARG,
     AgentState,
-    ConversationUpdated,
     EventEnvelope,
     Failure,
-    HelpNeeded,
     MessageCommitted,
     ModelRetry,
     Prompt,
@@ -28,7 +26,6 @@ from kaden.api import (
     PromptOpened,
     ReasoningDelta,
     Role,
-    RuntimeSnapshot,
     RuntimeStateError,
     StateChanged,
     Text,
@@ -39,7 +36,6 @@ from kaden.api import (
     UsageUpdated,
 )
 from kaden.frontends.remote import Channel
-from kaden.frontends.wire import from_json
 
 from kfm.api import (
     ApprovalNeeded,
@@ -50,7 +46,6 @@ from kfm.api import (
     Failed,
     Harness,
     Instruction,
-    Reported,
     Rested,
     Said,
     Session,
@@ -65,9 +60,10 @@ from kfm.api import (
 )
 
 TOOLS = "fleet"  # the MCP server's name in a unit: its tools are mcp__fleet__<tool>
-WORDS = Vocabulary(finish="finish_goal", ask="ask_for_help", tools=f"mcp__{TOOLS}__")
+WORDS = Vocabulary(tools=f"mcp__{TOOLS}__")
 CARD = "wrap_up"  # Kaden's tool that ends a turn with a recap, a question and its answers
 UNIT_RECORD = "unit.json"
+INSTRUCTION = "instruction.md"  # in the unit's folder: the instruction its agent was last given
 _LINE_LIMIT = 16 * 1024 * 1024
 DOING_CHARS = 160  # of a tool call, as it is shown while it runs
 MODELS_S = 30.0  # for a Kaden asked which models it offers to answer
@@ -110,10 +106,7 @@ class KadenHarness(Harness):
                 start_new_session=True)
         except (OSError, ValueError) as e:
             raise UnitError(str(e)) from e
-        opened = _Session(Channel(process), on_event, session)
-        if session is not None:
-            await opened.attach()
-        return opened
+        return _Session(Channel(process), on_event, session, spec.folder / INSTRUCTION)
 
     async def model_choices(self, folder: Path) -> Sequence[tuple[str, str, str]]:
         """What the configured provider lists: asked of a Kaden started for that alone,
@@ -167,44 +160,47 @@ class KadenHarness(Harness):
 
 class _Session(Session):
     def __init__(self, channel: Channel, on_event: Callable[[UnitEvent], None],
-                 conversation: str | None) -> None:
+                 conversation: str | None, given: Path) -> None:
         self._channel, self._emit, self._conversation = channel, on_event, conversation
+        self._given = given  # the instruction the agent last read
+        self._instruction: str | None = None  # one it is yet to read, with the next send
         self._active = False
         self._questioned: str | None = None  # the prompt that waits for the next send
-        self._has_duty = False
         self._failure: str | None = None  # what Kaden said before its state became failed
         self._closed = False
         self._tools: dict[str, str] = {}  # the tool calls under way, in words, by call id
         self._answers: set[asyncio.Task[Any]] = set()
         channel.listeners.append(self._event)
 
-    async def attach(self) -> None:
-        """Opened on a conversation: learn whether its duty still stands."""
-        snapshot = from_json(await self._request("snapshot"), RuntimeSnapshot)
-        self._has_duty = (snapshot.conversation is not None
-                          and snapshot.conversation.duty is not None)
-
     async def begin(self, instruction: Instruction) -> str:
+        """A new conversation, which opens with the instruction as its first message."""
         info = await self._request("start")
         self._conversation = info["id"]
-        if instruction.conversation:  # said once, as what the conversation opens with
-            await self.send(instruction.text)
-        else:
-            await self.instruct(instruction)
+        await self._write_given(instruction.text)
+        await self._request("send", text=instruction.text, files=[], spoken=False)
         return info["id"]
 
     async def instruct(self, instruction: Instruction) -> None:
+        """Kaden has no standing instruction but its system prompt: another one is told
+        as a notice ahead of the next message. The one it last read is not told again."""
         if instruction.conversation:
             return
-        low, high = instruction.check_in_s
-        await self._request("set_duty", duty={
-            "instruction": instruction.text,
-            "kind": "duty" if instruction.ongoing else "goal",
-            "min_interval_s": low, "max_interval_s": high})
+        given = await asyncio.to_thread(_read, self._given)
+        self._instruction = None if instruction.text == given else instruction.text
 
     async def send(self, text: str, files: Sequence[str] = (), *,
                    spoken: bool = False) -> None:
+        if (instruction := self._instruction) is not None:
+            await self._request("notify", text=f"{INSTRUCTED}\n\n{instruction}")
+            await self._write_given(instruction)
+            self._instruction = None
         await self._request("send", text=text, files=list(files), spoken=spoken)
+
+    async def _write_given(self, text: str) -> None:
+        try:
+            await asyncio.to_thread(self._given.write_text, text)
+        except OSError as e:
+            raise UnitError(str(e)) from e
 
     async def approve(self, request_id: str, allow: bool, *, always: bool = False) -> None:
         decision = "deny" if not allow else "allow_conversation" if always else "allow_once"
@@ -245,10 +241,7 @@ class _Session(Session):
         match envelope.event:
             case MessageCommitted(message=message) if message.role == Role.ASSISTANT:
                 for block in message.blocks:
-                    if isinstance(block, ToolCall) and block.name == WORDS.finish:
-                        if self._has_duty:  # else Kaden refuses the call
-                            self._emit(Reported(block.arguments.get("report") or "Done."))
-                    elif isinstance(block, ToolCall) and block.name == CARD:
+                    if isinstance(block, ToolCall) and block.name == CARD:
                         self._emit(Said(_card(block.arguments)))
                     elif isinstance(block, Text) and block.text.strip():
                         self._emit(Said(block.text.strip()))
@@ -268,10 +261,6 @@ class _Session(Session):
                 self._prompted(prompt)
             case PromptClosed(prompt_id=prompt_id) if prompt_id == self._questioned:
                 self._questioned = None
-            case HelpNeeded(question=question):
-                self._emit(Asked(question))
-            case ConversationUpdated(info=info) if self._conversation in (None, info.id):
-                self._has_duty = info.duty is not None
             case UsageUpdated(snapshot=snapshot):
                 self._emit(Spent(snapshot.usage.cost_usd or 0.0))
             case Failure(message=message):
@@ -283,7 +272,7 @@ class _Session(Session):
                 elif active and not self._active:
                     self._emit(Working())
                 elif self._active and not active:
-                    self._emit(Rested(self._has_duty))
+                    self._emit(Rested())
                 self._active = active
 
 
@@ -291,8 +280,8 @@ class _Session(Session):
         """What a unit's Kaden waits on, as the fleet handles it: a permission goes up as
         an approval (the fleet's own tools are allowed at once); a plan is said and
         approved, since nobody approves plans in a fleet; anything a message answers (a
-        question) goes up as the unit asking, and its turn rests until the next send. A
-        proposal stays open: a unit's ideas wait for nobody."""
+        question) goes up as the unit waiting for an answer, and its turn rests until the
+        next send. A proposal stays open: a unit's ideas wait for nobody."""
         call = prompt.call
         if prompt.kind == PromptKind.PERMISSION and call is not None:
             if call.name.startswith(WORDS.tools):
@@ -304,9 +293,9 @@ class _Session(Session):
             self._answer("respond", prompt_id=prompt.id, reply={"approve": True})
         elif prompt.words:
             questions = prompt.details.get("questions")
-            self._emit(Asked(_questions(questions) if questions else prompt.text, waits=True))
-            if self._active:  # it carries on once answered, with or without a duty
-                self._emit(Rested(True))
+            self._emit(Asked(_questions(questions) if questions else prompt.text))
+            if self._active:  # it carries on once answered
+                self._emit(Rested())
             self._active, self._questioned = False, prompt.id
 
     def _answer(self, method: str, **params: Any) -> None:
@@ -314,6 +303,16 @@ class _Session(Session):
         answer = asyncio.ensure_future(self._channel.request(method, **params))
         self._answers.add(answer)
         answer.add_done_callback(self._answers.discard)
+
+
+INSTRUCTED = "Your standing instruction is now this one, in place of the one before:"
+
+
+def _read(path: Path) -> str | None:
+    try:
+        return path.read_text()
+    except OSError:
+        return None
 
 
 def _price(model: Mapping[str, Any]) -> str:

@@ -51,7 +51,7 @@ may not start anything: the limit is tested where a fleet starts.
   queue of messages per agent, saved and replayed: a second place for what the task and
   the tree already say.
 - **Keep `idle` for an agent without a task in a running fleet.** It is what made the
-  condition a combination of fields; `idle` means a turn ended without a report.
+  condition a combination of fields.
 - **Give a first message's files to the agent with its task.** The unit contract's
   `begin` takes an instruction and no files, so they follow as a message of their own;
   a first message with files and no words is refused, since a task cannot be empty.
@@ -68,7 +68,6 @@ may not start anything: the limit is tested where a fleet starts.
 - A taskless agent shows as `planned`, in a running fleet too.
 - A manager is held for every fleet the service has read, also those that never run.
   It costs a record in memory: the agent program and the tool server are made on start.
-- `fleet.json` is format 11: `planned` is every new agent's state, and `idle` no longer
-  means "waits for a task".
+- `fleet.json` is format 11: `planned` is every new agent's state.
 - Checked on the second harness. With real Kaden units only the paths the earlier
   tests cover (start, resume, another task while running) were run.

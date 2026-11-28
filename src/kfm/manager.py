@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 STOP_GRACE_S = 10.0  # for a unit to end by itself when it is closed
 LIVE_S = 0.2  # between two tellings of what units are doing
 LIVE_CHARS = 4000  # the end of what a unit thinks or writes that is kept to show
-_OVER = ("done", "idle", "failed", "stopped")
+_OVER = ("done", "failed", "stopped")
 # The person's settings every fleet follows as they change. Its limit is the fleet's own.
 SHARED = ("max_units", "unit_budget_usd", "permissions", "models", "teams", "model_mode",
           "auto_models")
@@ -131,10 +131,12 @@ class Manager:
         self._tools: ToolServer  # the fleet tools, made each time it starts
         self._switch = asyncio.Lock()  # one start or stop at a time
         self._sessions: dict[str, Session] = {}
-        # Messages for a unit that waits in a call for its answer (Asked.waits), sent once
+        # Messages for a unit that waits in a call for its answer (api.Asked), sent once
         # it has one: it would take any of them as the answer.
         self._held: dict[str, list[tuple[str, tuple[str, ...], bool]]] = {}
         self._opening: dict[str, asyncio.Lock] = {}  # one start of a unit's process at a time
+        # When each resting unit whose work stands is sent a check-in.
+        self._wakes: dict[str, asyncio.TimerHandle] = {}
         self._tasks: set[asyncio.Task[None]] = set()
         self._unsaved = False
         self._saving = asyncio.Lock()
@@ -460,8 +462,8 @@ class Manager:
     async def tell(self, unit: Unit, text: str, *, files: Sequence[str] = (),
                    spoken: bool = False, answering: bool = False) -> None:
         """Put a message into the conversation of a unit that has begun, starting its
-        process if it is not up: it then works on what the message says. One whose goal
-        has ended has it again, and ends it again with a report. `files` and `spoken` are
+        process if it is not up: it then works on what the message says. One that
+        finished has its task again, and finishes it again with a report. `files` and `spoken` are
         the session's (api.Session.send). A unit that waits for the answer to its question
         gets only what `answering` (its supervisor, the person); the rest follows the
         answer. FleetError or UnitError when it cannot be."""
@@ -478,7 +480,6 @@ class Manager:
         held = self._held.get(unit.id, [])
         unit.question = None  # this is its answer
         self._changed()
-        ended = unit.state in ("done", "idle")  # its instruction stands no more
         woken = unit.state in _OVER
         if woken:
             unit.report = unit.failure = None
@@ -490,8 +491,6 @@ class Manager:
                 await self._could_not_start(unit, e)
             raise
         self._held.pop(unit.id, None)  # answered: what waited for it goes now
-        if ended:  # the message is what it takes its turn on, with its goal to end again
-            await session.instruct(self._instruction(unit))
         for later, later_files, later_spoken in held:
             self._spawn(self._tell_quietly(unit, later, files=later_files,
                                            spoken=later_spoken))
@@ -520,6 +519,19 @@ class Manager:
     async def update(self, unit: Unit, text: str) -> None:
         """A unit's update for its supervisor, without ending its work."""
         self._deliver(unit, "update", f"[Update from {unit.label}] {text}", text)
+
+    def finish(self, unit: Unit, report: str) -> None:
+        """A unit ends its task with a report, which goes up when its turn ends. FleetError
+        for standing work, which has no end."""
+        if unit.ongoing:
+            raise FleetError("Your task is standing work, which has no end; "
+                             f"{self._words.tool('report')} sends an update.")
+        unit.report = report
+
+    def question(self, unit: Unit, question: str) -> None:
+        """A unit asks its supervisor, or the person: the question goes up when its turn
+        ends, and it is not woken until the answer arrives."""
+        unit.question = question
 
     async def stop_unit(self, unit: Unit) -> None:
         """Stop the unit and everything under it."""
@@ -593,12 +605,11 @@ class Manager:
         if self._converses:
             return Instruction(
                 units.secretary_brief(unit, self.project.name, self.work, self._words),
-                False, self.config.check_in_s, conversation=True)
-        brief = units.brief(unit, self.fleet.supervisor_of(unit),
-                            self.fleet.subordinates(unit), self._words,
-                            in_project=self.project is not None,
-                            wake_s=self.config.check_in_s[1])
-        return Instruction(brief, unit.ongoing, self.config.check_in_s)
+                conversation=True)
+        return Instruction(units.brief(unit, self.fleet.supervisor_of(unit),
+                                       self.fleet.subordinates(unit), self._words,
+                                       in_project=self.project is not None,
+                                       wake_s=self.config.check_in_s[1]))
 
     async def _begin(self, unit: Unit) -> None:
         """Give the unit its task."""
@@ -674,6 +685,7 @@ class Manager:
         return session
 
     async def _close(self, unit: Unit) -> None:
+        self._rested(unit, False)
         self._asked(unit)  # what it asked for goes with its process
         if (session := self._sessions.pop(unit.id, None)) is not None:
             await session.close(STOP_GRACE_S)
@@ -689,13 +701,16 @@ class Manager:
             return  # its process is being closed: what it still says changes nothing
         match event:
             case api.Working():
+                self._rested(unit, False)
                 self._set(unit, "working")
-            case api.Rested(carries_on=carries_on):
-                if carries_on:  # between check-ins, or until its question is answered
-                    self._set(unit, "waiting" if unit.question is not None else "working")
-                else:
-                    over = unit.report is not None or self._converses
-                    self._set(unit, "done" if over else "idle")
+            case api.Rested():
+                if unit.question is not None:  # until its question is answered
+                    self._set(unit, "waiting")
+                elif self._converses or (unit.report is not None and not unit.ongoing):
+                    self._set(unit, "done")
+                else:  # its work stands
+                    self._set(unit, "working")
+                    self._rested(unit, True)
                 self._watched(unit, thinking="", writing="", doing="")  # its turn is over
                 self._asked(unit)
                 if unit.state != "working":
@@ -718,12 +733,9 @@ class Manager:
                     self._show_live()  # at once: a tool may be over in no time
             case api.Discarded():
                 self._watched(unit, thinking="", writing="")
-            case api.Reported(text=text):
-                unit.report = text
-            case api.Asked(question=question, waits=waits):
+            case api.Asked(question=question):
                 unit.question = question
-                if waits:
-                    self._held.setdefault(unit.id, [])
+                self._held.setdefault(unit.id, [])
             case api.Spent(usd=usd):
                 unit.spent_usd = usd
                 self._changed()
@@ -735,18 +747,35 @@ class Manager:
                 self._emit(asked)
                 self._changed()  # also a second request of a unit that is asking already
             case api.Failed(message=message):
+                self._rested(unit, False)
                 self._watched(unit, thinking="", writing="", doing="")
                 self._asked(unit)
                 unit.failure = message
                 self._set(unit, "failed")
                 self._turn_ended(unit)
             case api.Exited(why=why):
+                self._rested(unit, False)
                 self._watched(unit, thinking="", writing="", doing="")
                 del self._sessions[unit.id]
                 if unit.active:
                     unit.failure = why
                     self._set(unit, "failed")
                     self._turn_ended(unit)
+
+    def _rested(self, unit: Unit, stands: bool) -> None:
+        """The unit rests with its work standing (`stands`): it is sent a check-in after
+        the longest rest, unless something wakes it first. Not `stands`: no check-in is
+        due, as it is at work again or its process is gone."""
+        if (wake := self._wakes.pop(unit.id, None)) is not None:
+            wake.cancel()
+        if stands:
+            self._wakes[unit.id] = asyncio.get_running_loop().call_later(
+                self.config.check_in_s[1], self._wake, unit)
+
+    def _wake(self, unit: Unit) -> None:
+        self._wakes.pop(unit.id, None)
+        if self.up and unit.state == "working" and unit.id in self._sessions:
+            self._spawn(self._tell_quietly(unit, units.CHECK_IN))
 
     def _asked(self, unit: Unit, request_id: str | None = None) -> None:
         """A request of the unit's is answered, or with None all of them are void: its
@@ -821,13 +850,6 @@ class Manager:
                     f"[{unit.label} failed] {why}\n"
                     f"{self._words.tool('message')}(agent=\"{unit.id}\", text=...) starts "
                     "it again.", why)
-            case "idle":
-                self._deliver(
-                    unit, "stopped",
-                    f"[{unit.label} stopped without a report]\n"
-                    f"{self._words.tool('message')}(agent=\"{unit.id}\", text=...) starts "
-                    "it again.",
-                    "It stopped without a report.")
 
     def _deliver(self, unit: Unit, kind: str, message: str, text: str) -> None:
         supervisor = self.fleet.supervisor_of(unit)

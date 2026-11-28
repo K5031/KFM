@@ -18,27 +18,28 @@ head what they cannot express.
   process from a `UnitSpec` (its data folder, the fleet's work folder, model, permissions,
   spending limit, the fleet tools' address) and returns a `Session`: `begin(instruction)`,
   `instruct(instruction)`, `send(text)`, `approve(request_id, allow)`, `close(grace_s)`.
-- **A unit says what it does** in nine events: `Working`, `Rested(carries_on)`, `Said`,
-  `Reported`, `Asked`, `Spent`, `ApprovalNeeded`, `Failed`, `Exited`. The manager keeps a
-  unit's state from these and nothing else.
-- **What a unit must do** is written at the top of the file: work by itself on its
-  instruction and wake itself, end a goal with a report, ask when blocked, have the fleet
-  tools (an MCP server) and run them unasked, stay inside its permissions and its
-  spending limit, and keep its session, on which it is opened again and then waits for a
-  message.
-- **The words are the harness's.** `Harness.vocabulary` names the tool that finishes a
-  goal, the one that asks, and what stands before a fleet tool's name; the brief and
-  every message KFM writes to an agent use them (`units.py`).
+- **A unit says what it does** in eight events: `Working`, `Rested`, `Said`, `Asked` (it
+  waits in a call for an answer), `Spent`, `ApprovalNeeded`, `Failed`, `Exited`. The
+  manager keeps a unit's state from these and from the fleet tools it calls, and nothing
+  else.
+- **What a unit must do** is written at the top of the file: take a turn on what it is
+  told, say when it waits in a call, have the fleet tools (an MCP server) and run them
+  unasked, stay inside its permissions and its spending limit, and keep its session, on
+  which it is opened again and then waits for a message. Goals, questions to a
+  supervisor and check-ins are the fleet's ([the fleet keeps a unit's work](2026-11-28-the-fleet-keeps-a-units-work.md)).
+- **The words are the harness's.** `Harness.vocabulary` names what stands before a
+  fleet tool's name; the brief and every message KFM writes to an agent use it
+  (`units.py`).
 - **Harnesses are found by name.** The fleet's settings name one (`harness`, with
   `harness_options`): an entry point in the group `kfm.harnesses`, or
   `package.module:factory`. `kaden` is the default.
 - **Everything of Kaden is in `kfm/harnesses/kaden.py`**: the unit's configuration
   files, the headless process, and the translation of Kaden's events. It lets the fleet
-  tools run by answering their permission requests itself, and reports a goal only while
-  the conversation has one.
+  tools run by answering their permission requests itself.
 - **A second harness proves it**: `tests/fakeharness.py` is written against `kfm/api.py`
   alone, with scripted units inside the test's process that call the fleet tools over
-  MCP. A fleet delegates, asks, reports and is resumed on it.
+  MCP, `finish` and `ask` among them. A fleet delegates, asks, reports and is resumed on
+  it.
 
 ## Alternatives considered
 

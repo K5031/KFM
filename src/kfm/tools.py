@@ -1,5 +1,5 @@
 """The fleet tools: an MCP server every unit connects to, which is how an agent delegates,
-answers its agents and reports. The unit is known by the token in its URL; what it may do
+answers its agents, asks, reports and finishes. The unit is known by the token in its URL; what it may do
 is the manager's to decide."""
 
 from __future__ import annotations
@@ -174,6 +174,22 @@ def fleet_tools(manager: Manager) -> MCPServer:
         with _refusals():
             await manager.update(caller(ctx), text)
         return "Sent."
+
+    @server.tool(description=(
+        "End your task with a report: the report is all your supervisor gets of your "
+        "work. It goes when your turn ends. Standing work has no end."))
+    async def finish(report: Annotated[str, Field(min_length=1)], ctx: Context) -> str:
+        with _refusals():
+            manager.finish(caller(ctx), report)
+        return "Your task ends with this report when your turn ends."
+
+    @server.tool(description=(
+        "Ask your supervisor a question only it can answer. It goes when your turn ends, "
+        "and the answer arrives as a message; nothing else wakes you meanwhile."))
+    async def ask(question: Annotated[str, Field(min_length=1)], ctx: Context) -> str:
+        with _refusals():
+            manager.question(caller(ctx), question)
+        return "Asked. The answer arrives as a message once your turn has ended."
 
     return server
 

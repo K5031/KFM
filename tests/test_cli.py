@@ -35,8 +35,8 @@ def test_run_follows_a_fleet_and_the_other_commands_reach_it(tmp_path: Path):
         "K5001": [{"calls": [{"name": "mcp__fleet__delegate",
                               "arguments": {"name": "Scout", "task": "Look"}}]},
                   {"when": "[Report from Scout",
-                   "calls": [{"name": "finish_goal", "arguments": {"report": "All found."}}]}],
-        "Scout": [{"calls": [{"name": "finish_goal", "arguments": {"report": "Found it."}}]}]})
+                   "calls": [{"name": "mcp__fleet__finish", "arguments": {"report": "All found."}}]}],
+        "Scout": [{"calls": [{"name": "mcp__fleet__finish", "arguments": {"report": "Found it."}}]}]})
     work = tmp_path / "work"
     work.mkdir()
     ran = kfm("run", "Find it", "--work", str(work), "--budget", "1", home=tmp_path)

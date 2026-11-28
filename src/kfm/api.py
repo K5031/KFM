@@ -8,32 +8,29 @@ for a test.
 
 What a unit must do, beyond the methods below:
 
-- **Work by itself.** After `begin`, the agent carries its instruction on without being
-  asked: it takes turns, uses its tools, and ends a turn when there is nothing to do
-  now. While the instruction stands it wakes itself again, at least every
-  `Instruction.check_in_s[1]` seconds.
-- **End a goal with a report.** An instruction that is not `ongoing` is a goal: the agent
-  declares it reached with a report (`Reported`), and the instruction then no longer
-  stands. An `ongoing` one stands until the unit is closed.
-- **Answer in a conversation.** An instruction that is a `conversation` is no work to
-  carry on or end: its text is what the agent is told once, when it begins. The agent
-  takes a turn on it and on each `send`, and its turn ending (`Rested(False)`) is all
-  that follows; it reports nothing and does not wake itself.
-- **Ask when blocked.** When only its supervisor can unblock it, the agent asks one
-  question (`Asked`) and ends its turn. It does not wake itself while the question is
-  open; the next `send` is the answer. An agent that waits in a call for it says so
-  (`Asked.waits`): it takes the next `send` as the answer whatever it says, so the fleet
-  sends it nothing else until its supervisor or the person has answered.
+- **Take turns.** After `begin` and after each `send`, the agent works on what it was
+  told by itself: it takes a turn, uses its tools, and ends the turn (`Rested`) when
+  there is nothing to do now. It may wake itself for what it planned for later. Whether
+  its work stands, ends or waits is the fleet's: the fleet wakes a unit whose work
+  stands with a message, ends a goal when the agent calls the fleet tool `finish`, and
+  holds a question the agent asked with the fleet tool `ask` until it is answered.
+- **Answer in a conversation.** An instruction that is a `conversation` is what the
+  agent is told once, when it begins. The agent takes a turn on it and on each `send`;
+  it has no fleet work, and its turn ending is all that follows.
+- **Say when it waits in a call.** An agent that waits inside a call for an answer only
+  a person or its supervisor can give (a question of its own program, such as a form)
+  says so (`Asked`) and ends its turn: it takes the next `send` as the answer whatever it
+  says, so the fleet sends it nothing else until the answer is given.
 - **Use the fleet tools.** `UnitSpec.tools_url` is an MCP server (streamable HTTP) with
-  the tools an agent delegates, answers and reports with. The agent has them, and they
-  run without asking anyone.
+  the tools an agent delegates, answers, asks, reports and finishes with. The agent has
+  them, and they run without asking anyone.
 - **Stay inside its limits.** The agent's other actions follow `UnitSpec.permissions`;
   one that needs approval is asked for with `ApprovalNeeded` and waits for `approve`. The
   unit stops working when it has spent `UnitSpec.budget_usd`, counted over every time it
   was opened.
 - **Keep its session.** What `begin` returns names the unit's conversation in
   `UnitSpec.folder`. Opened again with it, the agent has that conversation, its
-  instruction if it still stood, and what it had spent. A unit opened on a session does
+  instruction, and what it had spent. A unit opened on a session does
   nothing until a message is sent to it.
 
 Events of one unit arrive in order, on the event loop, through the callback given to
@@ -71,10 +68,8 @@ class UnitSpec:
 @dataclass(frozen=True, slots=True)
 class Instruction:
     text: str  # the unit's brief: who it is in the fleet, its task, how the fleet works
-    ongoing: bool  # standing work that never ends, instead of a goal
-    check_in_s: tuple[float, float]  # the shortest and the longest time between two turns
-    # A conversation and no work to end: the text is said once, when the unit begins; it
-    # answers each message and stops, and nothing is reported. `ongoing` means nothing.
+    # A conversation and no fleet work: the text is said once, when the unit begins; it
+    # answers each message and stops.
     conversation: bool = False
 
 
@@ -82,8 +77,6 @@ class Instruction:
 class Vocabulary:
     """What the agent of this harness calls things, for the words KFM writes to it."""
 
-    finish: str  # the tool that declares a goal reached, with its report
-    ask: str  # the tool that asks its supervisor
     tools: str  # what stands before a fleet tool's name, such as "mcp__fleet__"
 
     def tool(self, name: str) -> str:
@@ -100,10 +93,7 @@ class Working:
 
 @dataclass(frozen=True, slots=True)
 class Rested:
-    """The agent's turn ended. `carries_on`: its instruction still stands, so it wakes
-    itself again (or waits for the answer to what it asked)."""
-
-    carries_on: bool
+    """The agent's turn ended."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,19 +102,12 @@ class Said:
 
 
 @dataclass(frozen=True, slots=True)
-class Reported:
-    """The agent declared its goal reached. Before the Rested of that turn, and only while
-    a goal stands."""
-
-    text: str
-
-
-@dataclass(frozen=True, slots=True)
 class Asked:
-    question: str  # before the Rested of that turn
-    # The agent waits in a call for the answer, and takes the next send as it, whatever
-    # it says: the fleet sends nothing else until it has been answered.
-    waits: bool = False
+    """The agent waits in a call for the answer, and takes the next send as it, whatever
+    it says: the fleet sends nothing else until it has been answered. Before the Rested
+    of that turn."""
+
+    question: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,8 +160,8 @@ class Discarded:
     """What it thought and wrote in this request is void: the request is made again."""
 
 
-type UnitEvent = (Working | Rested | Said | Reported | Asked | Spent | ApprovalNeeded
-                  | Failed | Exited | Thought | Wrote | Doing | Discarded)
+type UnitEvent = (Working | Rested | Said | Asked | Spent | ApprovalNeeded | Failed | Exited
+                  | Thought | Wrote | Doing | Discarded)
 
 
 # ── The harness ───────────────────────────────────────────────────────────
@@ -195,8 +178,8 @@ class Session(abc.ABC):
     @abc.abstractmethod
     async def instruct(self, instruction: Instruction) -> None:
         """The standing instruction of the conversation `begin` started, from now: another
-        one, or the same again after a goal ended. The conversation carries on. A message
-        is sent with it, before or after: the instruction alone need not start a turn."""
+        one, or the same again. The conversation carries on. A message is sent after it:
+        the instruction alone need not start a turn."""
 
     @abc.abstractmethod
     async def send(self, text: str, files: Sequence[str] = (), *,

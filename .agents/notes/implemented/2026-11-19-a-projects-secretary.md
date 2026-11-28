@@ -42,10 +42,11 @@ Every project has a secretary beside its teams.
   she still knows what the person wanted and why the teams are what they are.
 - **She is not a manager.** No team reports to her and no report wakes her. Leads
   answer to the person, who can still write to any lead or agent directly.
-- **She is a conversation, not work that ends.** Every other agent has a goal or a
-  duty, which it ends or reports on. Her brief is said once, as what her conversation
-  opens with, and after that she answers each message and stops
-  (`api.Instruction.conversation`; for Kaden, no duty is set). So there is no report:
+- **She is a conversation, not work that ends.** Every other agent has a task, which it
+  finishes, or standing work, and the fleet wakes it while that stands. Her brief is
+  said once, as what her conversation opens with, and after that she answers each
+  message and stops (`api.Instruction.conversation`: she has no `finish` or `ask`, and
+  nothing wakes her). So there is no report:
   what she writes is the one answer the person reads. With a goal she wrote her answer
   and then gave it again as her report, since the person reads her conversation itself.
 - **She has the permissions any agent has**, the settings' level (the user,

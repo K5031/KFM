@@ -58,9 +58,9 @@ knowledge, and the unit contract has no way to ask.
   could shape a team only after a lead had started on a task and begun hiring, which is
   not building it by hand: the user asked for two ways and found one.
 - **Start an agent with no task and have it wait.** It would spend on starting up, end
-  its turn with nothing done, and its supervisor would get "stopped without a report".
+  its turn with nothing done, and be woken at every check-in with nothing to do.
 - **The model takes effect the next time the agent's process starts.** Nothing is
-  interrupted, but an agent on a duty may never start again, and the person who set a
+  interrupted, but an agent on standing work may never start again, and the person who set a
   model would see nothing change.
 
 ## Consequences

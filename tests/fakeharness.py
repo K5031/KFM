@@ -5,8 +5,8 @@ contract.
 A unit's script is a list of steps, one per turn: {"when": text, "do": [actions]}. A turn
 is the unit's instruction or a message sent to it; it takes the next step if `when` (default
 "") is in that text, else it says "ok". Actions: ("say", text), ("tool", name, arguments)
-for a fleet tool, ("report", text), ("ask", question), ("approval", id, tool, arguments), which
-waits for the answer."""
+for a fleet tool, ("report", text) and ("ask", question), which call the fleet tools
+`finish` and `ask`, and ("approval", id, tool, arguments), which waits for the answer."""
 
 from __future__ import annotations
 
@@ -19,11 +19,9 @@ from mcp import Client
 
 from kfm.api import (
     ApprovalNeeded,
-    Asked,
     Doing,
     Harness,
     Instruction,
-    Reported,
     Rested,
     Said,
     Session,
@@ -37,14 +35,13 @@ from kfm.api import (
     Wrote,
 )
 
-WORDS = Vocabulary(finish="done", ask="ask_boss", tools="fleet.")
+WORDS = Vocabulary(tools="fleet.")
 
 
 class FakeHarness(Harness):
     def __init__(self, scripts: dict[str, list[dict[str, Any]]]) -> None:
         self.scripts = {name: list(steps) for name, steps in scripts.items()}
         self.heard: dict[str, list[str]] = {}  # every turn's text, by unit name
-        self.standing: dict[str, bool] = {}  # by session: whether its instruction stands
         self.opened: list[tuple[str, str | None]] = []  # (unit name, session)
         self.models: list[tuple[str, str | None]] = []  # (unit name, model), as opened
         self.approved: list[tuple[str, bool]] = []  # (request id, allow)
@@ -60,7 +57,6 @@ class FakeHarness(Harness):
         self.always: list[str] = []  # request ids allowed for the rest of the unit's work
         self.files: list[tuple[str, list[str], bool]] = []  # (unit name, files, spoken)
         self.instructed: list[tuple[str, str]] = []  # (unit name, its new instruction)
-        self.kinds: list[tuple[str, bool]] = []  # (unit name, whether that one is a duty)
 
     @property
     def vocabulary(self) -> Vocabulary:
@@ -90,7 +86,6 @@ class FakeSession(Session):
 
     async def begin(self, instruction: Instruction) -> str:
         self.session = f"session-{self.spec.id}"
-        self.harness.standing[self.session] = not instruction.conversation
         if instruction.conversation:
             self.harness.conversations.append(self.spec.name)
         self._turn(instruction.text)
@@ -99,8 +94,6 @@ class FakeSession(Session):
     async def instruct(self, instruction: Instruction) -> None:
         assert self.session is not None
         self.harness.instructed.append((self.spec.name, instruction.text))
-        self.harness.kinds.append((self.spec.name, instruction.ongoing))
-        self.harness.standing[self.session] = not instruction.conversation
 
     async def send(self, text: str, files: Sequence[str] = (), *,
                    spoken: bool = False) -> None:
@@ -147,18 +140,20 @@ class FakeSession(Session):
                 case ("wait", seconds):
                     await asyncio.sleep(seconds)
                 case ("tool", name, arguments):
-                    async with Client(self.spec.tools_url) as client:
-                        result = await client.call_tool(name, arguments)
-                    self.harness.results.append((self.spec.name, name, " ".join(
-                        getattr(part, "text", "") for part in result.content)))
+                    await self._call(name, arguments)
                 case ("report", report):
-                    self.emit(Reported(report))
-                    self.harness.standing[self.session] = False
+                    await self._call("finish", {"report": report})
                 case ("ask", question):
-                    self.emit(Asked(question))
+                    await self._call("ask", {"question": question})
                 case ("approval", request_id, tool, arguments):
                     self.answers[request_id] = asyncio.Event()
                     self.emit(ApprovalNeeded(request_id, tool, arguments))
                     await self.answers[request_id].wait()
         self.emit(Spent(0.01 * len(self.harness.heard[self.spec.name])))
-        self.emit(Rested(self.harness.standing.get(self.session, False)))
+        self.emit(Rested())
+
+    async def _call(self, name: str, arguments: dict[str, Any]) -> None:
+        async with Client(self.spec.tools_url) as client:
+            result = await client.call_tool(name, arguments)
+        self.harness.results.append((self.spec.name, name, " ".join(
+            getattr(part, "text", "") for part in result.content)))
